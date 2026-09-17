@@ -25,7 +25,7 @@ HOST_SHELL = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__HOST_LABEL__ · API Key 计费样式预览</title>
+<title>__HOST_LABEL__ · API Key 管理样式预览</title>
 <style>
 :root{
   --bg-secondary:#faf9f5;--bg-primary:#f0eee8;--bg-tertiary:#e9e6df;--bg-hover:var(--bg-tertiary);
@@ -145,10 +145,10 @@ html[data-host=cpamp] #plugin-frame{background:var(--bg-primary)}
 <body>
 <aside class="sidebar">
   <div class="brand"><span class="brand-mark">◈</span><span>__HOST_LABEL__</span></div>
-  <div class="nav-placeholder"><span>仪表盘</span><span>AI 提供商</span><span>插件管理</span><span class="active">API Key 计费</span></div>
+  <div class="nav-placeholder"><span>仪表盘</span><span>AI 提供商</span><span>插件管理</span><span class="active">API Key 管理</span></div>
 </aside>
 <header class="navbar">
-  <div class="navbar-left"><button class="mobile-menu" title="菜单">☰</button><span>API Key 计费</span></div>
+  <div class="navbar-left"><button class="mobile-menu" title="菜单">☰</button><span>API Key 管理</span></div>
   <div class="theme-controls" aria-label="预览主题">
     <button type="button" data-action="refresh" title="刷新">↻</button>
     <button type="button" data-theme-choice="light" title="浅色主题">◐</button>
@@ -156,7 +156,7 @@ html[data-host=cpamp] #plugin-frame{background:var(--bg-primary)}
     <button type="button" data-theme-choice="dark" title="深色主题">●</button>
   </div>
 </header>
-<main class="content"><iframe id="plugin-frame" src="/ui" title="API Key 计费插件"></iframe></main>
+<main class="content"><iframe id="plugin-frame" src="/ui" title="API Key 管理插件"></iframe></main>
 <script>
 "use strict";
 const HOST_MODE="__HOST_MODE__";

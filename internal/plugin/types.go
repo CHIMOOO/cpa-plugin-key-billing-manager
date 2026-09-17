@@ -18,9 +18,9 @@ const (
 const (
 	PluginID   = "cpa-key-billing"
 	PluginName = "cpa-key-billing"
-	Version    = "1.3.11"
+	Version    = "0.0.1"
 
-	MenuLabel       = "API Key 计费"
+	MenuLabel       = "API Key 管理"
 	MenuDescription = "管理下游 API Key 的路由、计费、并发限制、订阅额度和用量"
 
 	GitHubRepository = "https://github.com/CHIMOOO/cpa-plugin-key-billing-manager"

@@ -1,6 +1,6 @@
 <div align="center">
   <h1>CPA Key Billing</h1>
-  <p><strong><a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a> 下游 API Key 计费与订阅额度插件。</strong></p>
+  <p><strong><a href="https://github.com/router-for-me/CLIProxyAPI">CLIProxyAPI</a> 下游 API Key 管理与订阅额度插件。</strong></p>
   <p>
     <a href="https://github.com/haowang02/cpa-plugin-key-billing/releases/latest"><img src="https://img.shields.io/github/v/release/haowang02/cpa-plugin-key-billing?label=release" alt="Latest release"></a>
     <a href="https://github.com/haowang02/cpa-plugin-key-billing/actions/workflows/check.yml"><img src="https://github.com/haowang02/cpa-plugin-key-billing/actions/workflows/check.yml/badge.svg" alt="CI status"></a>
@@ -103,11 +103,11 @@ plugins:
 > - v1.0.0 至最新版本的数据库文件支持自动迁移。
 > - v0.8.4 及更早版本的 JSON 或 SQLite 数据文件不支持迁移，请将 `state_file` 指向新文件。
 
-重启 CLIProxyAPI 后，在管理中心打开「API Key 计费」。确认模型定价后，创建订阅计划并绑定需要限制的 API Key。
+重启 CLIProxyAPI 后，在管理中心打开「API Key 管理」。确认模型定价后，创建订阅计划并绑定需要限制的 API Key。
 
 ## 页面访问
 
-管理员可以从 CLIProxyAPI 管理中心的「API Key 计费」菜单进入，也可以直接打开：
+管理员可以从 CLIProxyAPI 管理中心的「API Key 管理」菜单进入，也可以直接打开：
 
 ```text
 http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing/ui
