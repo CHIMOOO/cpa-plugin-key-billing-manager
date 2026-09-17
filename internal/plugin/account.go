@@ -34,12 +34,13 @@ type accountSubscriptionResponse struct {
 }
 
 type accountRoutingResponse struct {
-	Models            []string                 `json:"models"`
-	Credentials       []accountRouteCredential `json:"credentials"`
-	DeniedModels      []string                 `json:"denied_models"`
-	DeniedCredentials []accountRouteCredential `json:"denied_credentials"`
-	RoutingValid      bool                     `json:"routing_valid"`
-	Warnings          []string                 `json:"warnings"`
+	Models                []string                 `json:"models"`
+	Credentials           []accountRouteCredential `json:"credentials"`
+	DeniedModels          []string                 `json:"denied_models"`
+	DeniedCredentials     []accountRouteCredential `json:"denied_credentials"`
+	RoutingValid          bool                     `json:"routing_valid"`
+	CredentialsRestricted bool                     `json:"credentials_restricted"`
+	Warnings              []string                 `json:"warnings"`
 }
 
 type accountRouteCredential struct {
@@ -78,10 +79,17 @@ func (a *App) accountRouting(access viewAccess) ManagementResponse {
 	response := accountRoutingResponse{
 		Models: decision.Models, DeniedModels: decision.DeniedModels,
 		Credentials: []accountRouteCredential{}, DeniedCredentials: []accountRouteCredential{},
-		RoutingValid: decision.ConfigurationError == "", Warnings: []string{},
+		RoutingValid: decision.ConfigurationError == "" && decision.AccessDenied == "", Warnings: []string{},
+		CredentialsRestricted: decision.RestrictsCredentials(),
 	}
 	if decision.ConfigurationError != "" {
 		response.Warnings = append(response.Warnings, "路由规则已不存在，请联系管理员")
+	}
+	if decision.AccessDenied != "" {
+		response.Warnings = append(response.Warnings, decision.AccessDenied)
+	}
+	if decision.RequireCredentialAllowlist && len(decision.CredentialIDs) == 0 && len(decision.CredentialProviders) == 0 {
+		response.Warnings = append(response.Warnings, "尚未允许任何上游凭证，请联系管理员")
 	}
 	if !decision.RestrictsCredentials() {
 		return apiKeyJSON(http.StatusOK, response)

@@ -26,6 +26,30 @@ var indexes = map[string][]index{
 }
 
 // Time columns use Unix nanoseconds; JSON cycles use UTC RFC3339Nano.
+const accessControlSchema = `
+CREATE TABLE access_control (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+	deny_ungrouped INTEGER NOT NULL CHECK (deny_ungrouped IN (0, 1))
+);
+INSERT INTO access_control(id, enabled, deny_ungrouped) VALUES (1, 1, 0);
+
+CREATE TABLE key_groups (
+	scope TEXT NOT NULL REFERENCES api_keys(scope),
+	position INTEGER NOT NULL,
+	group_id TEXT NOT NULL,
+	PRIMARY KEY (scope, group_id),
+	UNIQUE (scope, position)
+);
+
+CREATE TABLE groups (
+	position INTEGER PRIMARY KEY,
+	id TEXT NOT NULL UNIQUE,
+	name TEXT NOT NULL,
+	route_ids_json TEXT NOT NULL DEFAULT '[]'
+);
+`
+
 const schema = `
 CREATE TABLE api_keys (
 	scope                 TEXT    PRIMARY KEY,
@@ -146,4 +170,4 @@ CREATE TABLE plugin_logs (
 	level   TEXT    NOT NULL DEFAULT '',
 	message TEXT    NOT NULL DEFAULT ''
 );
-`
+` + accessControlSchema

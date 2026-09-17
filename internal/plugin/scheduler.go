@@ -150,14 +150,14 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	}
 	a.observeCandidates(req.Candidates)
 	scope := metadataString(req.Options.Metadata, MetadataCallerScope)
-	if scope == "" {
-		return OKEnvelope(SchedulerPickResponse{Handled: false})
-	}
 	requestedModel := metadataString(req.Options.Metadata, MetadataRequestedModel)
 	if requestedModel == "" {
 		requestedModel = req.Model
 	}
 	decision := a.store.ResolveRouting(scope, req.Model, requestedModel)
+	if decision.AccessDenied != "" {
+		return ErrorEnvelope("access_denied", decision.AccessDenied, http.StatusForbidden), nil
+	}
 	if decision.ConfigurationError != "" {
 		return ErrorEnvelope("routing_configuration_error", decision.ConfigurationError, http.StatusServiceUnavailable), nil
 	}

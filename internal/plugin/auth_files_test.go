@@ -166,6 +166,9 @@ func TestAccountAuthFilesFollowCredentialRouting(t *testing.T) {
 				got = append(got, file.AuthIndex)
 			}
 			want := []string{"claude-allowed", "codex-allowed"}
+			if mode == "deny" {
+				want = nil // A deny list grants no unselected credentials.
+			}
 			if strings.Join(got, "|") != strings.Join(want, "|") {
 				t.Fatalf("auth files = %v, want %v", got, want)
 			}

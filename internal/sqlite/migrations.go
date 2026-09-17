@@ -11,6 +11,15 @@ import (
 	"cpa-key-billing/internal/billing"
 )
 
+// v15 adds group membership and persisted admission policy without rewriting
+// keys, quotas, routes, or historical request records.
+func migrateToV15(tx *sql.Tx) error {
+	if _, err := tx.Exec(accessControlSchema); err != nil {
+		return fmt.Errorf("迁移分组访问控制：%w", err)
+	}
+	return nil
+}
+
 func migrateToV14(tx *sql.Tx, version int) error {
 	var steps []func(*sql.Tx) error
 	switch version {

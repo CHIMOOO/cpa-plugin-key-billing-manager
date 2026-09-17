@@ -1466,6 +1466,28 @@
       .route-choice[data-state="deny"] .route-choice-name, .routing-deny { text-decoration: line-through; color: var(--text-tertiary); }
       .route-choice .route-choice-note { min-width: 0; font-size: 11px; color: var(--text-tertiary); }
       .route-rule-list { margin-top: 16px; max-height: min(28dvh, 240px); }
+      .access-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+      .access-help { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
+      .group-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+      .group-toolbar input { flex: 1 1 160px; min-width: 0; }
+      .group-toolbar .native-select { max-width: 100%; }
+      .group-toolbar select { max-width: 100%; }
+      .group-cell { min-width: 115px; max-width: 190px; }
+      .group-cell .settings-chips { margin-bottom: 6px; }
+      .group-dialog { width: min(740px, calc(100vw - 32px)); }
+      .group-dialog .selection-list { max-height: min(23dvh, 220px); }
+      .group-dialog .field { margin: 12px 0; }
+      .credential-tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--border-primary); }
+      .credential-tabs button { min-height: 28px; padding: 4px 10px; font-size: 12px; }
+      :root .credential-tabs button.active,
+      :root .credential-tabs button.active:hover:not(:disabled),
+      :root[data-cpamp-plugin-host="true"] .credential-tabs button[role="tab"].active,
+      :root[data-cpamp-plugin-host="true"] .credential-tabs button[role="tab"].active:hover:not(:disabled) {
+        background: var(--primary-color);
+        color: var(--primary-contrast);
+        border-color: var(--primary-color);
+      }
+      .credential-filter { width: calc(100% - 24px); margin: 0 12px 10px; }
       @media (max-width: 768px) {
         .route-form-toolbar { grid-template-columns: 1fr; gap: 12px; }
         .route-dialog .route-form-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1989,6 +2011,17 @@
         dialog { width: calc(100vw - 24px); max-width: none; padding: 16px; }
         .settings-dialog { padding: 18px; }
         .route-dialog .route-form-toolbar { grid-template-columns: 1fr; }
+        .route-dialog[open] { display: block; }
+        .route-dialog .route-rule-list { max-height: 40dvh; min-height: 270px; }
+        .route-dialog .dialog-actions, .group-dialog .dialog-actions {
+          position: sticky;
+          bottom: -18px;
+          margin: 14px -18px -18px;
+          padding: 12px 18px;
+          background: var(--floating-surface);
+          border-top: 1px solid var(--border-color);
+          z-index: 2;
+        }
         .settings-entry-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .account-access-summary, .price-fields { grid-template-columns: 1fr; }
         .price-reference-option { grid-template-columns: 1fr; gap: 2px; }
@@ -2168,6 +2201,7 @@
               <h2>API Key</h2>
               <div class="row section-actions">
                 <input id="key-filter" placeholder="搜索 API Key、备注或计划" class="wide-search" />
+                <span class="native-select"><select id="key-group-filter" aria-label="按分组筛选 API Key"><option value="">全部分组</option></select></span>
                 <div class="row key-toolbar-buttons">
                   <label class="toggle-filter">
                     <input id="keys-include-deleted" type="checkbox" role="switch" />
@@ -2181,11 +2215,53 @@
                 </div>
               </div>
             </div>
+            <div class="group-toolbar">
+              <label class="toggle-filter"><input id="keys-select-visible" type="checkbox" /><span>全选当前筛选</span></label>
+              <span id="keys-selection-count" class="small muted">已选 0 个 Key</span>
+              <button id="keys-edit-groups" type="button" disabled>批量设置分组</button>
+              <button id="keys-selection-clear" type="button" class="link">清空选择</button>
+            </div>
             <div id="keys-body"></div>
           </div>
         </section>
 
         <section id="tab-analysis" class="hidden"><div id="analysis-body"></div></section>
+
+        <section id="tab-groups" class="hidden">
+          <div class="card">
+            <div class="row spread settings-section-header"><h2>访问控制</h2><button id="access-control-save" class="primary" type="button" disabled>保存</button></div>
+            <div id="access-control-status" class="notice hidden" role="status"></div>
+            <div class="access-controls">
+              <label class="toggle-filter"><input id="access-control-enabled" type="checkbox" role="switch" disabled /><span>启用访问控制</span></label>
+              <label class="toggle-filter"><input id="access-control-deny-ungrouped" type="checkbox" role="switch" disabled /><span>默认拒绝未分组 Key</span></label>
+            </div>
+            <p class="access-help">访问控制开启时执行分组和路由限制。开启「默认拒绝未分组 Key」后，未加入任何分组的新 Key 和现有 Key 均无法访问上游。关闭访问控制后不执行这些限制，订阅额度与并发限制仍然生效。</p>
+          </div>
+          <div class="card">
+            <div class="row spread settings-section-header"><h2>API Key 分组</h2><button id="group-new" type="button">新建分组</button></div>
+            <p class="access-help">每个 Key 可以加入多个分组，每个分组可以绑定多条路由规则。要限定到指定认证文件，请在路由规则中仅将这些文件设为白名单。所有所属分组均未绑定规则时，Key 禁止访问。</p>
+            <div id="groups-body"></div>
+          </div>
+          <dialog id="group-dialog" class="settings-dialog group-dialog">
+            <h2 id="group-dialog-title">新建分组</h2>
+            <div class="editor-state notice hidden"></div>
+            <input id="group-id" type="hidden" />
+            <label class="field">分组名称<input id="group-name" placeholder="例如：Codex 团队" /></label>
+            <div class="selection-section"><div class="small muted">绑定路由规则（可多选）</div><div id="group-route-list" class="selection-list"></div></div>
+            <div class="selection-section">
+              <div class="small muted">绑定 API Key（可多选）</div>
+              <div class="group-toolbar">
+                <input id="group-key-search" type="search" placeholder="搜索 API Key 或备注" aria-label="搜索分组中的 API Key" />
+                <span class="native-select"><select id="group-key-filter" aria-label="按已有分组筛选 Key"><option value="">全部分组</option></select></span>
+                <button id="group-key-all" class="link" type="button">全选筛选结果</button>
+                <button id="group-key-none" class="link" type="button">取消筛选结果</button>
+              </div>
+              <div id="group-key-count" class="small muted"></div>
+              <div id="group-key-list" class="selection-list"></div>
+            </div>
+            <div class="row dialog-actions"><button id="group-cancel" type="button">取消</button><button id="group-save" class="primary" type="button">保存</button></div>
+          </dialog>
+        </section>
 
         <section id="tab-plans" class="hidden">
           <div class="card">
@@ -2228,6 +2304,7 @@
           </div>
           <dialog id="route-dialog" class="settings-dialog route-dialog">
             <h2 id="route-dialog-title">新建路由规则</h2>
+            <p class="access-help">仅允许访问白名单中选定的上游凭证；未选择凭证时禁止访问。模型未选择时不限制模型。</p>
             <div class="editor-state notice hidden"></div>
             <input id="route-id" type="hidden" />
             <div class="route-form-toolbar">
@@ -2242,6 +2319,7 @@
             <div id="route-rule-list" class="routing-list route-rule-list"></div>
             <div class="selection-section">
               <div class="small muted">绑定 API Key</div>
+              <input id="route-key-search" type="search" placeholder="搜索 API Key 或备注" aria-label="搜索路由规则绑定的 API Key" />
               <div id="route-key-list" class="selection-list"></div>
             </div>
             <div class="row dialog-actions">
@@ -2543,8 +2621,18 @@
 
     <div id="key-route-tooltip" class="key-route-tooltip" popover="manual" role="tooltip" tabindex="0"></div>
 
+    <dialog id="group-picker" class="settings-dialog group-dialog">
+      <h2>设置 API Key 分组</h2>
+      <div class="editor-state notice hidden"></div>
+      <p id="group-picker-identity" class="small muted"></p>
+      <p class="small muted">勾选目标分组，保存后将替换这些 Key 的全部分组。取消所有勾选会移出所有分组。</p>
+      <div id="group-picker-list" class="selection-list"></div>
+      <div class="row dialog-actions"><button id="group-picker-cancel" type="button">取消</button><button id="group-picker-save" class="primary" type="button">保存</button></div>
+    </dialog>
+
     <dialog id="route-picker" class="settings-dialog route-picker" aria-labelledby="route-picker-title" aria-describedby="route-picker-identity">
       <h2 id="route-picker-title">编辑 API Key 路由规则</h2>
+      <p class="access-help">路由规则及直接绑定仅授权白名单中的上游凭证；未选择的凭证不允许访问。</p>
       <p id="route-picker-identity" class="route-picker-identity"></p>
       <div id="route-picker-notice" class="editor-state notice hidden"></div>
       <div class="route-form-toolbar">
@@ -2626,7 +2714,7 @@
       let loginMode = initialRoute.role;
       let loginModeRequest = 0;
       function emptyAuthQuotaState() { return { authQuotas: new Map(), authQuotaLoading: new Set(), authQuotaErrors: new Map() }; }
-      let adminUIState = { ...emptyAuthQuotaState(), keySubmissions: new Set() };
+      let adminUIState = { ...emptyAuthQuotaState(), keySubmissions: new Set(), selectedKeys: new Set() };
       let accountUIState = emptyAuthQuotaState();
       const authQuotaGeneration = { admin: 0, account: 0 };
       const credentialScope = { admin: "", account: "" };
@@ -2749,6 +2837,8 @@
           keys: "API Key",
           plans: "订阅计划",
           routes: "路由规则",
+          groups: "API Key 分组",
+          accessControl: "访问控制",
           credentials: "凭证目录",
           models: "模型目录",
           catalog: "模型价格",
@@ -2796,7 +2886,7 @@
 
       const resourceGroups = {
         admin: {
-          configuration: { names: ["keys", "plans", "routes", "credentials", "models"], syncErrors: [] },
+          configuration: { names: ["keys", "plans", "routes", "groups", "accessControl", "credentials", "models"], syncErrors: [] },
           pricing: { names: ["catalog", "priceStatus"], after: "configuration" },
           authFiles: { names: ["authFiles"] }
         },
@@ -2806,7 +2896,11 @@
         }
       };
       // These are also page dependencies, even when the editor is still closed.
-      const EDITOR_RESOURCES = { plan: ["keys", "plans"], route: ["keys", "routes", "credentials", "models"] };
+      const EDITOR_RESOURCES = {
+        plan: ["keys", "plans"],
+        route: ["keys", "routes", "credentials", "models"],
+        group: ["keys", "groups", "routes"]
+      };
 
       // A query caches one explicit selection. Changing that selection or starting
       // a new session discards the result; elapsed time never invalidates it.
@@ -3208,6 +3302,7 @@
         $(prefix + "auth-search").value = "";
         if (!account) {
           $("key-filter").value = "";
+          $("key-group-filter").value = "";
           $("keys-include-deleted").checked = false;
           $("price-filter").value = "";
           $("plugin-log-filter").value = "";
@@ -3220,7 +3315,9 @@
         if (role === "account") accountUIState = emptyAuthQuotaState();
         else {
           $("route-picker").close();
-          adminUIState = { ...emptyAuthQuotaState(), keySubmissions: new Set() };
+          $("group-picker").close();
+          $("group-dialog").close();
+          adminUIState = { ...emptyAuthQuotaState(), keySubmissions: new Set(), selectedKeys: new Set() };
           expandedPluginLogIDs.clear();
           resourceGroups.admin.configuration.syncErrors = [];
           keyDirectory.clear();
@@ -3526,7 +3623,7 @@
         }
       }
 
-      for (const id of ["plan-dialog", "route-dialog", "route-picker", "price-dialog", "action-dialog"]) {
+      for (const id of ["plan-dialog", "route-dialog", "route-picker", "group-dialog", "group-picker", "price-dialog", "action-dialog"]) {
         const dialog = $(id);
         dialog.querySelector(".dialog-actions button:not(.primary):not(.link)").onclick = () => dialog.close();
         dialog.addEventListener("cancel", (event) => { if (editors.get(dialog)?.saving) event.preventDefault(); });
@@ -3534,9 +3631,10 @@
       }
 
       function previewCredential(value) {
-        value = String(value || "").trim();
-        if (value.length <= 12) return "*".repeat(value.length);
-        return value.slice(0, 6) + "…" + value.slice(-4);
+        const characters = Array.from(String(value || "").trim());
+        if (characters.length < 4) return "*".repeat(characters.length);
+        const edge = Math.min(8, Math.floor(characters.length / 4));
+        return characters.slice(0, edge).join("") + "…" + characters.slice(-edge).join("");
       }
 
       async function setLoginMode(mode, preserveError) {
@@ -3828,8 +3926,11 @@
         ]);
         await settleLoads([
           read("plans", () => fetchAdminCollection("plans")),
+          read("accessControl", async () => validateAccessControl((await plugin("GET", "/access-control"))?.access_control)),
           read("models", async () => fetchModels(false, (await configuredKeys).find((key) => key.trim())?.trim() || "")),
-          synced.then(() => settleLoads(["keys", "routes", "credentials"].map((name) => read(name, () => fetchAdminCollection(name)))))
+          synced.then(() =>
+            settleLoads(["keys", "routes", "groups", "credentials"].map((name) => read(name, () => fetchAdminCollection(name))))
+          )
         ]);
         return errors;
       }
@@ -3852,12 +3953,15 @@
       }
 
       function applyAdminView(view, models) {
-        for (const name of ["keys", "plans", "routes"]) {
+        for (const name of ["keys", "plans", "routes", "groups"]) {
           if (!Object.hasOwn(view, name)) continue;
           const resource = resources.admin[name];
           const rows = requireArray(view[name], resource.label);
           // A committed view supersedes metadata from any read already in flight.
           Object.assign(resource, { value: name === "keys" ? keyDirectory.receive(rows) : rows, error: "" });
+        }
+        if (Object.hasOwn(view, "access_control")) {
+          Object.assign(resources.admin.accessControl, { value: validateAccessControl(view.access_control), error: "" });
         }
         const catalog = resources.admin.catalog;
         if (Object.hasOwn(view, "prices")) {
@@ -4221,11 +4325,16 @@
         } else {
           const keyFilter = keyedSection(["eventKeys"], renderEventKeys);
           for (const tab of ["analysis", "request-events", "errors"]) result[tab].sections.unshift(keyFilter);
-          result.keys = { editors: ["route"], sections: [keyedSection(["keys", "plans", "routes", "credentials"], renderKeys)] };
+          result.keys = {
+            editors: ["route", "group"],
+            sections: [keyedSection(["keys", "plans", "routes", "groups", "accessControl", "credentials"], renderKeys)]
+          };
           result.settings = {
-            editors: ["plan", "route"],
+            editors: ["plan", "route", "group"],
             query: "logs",
             sections: [
+              section(["accessControl"], renderAccessControl),
+              keyedSection(["groups", "keys", "routes"], renderGroups),
               keyedSection(["plans", "keys"], renderPlans),
               keyedSection(["routes", "keys", "credentials"], renderRoutes),
               section(["catalog"], renderPriceTable),
@@ -4461,7 +4570,8 @@
           if (!access.models.some((model) => model.toLowerCase() === text.toLowerCase()))
             modelItems.push({ text, state: "deny", iconName: "astroid" });
         const credentialItems = access.credentials.map((item) => accountCredentialLabel(item, "allow"));
-        if (!credentialItems.length) credentialItems.push({ text: routingValid ? "全部凭证" : "无法确定" });
+        if (!credentialItems.length)
+          credentialItems.push({ text: !routingValid ? "禁止访问" : access.credentials_restricted ? "未授权凭证" : "全部凭证" });
         for (const item of access.denied_credentials || []) {
           const denied = accountCredentialLabel(item, "deny");
           if (
@@ -4538,7 +4648,7 @@
           el("b", { class: "mono account-model-name", title: model }, model),
           price
             ? el("div", { class: "account-model-price-list" }, priceRows.map(priceRow))
-            : el("span", { class: "muted small", text: "未定价，暂时无法使用" })
+            : el("span", { class: "muted small", text: "未定价，按零费用记录用量" })
         );
       }
 
@@ -5751,16 +5861,37 @@
         }
       }
 
+      function filteredKeys() {
+        const filter = $("key-filter").value.trim().toLowerCase();
+        return (resources.admin.keys.value || []).filter((key) => !key.deleted_at || $("keys-include-deleted").checked)
+          .filter((key) => keyMatchesGroup(key, $("key-group-filter").value))
+          .filter((view) => matchesTerm([apiKeyIdentity(view).text, view.plan_name, view.scope].filter(Boolean).join(" "), filter));
+      }
+
+      function renderKeySelection() {
+        const keys = filteredKeys().filter((key) => !key.deleted_at);
+        const selected = adminUIState.selectedKeys;
+        const selectedVisible = keys.filter((key) => selected.has(key.scope)).length;
+        $("keys-select-visible").checked = !!keys.length && selectedVisible === keys.length;
+        $("keys-select-visible").indeterminate = selectedVisible > 0 && selectedVisible < keys.length;
+        $("keys-select-visible").disabled = !keys.length;
+        $("keys-selection-count").textContent = "已选 " + selected.size + " 个 Key";
+        $("keys-edit-groups").disabled = !selected.size || resources.admin.groups.value === null;
+      }
+
       function renderKeys() {
         if (currentRole !== "admin" || activeTab(false) !== "keys") return false;
         closeKeyRouteTooltip();
         if (renderDataPending($("keys-body"), [resources.admin.keys], "正在加载…", "empty section-loading")) return;
         const plans = resources.admin.plans.value;
-        const filter = $("key-filter").value.trim().toLowerCase();
-        const keys = resources.admin.keys.value.filter((key) => !key.deleted_at || $("keys-include-deleted").checked)
-          .filter((view) => matchesTerm([apiKeyIdentity(view).text, view.plan_name, view.scope].filter(Boolean).join(" "), filter));
+        renderGroupFilter($("key-group-filter"), resources.admin.groups.value || []);
+        for (const scope of adminUIState.selectedKeys) {
+          if (!resources.admin.keys.value.some((key) => key.scope === scope && !key.deleted_at)) adminUIState.selectedKeys.delete(scope);
+        }
+        const keys = filteredKeys();
+        renderKeySelection();
         renderCollection($("keys-body"), keys, {
-          headers: ["API Key", "订阅计划", "路由规则", "并发限制", "订阅额度", "状态", "操作"],
+          headers: ["选择", "API Key", "分组", "订阅计划", "路由规则", "并发限制", "订阅额度", "状态", "操作"],
           render: (view) => {
             const deleted = !!view.deleted_at;
             const saving = adminUIState.keySubmissions.has(view.scope);
@@ -5839,6 +5970,23 @@
               el(
                 "td",
                 {},
+                checkboxControl({
+                  input: el("input", {
+                    type: "checkbox",
+                    checked: adminUIState.selectedKeys.has(view.scope),
+                    disabled: deleted,
+                    "aria-label": "选择 " + name,
+                    onchange: (event) => {
+                      if (event.target.checked) adminUIState.selectedKeys.add(view.scope);
+                      else adminUIState.selectedKeys.delete(view.scope);
+                      renderKeySelection();
+                    }
+                  })
+                })
+              ),
+              el(
+                "td",
+                {},
                 renderAPIKeyIdentity(view, {
                   stacked: true,
                   trailing: [
@@ -5858,6 +6006,22 @@
                   ]
                 })
               ),
+              el(
+                "td",
+                { class: "group-cell" },
+                settingsChipList(
+                  (view.group_ids || []).map((id) => ({
+                    text: (resources.admin.groups.value || []).find((group) => group.id === id)?.name || id
+                  })),
+                  "未分组"
+                ),
+                el("button", {
+                  class: "link",
+                  text: "设置分组",
+                  disabled: deleted || saving || resources.admin.groups.value === null,
+                  onclick: () => editKeyGroups([view.scope])
+                })
+              ),
               el("td", {}, el("span", { class: "native-select key-plan-select" }, select)),
               el("td", {}, renderKeyRoutes(view)),
               el("td", {}, concurrency),
@@ -5867,9 +6031,17 @@
                 {},
                 deleted
                   ? el("span", { class: "tag plain", text: "已删除", title: "从 CPA 配置中删除于 " + new Date(view.deleted_at).toLocaleString() })
-                  : view.blocked
-                    ? el("span", { class: "tag bad", text: "额度用尽" })
-                    : el("span", { class: "tag " + (view.unlimited ? "plain" : "ok"), text: view.unlimited ? "不限制" : "正常" })
+                  : resources.admin.accessControl.value?.enabled &&
+                      (!(view.group_ids || []).length
+                        ? resources.admin.accessControl.value.deny_ungrouped
+                        : resources.admin.groups.value !== null &&
+                          !(view.group_ids || []).some((id) =>
+                            resources.admin.groups.value.some((group) => group.id === id && group.route_ids?.length)
+                          ))
+                    ? el("span", { class: "tag bad", text: "禁止访问", title: "未分组 Key 被默认拒绝，或所属分组尚未绑定路由规则" })
+                    : view.blocked
+                      ? el("span", { class: "tag bad", text: "额度用尽" })
+                      : el("span", { class: "tag " + (view.unlimited ? "plain" : "ok"), text: view.unlimited ? "不限制" : "正常" })
               ),
               el(
                 "td",
@@ -5969,7 +6141,12 @@
             },
             ...(names.length
               ? names.slice(0, 3).map((entry) => el("div", { class: "key-route-line" }, settingsChipList([entry])))
-              : [el("div", { class: "key-route-line muted", text: "全部路由" })]),
+              : [
+                  el("div", {
+                    class: "key-route-line muted",
+                    text: view.group_ids?.length ? "由分组限制" : bindings.configured ? "未允许凭证，禁止访问" : "未单独限制"
+                  })
+                ]),
             names.length > 3 ? el("div", { class: "key-route-more", text: "…", "aria-label": "还有 " + (names.length - 3) + " 项" }) : null
           ),
           el(
@@ -5986,7 +6163,7 @@
                   closeKeyRouteTooltip();
                   return openActionDialog(
                     "清空「" + apiKeyIdentity(view).primary + "」的路由规则？",
-                    "将解除这个 API Key 绑定的全部路由规则，以及直接设置的模型、凭证黑白名单限制。",
+                    "将清空这个 Key 单独绑定的路由规则与模型、凭证选择。清空后仅保留分组授权；没有分组授权时禁止访问。",
                     undefined,
                     () =>
                       submitKeyChange(view.scope, async () => {
@@ -6179,6 +6356,7 @@
         const term = search.trim().toLowerCase();
         const scrollTop = list.scrollTop;
         const focusKey = list.contains(document.activeElement) ? document.activeElement.dataset.routingFocus : null;
+        const caret = focusKey === "credential-search" ? document.activeElement.selectionStart : null;
         if (term && !selection.beforeSearch) {
           selection.beforeSearch = selection.expanded;
           selection.expanded = { routes: true, credentials: true, models: true };
@@ -6199,6 +6377,8 @@
         if (focusKey)
           [...list.querySelectorAll("[data-routing-focus]")].find((control) => control.dataset.routingFocus === focusKey)
             ?.focus({ preventScroll: true });
+        if (caret !== null && document.activeElement.dataset.routingFocus === "credential-search")
+          document.activeElement.setSelectionRange(caret, caret);
       }
 
       function routingSection(selection, kind, title, options, rerender) {
@@ -6246,7 +6426,47 @@
               : null,
             el("span", { class: "routing-section-count", text: selected + "/" + options.length })
           ),
-          expanded ? el("div", {}, ...(options.length ? options : [el("div", { class: "routing-empty", text: "没有可选的" + title })])) : null
+          expanded
+            ? el(
+                "div",
+                {},
+                kind === "credentials"
+                  ? el(
+                      "div",
+                      { class: "credential-tabs", role: "tablist", "aria-label": "上游凭证类型" },
+                      [["codex", "Codex"], ["xai", "xAI"], ["oauth", "OAuth"], ["other", "其他"], ["all", "全部"]].map(([value, label]) =>
+                        el("button", {
+                          type: "button",
+                          role: "tab",
+                          text: label,
+                          class: selection.credentialTab === value ? "active" : "",
+                          "aria-selected": String(selection.credentialTab === value),
+                          "data-routing-focus": "credential-tab:" + value,
+                          onclick: () => {
+                            selection.credentialTab = value;
+                            rerender();
+                          }
+                        })
+                      )
+                    )
+                  : null,
+                kind === "credentials"
+                  ? el("input", {
+                      type: "search",
+                      class: "credential-filter",
+                      placeholder: "搜索上游凭证、邮箱或 API Key",
+                      "aria-label": "搜索上游凭证",
+                      "data-routing-focus": "credential-search",
+                      value: selection.credentialSearch,
+                      oninput: (event) => {
+                        selection.credentialSearch = event.target.value;
+                        rerender();
+                      }
+                    })
+                  : null,
+                ...(options.length ? options : [el("div", { class: "routing-empty", text: "没有匹配的" + title })])
+              )
+            : null
         );
       }
 
@@ -6348,6 +6568,214 @@
         return keys.length + " 个 API Key" + (deleted ? "（其中 " + deleted + " 个已删除）" : "");
       }
 
+      function validateAccessControl(value) {
+        if (!value || typeof value.enabled !== "boolean" || typeof value.deny_ungrouped !== "boolean") throw new Error("访问控制响应格式无效");
+        return value;
+      }
+
+      function renderAccessControl() {
+        const resource = resources.admin.accessControl;
+        const value = resource.value;
+        for (const id of ["access-control-enabled", "access-control-deny-ungrouped", "access-control-save"])
+          $(id).disabled = !value || !!adminUIState.accessSaving;
+        if (value) {
+          $("access-control-enabled").checked = value.enabled;
+          $("access-control-deny-ungrouped").checked = value.deny_ungrouped;
+        }
+        const status = $("access-control-status");
+        status.className = resource.error ? "notice err show" : value ? "notice hidden" : "notice show";
+        status.textContent = resource.error || (value ? "" : "正在读取已保存的访问控制设置…");
+      }
+
+      async function saveAccessControl() {
+        const owner = adminUIState;
+        if (owner.accessSaving || !resources.admin.accessControl.value) return;
+        const payload = { enabled: $("access-control-enabled").checked, deny_ungrouped: $("access-control-deny-ungrouped").checked };
+        owner.accessSaving = true;
+        for (const id of ["access-control-enabled", "access-control-deny-ungrouped", "access-control-save"]) $(id).disabled = true;
+        $("access-control-save").textContent = "正在保存…";
+        try {
+          const result = await writeAdmin("PUT", "/access-control", payload);
+          const saved = validateAccessControl(result.view?.access_control);
+          if (saved.enabled !== payload.enabled || saved.deny_ungrouped !== payload.deny_ungrouped) throw new Error("保存后的设置与请求不一致，请刷新确认");
+          Object.assign(resources.admin.accessControl, { value: saved, error: "" });
+          notify("访问控制设置已保存");
+          renderPage();
+        } catch (error) {
+          if (error instanceof AuthError || error instanceof StaleRequestError) return fail(error);
+          if (owner === adminUIState) {
+            $("access-control-status").className = "notice err show";
+            $("access-control-status").textContent = "保存失败：" + (error.message || error);
+          }
+        } finally {
+          owner.accessSaving = false;
+          if (owner === adminUIState) {
+            for (const id of ["access-control-enabled", "access-control-deny-ungrouped", "access-control-save"]) $(id).disabled = false;
+            $("access-control-save").textContent = "保存";
+          }
+        }
+      }
+
+      function keyMatchesGroup(key, id) {
+        return !id || (id === "__ungrouped" ? !(key.group_ids || []).length : (key.group_ids || []).includes(id));
+      }
+
+      function renderGroupFilter(select, groups) {
+        const value = select.value;
+        select.replaceChildren(
+          el("option", { value: "", text: "全部分组" }),
+          el("option", { value: "__ungrouped", text: "未分组" }),
+          ...groups.map((group) => el("option", { value: group.id, text: displayLabel(group.name || group.id) }))
+        );
+        select.value = [...select.options].some((option) => option.value === value) ? value : "";
+      }
+
+      function renderGroups() {
+        if (
+          renderDataPending(
+            $("groups-body"),
+            [resources.admin.groups, resources.admin.keys, resources.admin.routes],
+            "正在加载…",
+            "empty section-loading"
+          )
+        )
+          return;
+        renderCollection($("groups-body"), resources.admin.groups.value, {
+          attrs: { class: "event-list settings-card-list", role: "list" },
+          empty: "暂无分组，创建分组后可批量授权 Key",
+          render: (group) =>
+            settingsCard(
+              group.name || group.id,
+              [
+                settingsEntryField(
+                  "路由规则",
+                  settingsChipList(
+                    (group.route_ids || []).map((id) => ({
+                      iconName: "route",
+                      text: resources.admin.routes.value.find((route) => route.id === id)?.name || id
+                    })),
+                    "未绑定规则（不授权访问）"
+                  )
+                ),
+                boundKeyField(resources.admin.keys.value.filter((key) => (key.group_ids || []).includes(group.id)))
+              ],
+              () => editGroup(group),
+              () =>
+                openActionDialog(
+                  "删除分组「" + (group.name || group.id) + "」？",
+                  "将从所有 Key 中移除此分组。Key 将按剩余分组及默认未分组策略执行访问控制。",
+                  undefined,
+                  async () => {
+                    await mutateAdmin("DELETE", "/groups?id=" + encodeURIComponent(group.id));
+                    notify("分组已删除");
+                  }
+                )
+            )
+        });
+      }
+
+      let groupSelection;
+      let keyGroupSelection;
+
+      function groupFilteredKeys() {
+        const data = editors.get($("group-dialog")).data;
+        const term = $("group-key-search").value.trim().toLowerCase();
+        return data.keys.filter((key) => !key.deleted_at || groupSelection.scopes.has(key.scope))
+          .filter((key) => keyMatchesGroup(key, $("group-key-filter").value))
+          .filter((key) => matchesTerm(apiKeyIdentity(key).text + " " + key.scope, term));
+      }
+
+      function renderGroupKeyList() {
+        const data = editors.get($("group-dialog")).data;
+        $("group-key-count").textContent = "已选择 " + groupSelection.scopes.size + " 个 Key（筛选不会清除已选项）";
+        const keys = groupFilteredKeys();
+        $("group-key-list").replaceChildren(
+          ...(keys.length
+            ? keys.map((key) =>
+                el(
+                  "label",
+                  {},
+                  checkboxControl({
+                    input: el("input", {
+                      type: "checkbox",
+                      value: key.scope,
+                      checked: groupSelection.scopes.has(key.scope),
+                      onchange: (event) => {
+                        if (event.target.checked) groupSelection.scopes.add(key.scope); else groupSelection.scopes.delete(key.scope);
+                        $("group-key-count").textContent = "已选择 " + groupSelection.scopes.size + " 个 Key（筛选不会清除已选项）";
+                      }
+                    })
+                  }),
+                  renderAPIKeyIdentity(key),
+                  el("span", {
+                    class: "small muted",
+                    text: (key.group_ids || []).map((id) => data.groups.find((group) => group.id === id)?.name || id).join("、") || "未分组"
+                  }),
+                  key.deleted_at ? el("span", { class: "tag plain", text: "已删除" }) : null
+                )
+              )
+            : [el("div", { class: "empty", text: "没有匹配的 API Key" })])
+        );
+      }
+
+      function editGroup(group) {
+        openEditor("group-dialog", "group", (data) => {
+          const current = group ? data.groups.find((item) => item.id === group.id) : null;
+          if (group && !current) throw new Error("分组已不存在，请刷新列表");
+          $("group-id").value = current?.id || "";
+          $("group-name").value = current?.name || "";
+          $("group-dialog-title").textContent = current ? "编辑分组" : "新建分组";
+          groupSelection = {
+            routeIDs: new Set(current?.route_ids || []),
+            scopes: new Set(data.keys.filter((key) => current && (key.group_ids || []).includes(current.id)).map((key) => key.scope))
+          };
+          $("group-route-list").replaceChildren(
+            ...(data.routes.length
+              ? data.routes.map((route) => routeBindingChoice(groupSelection, route.id, route.name || route.id, () => {}))
+              : [el("div", { class: "empty", text: "请先创建路由规则" })])
+          );
+          $("group-key-search").value = "";
+          renderGroupFilter($("group-key-filter"), data.groups);
+          $("group-key-filter").value = "";
+          renderGroupKeyList();
+        });
+      }
+
+      function editKeyGroups(scopes) {
+        openEditor("group-picker", "group", (data) => {
+          const keys = scopes.map((scope) => data.keys.find((key) => key.scope === scope && !key.deleted_at));
+          if (!keys.length || keys.some((key) => !key)) throw new Error("所选 Key 已不存在，请刷新列表");
+          keyGroupSelection = {
+            scopes: [...scopes],
+            groups: new Set((keys[0].group_ids || []).filter((id) => keys.every((key) => (key.group_ids || []).includes(id))))
+          };
+          $("group-picker-identity").textContent =
+            keys.length === 1 ? apiKeyIdentity(keys[0]).text : "已选 " + keys.length + " 个 Key；预先勾选的是这些 Key 的共同分组。";
+          $("group-picker-list").replaceChildren(
+            ...(data.groups.length
+              ? data.groups.map((group) =>
+                  el(
+                    "label",
+                    {},
+                    checkboxControl({
+                      input: el("input", {
+                        type: "checkbox",
+                        checked: keyGroupSelection.groups.has(group.id),
+                        value: group.id,
+                        onchange: (event) => {
+                          if (event.target.checked) keyGroupSelection.groups.add(group.id); else keyGroupSelection.groups.delete(group.id);
+                        }
+                      })
+                    }),
+                    el("span", { text: displayLabel(group.name || group.id) }),
+                    el("span", { class: "small muted", text: group.route_ids?.length ? group.route_ids.length + " 条路由规则" : "未绑定规则，不授权访问" })
+                  )
+                )
+              : [el("div", { class: "empty", text: "暂无分组，请在设置中创建" })])
+          );
+        });
+      }
+
       function renderPlans() {
         if (renderDataPending($("plans-body"), [resources.admin.plans, resources.admin.keys], "正在加载…", "empty section-loading")) return;
         const plans = resources.admin.plans.value.map((plan) => ({
@@ -6417,7 +6845,7 @@
           render: ({ route, boundKeys }) => {
             const fields = [
               ["model", "模型范围", "全部模型", "astroid"],
-              ["credential", "凭证范围", "全部凭证", "key"]
+              ["credential", "凭证范围", "未授权凭证", "key"]
             ].map(([kind, label, fallback, iconName]) => {
               const items = routingDimensionChips(route.rule, kind, route.credential_labels);
               if (items.length && !items.some((item) => item.state === "allow")) items.unshift({ text: fallback, iconName });
@@ -6431,10 +6859,7 @@
               () =>
                 openActionDialog(
                   "删除路由规则「" + name + "」？",
-                  boundKeys.length
-                    ? "将从 " + bindingSummary(boundKeys) + " 的绑定中解除此规则；其中 " + (route.fully_unrestricted_keys || 0) +
-                        " 个未删除 Key 将不再受模型和凭证限制。已删除 Key 重新加入后按剩余绑定执行。"
-                    : "此操作无法撤销。",
+                  boundKeys.length ? "将从 " + bindingSummary(boundKeys) + " 的绑定中解除此规则。Key 按剩余路由和分组授权执行；不再拥有凭证白名单的受管 Key 禁止访问。" : "此操作无法撤销。",
                   undefined,
                   async () => {
                     await mutateAdmin("DELETE", "/routes?id=" + encodeURIComponent(route.id));
@@ -6490,6 +6915,8 @@
           ...routingSelection(rule),
           expanded: { routes: true, credentials: true, models: true },
           enabledOnly: viewPreference("admin", preference, true),
+          credentialTab: "codex",
+          credentialSearch: "",
           preference,
           beforeSearch: null
         };
@@ -6541,8 +6968,19 @@
         );
       }
 
+      function credentialMatchesTab(item, tab) {
+        if (tab === "all") return true;
+        if (tab === "oauth") return item.source === "auth-files";
+        if (item.source === "auth-files") return false;
+        return tab === "other" ? !["codex", "xai"].includes(item.provider) : item.provider === tab;
+      }
+
       function routeCredentialChoices(selection, credentials, term) {
-        const selectedProviders = selectedRouteValues(selection, "provider");
+        const allCredentials = credentials;
+        credentials = credentials.filter((item) => credentialMatchesTab(item, selection.credentialTab));
+        const selectedProviders = selectedRouteValues(selection, "provider").filter((item) =>
+          credentialMatchesTab(item, selection.credentialTab)
+        );
         const options = routeProviderChoices(credentials, selectedProviders).filter(
           (item) =>
             (!selection.enabledOnly || item.available || routeChoiceState(selection, "provider", item) !== "none") &&
@@ -6571,10 +7009,11 @@
           });
         }
         for (const ref of selectedRouteValues(selection, "credential")) {
-          if (!credentials.some((item) => item.ref === ref) && matchesTerm(ref, term))
+          if (selection.credentialTab === "all" && !allCredentials.some((item) => item.ref === ref) && matchesTerm(ref, term))
             options.push({ kind: "credential", value: ref, label: "凭证已不存在", iconName: "key", badge: "无可用" });
         }
-        return options;
+        const credentialTerm = selection.credentialSearch.trim().toLowerCase();
+        return options.filter((item) => matchesTerm(item.label + " " + (item.kind === "credential" ? item.value : ""), credentialTerm));
       }
 
       function routeModelChoices(selection, available, term) {
@@ -6590,20 +7029,31 @@
         }));
       }
 
+      let routeKeyScopes = new Set();
+
       function renderRouteKeyList(keys, routeID) {
         const list = $("route-key-list");
-        keys = keys.filter((key) => !key.deleted_at || (routeID && key.route_bindings.route_ids.includes(routeID)));
+        const term = $("route-key-search").value.trim().toLowerCase();
+        keys = keys.filter((key) => !key.deleted_at || (routeID && key.route_bindings.route_ids.includes(routeID)))
+          .filter((key) => matchesTerm(apiKeyIdentity(key).text + " " + key.scope, term));
         if (!keys.length) {
           list.replaceChildren(el("div", { class: "empty", text: "暂无 API Key" }));
           return;
         }
         list.replaceChildren(
           ...keys.map((key) => {
-            const checked = !!routeID && key.route_bindings.route_ids.includes(routeID);
+            const checked = routeKeyScopes.has(key.scope);
             return el(
               "label",
               {},
-              checkboxControl({ input: el("input", { type: "checkbox", value: key.scope, checked }) }),
+              checkboxControl({
+                input: el("input", {
+                  type: "checkbox",
+                  value: key.scope,
+                  checked,
+                  onchange: (event) => { if (event.target.checked) routeKeyScopes.add(key.scope); else routeKeyScopes.delete(key.scope); }
+                })
+              }),
               renderAPIKeyIdentity(key),
               key.deleted_at ? el("span", { class: "tag plain", text: "已删除", title: "可取消勾选以解除绑定" }) : null
             );
@@ -6625,10 +7075,12 @@
           $("route-save").textContent = current ? "保存" : "创建";
           $("route-name").value = current?.name || "";
           $("route-rule-search").value = "";
+          $("route-key-search").value = "";
+          routeKeyScopes = new Set(data.keys.filter((key) => id && key.route_bindings.route_ids.includes(id)).map((key) => key.scope));
           routeRuleSelection = routingEditorState(current?.rule, "route-credential-enabled-only");
           renderRouteRuleList();
           renderRouteKeyList(data.keys, id || "");
-          return { route: structuredClone(current), scopes: selectedKeyScopes("route-key-list") };
+          return { route: structuredClone(current), scopes: [...routeKeyScopes] };
         });
       }
 
@@ -8578,10 +9030,19 @@
           tab.classList.toggle("active", active);
           tab.setAttribute("aria-selected", String(active));
         }
-        const visible = selected === "settings" ? new Set(["plans", "routes", "prices", "plugin-logs"]) : new Set([selected]);
-        for (const section of ["keys", "analysis", "plans", "routes", "prices", "request-events", "errors", "auth-files", "plugin-logs"]) {
-          $("tab-" + section).classList.toggle("hidden", !visible.has(section));
-        }
+        const visible = selected === "settings" ? new Set(["groups", "plans", "routes", "prices", "plugin-logs"]) : new Set([selected]);
+        for (const section of [
+          "keys",
+          "analysis",
+          "groups",
+          "plans",
+          "routes",
+          "prices",
+          "request-events",
+          "errors",
+          "auth-files",
+          "plugin-logs"
+        ]) { $("tab-" + section).classList.toggle("hidden", !visible.has(section)); }
         $("shared-time-filter").classList.toggle("hidden", !["analysis", "request-events", "errors"].includes(selected));
         $("events-export").classList.toggle("hidden", !["request-events", "errors"].includes(selected));
         if (!["analysis", "request-events", "errors"].includes(selected)) { closeSharedTimePopover(false); }
@@ -8596,6 +9057,44 @@
         };
 
       $("key-filter").addEventListener("input", renderKeys);
+      $("key-group-filter").addEventListener("change", renderKeys);
+      $("keys-select-visible").onchange = (event) => {
+        for (const key of filteredKeys().filter((key) => !key.deleted_at)) {
+          if (event.target.checked) adminUIState.selectedKeys.add(key.scope); else adminUIState.selectedKeys.delete(key.scope);
+        }
+        renderKeys();
+      };
+      $("keys-selection-clear").onclick = () => {
+        adminUIState.selectedKeys.clear();
+        renderKeys();
+      };
+      $("keys-edit-groups").onclick = () => editKeyGroups([...adminUIState.selectedKeys]);
+      $("access-control-save").onclick = saveAccessControl;
+      $("group-new").onclick = () => editGroup();
+      $("group-key-search").addEventListener("input", renderGroupKeyList);
+      $("group-key-filter").addEventListener("change", renderGroupKeyList);
+      $("group-key-all").onclick = () => {
+        for (const key of groupFilteredKeys()) groupSelection.scopes.add(key.scope);
+        renderGroupKeyList();
+      };
+      $("group-key-none").onclick = () => {
+        for (const key of groupFilteredKeys()) groupSelection.scopes.delete(key.scope);
+        renderGroupKeyList();
+      };
+      $("group-save").onclick = () =>
+        submitEditor("group-dialog", async () => {
+          const name = $("group-name").value.trim();
+          if (!name) throw new Error("请输入分组名称");
+          const id = $("group-id").value;
+          const data = { name, route_ids: [...groupSelection.routeIDs], scopes: [...groupSelection.scopes] };
+          await mutateAdmin(id ? "PATCH" : "POST", "/groups", id ? { id, ...data } : data);
+          notify("分组已保存");
+        });
+      $("group-picker-save").onclick = () =>
+        submitEditor("group-picker", async () => {
+          await mutateAdmin("PUT", "/keys/groups", { scopes: keyGroupSelection.scopes, group_ids: [...keyGroupSelection.groups] });
+          notify("API Key 分组已保存");
+        });
       $("keys-include-deleted").addEventListener("change", () => {
         saveChoice("admin", "keys-include-deleted");
         renderKeys();
@@ -8667,6 +9166,10 @@
       };
       $("route-picker").addEventListener("close", () => { if (!$("route-picker").open) keyRouteSelection = { scope: "" }; });
       $("route-rule-search").addEventListener("input", renderRouteRuleList);
+      $("route-key-search").addEventListener("input", () => {
+        const editor = editors.get($("route-dialog"));
+        renderRouteKeyList(editor.data.keys, $("route-id").value);
+      });
       function setVisibleRouteChoices(id, selection, state, rerender) {
         const dialog = $(id);
         const data = editors.get(dialog).data;
@@ -8691,7 +9194,7 @@
           if (!name) throw new Error("请输入规则名称");
           const id = $("route-id").value;
           const rule = routingPayload(routeRuleSelection);
-          const scopes = selectedKeyScopes("route-key-list");
+          const scopes = [...routeKeyScopes];
           const data = { name, rule, scopes };
           if (id) {
             const route = editor.initial.route;
@@ -8800,7 +9303,7 @@
       });
       function deleteCustomPrice(row) {
         const model = row.custom_price_model_id || row.model_id;
-        const message = "删除 " + model + " 的自定义价后，使用该定价的模型将改用参考价。若无参考价，将无法使用。";
+        const message = "删除 " + model + " 的自定义价后，使用该定价的模型将改用参考价。若无参考价，仍可访问并按零费用记录用量。";
         openActionDialog("删除自定义价？", message, undefined, async () => {
           await mutateAdmin("DELETE", "/prices?model_id=" + encodeURIComponent(model));
           notify("已删除自定义价");

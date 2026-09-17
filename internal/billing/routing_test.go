@@ -110,9 +110,9 @@ func TestRoutingEmptyDimensionsRemainIndependent(t *testing.T) {
 		credentials bool
 	}{
 		{name: "unbound"},
-		{name: "empty route", rules: []RouteRule{{}}},
-		{name: "models only", rules: []RouteRule{{Models: []string{"allowed-model"}}}, models: true},
-		{name: "denied models only", rules: []RouteRule{{DeniedModels: []string{"other-model"}}}, models: true},
+		{name: "empty route", rules: []RouteRule{{}}, credentials: true},
+		{name: "models only", rules: []RouteRule{{Models: []string{"allowed-model"}}}, models: true, credentials: true},
+		{name: "denied models only", rules: []RouteRule{{DeniedModels: []string{"other-model"}}}, models: true, credentials: true},
 		{name: "denied credentials only", rules: []RouteRule{{DeniedCredentialIDs: []string{ref}}}, credentials: true},
 		{name: "credentials only", rules: []RouteRule{{CredentialIDs: []string{ref}}}, credentials: true},
 		{name: "separate routes", rules: []RouteRule{{Models: []string{"allowed-model"}}, {CredentialIDs: []string{ref}}, {}}, models: true, credentials: true},
@@ -164,7 +164,8 @@ func TestDirectModelAndCredentialBindingsComposeAcrossPhases(t *testing.T) {
 				if d.AllowsModel() != (model != test.deniedModel) || !d.RestrictsModels() || !d.RestrictsCredentials() {
 					t.Fatalf("model policy: %+v", d)
 				}
-				if !d.AllowsCredential(test.allowedRef, " AUTH-FILES ", " Codex ") || d.AllowsCredential(test.deniedRef, "auth-files", "codex") {
+				wantAllowed := test.name != "deny only"
+				if d.AllowsCredential(test.allowedRef, " AUTH-FILES ", " Codex ") != wantAllowed || d.AllowsCredential(test.deniedRef, "auth-files", "codex") {
 					t.Fatalf("credential policy changed with request model: %+v", d)
 				}
 			}
@@ -360,9 +361,9 @@ func TestDirectCredentialProviderBindingRestrictsOneSource(t *testing.T) {
 				{"", "codex", false, false},
 				{"auth-files", "", false, false},
 				{"", "", false, false},
-				{"ai-providers", "codex", false, true},
-				{"auth-files", "claude", false, true},
-				{"", "claude", false, true},
+				{"ai-providers", "codex", false, false},
+				{"auth-files", "claude", false, false},
+				{"", "claude", false, false},
 			} {
 				want := test.allowOnly
 				if mode == "deny" {

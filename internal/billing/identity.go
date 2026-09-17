@@ -29,16 +29,13 @@ func CallerScope(value string) string {
 
 // PreviewKey masks a plaintext key for display and persistence.
 func PreviewKey(key string) string {
-	key = strings.TrimSpace(key)
-	switch {
-	case key == "":
-		return ""
-	case len(key) <= 12:
-		// Too short to mask meaningfully without leaking most of it.
-		return strings.Repeat("*", len(key))
-	default:
-		return key[:6] + "…" + key[len(key)-4:]
+	characters := []rune(strings.TrimSpace(key))
+	if len(characters) < 4 {
+		return strings.Repeat("*", len(characters))
 	}
+	// Reveal no more than half of a short key, up to eight characters per end.
+	edge := min(8, len(characters)/4)
+	return string(characters[:edge]) + "…" + string(characters[len(characters)-edge:])
 }
 
 func freeID(name, prefix string, taken func(string) bool) string {

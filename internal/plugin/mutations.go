@@ -27,6 +27,11 @@ func (a *App) mutateWithView(req ManagementRequest, path string, handle func(*Ap
 	}
 	view := map[string]any{}
 	switch path {
+	case routeGroups, routeKeysGroups, routeAccessControl:
+		view["groups"] = a.store.GroupViews()
+		view["keys"] = a.keyRows()
+		view["access_control"] = a.store.AccessControl()
+		view["routes"] = a.routeRows()
 	case routePlans, routeRoutes, routeKeysBind, routeKeysUnbind, routeKeysReset, routeKeysLabel, routeKeysConcurrency, routeKeysRoutes:
 		view["keys"] = a.keyRows()
 		if path == routePlans {

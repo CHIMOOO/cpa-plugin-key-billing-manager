@@ -63,7 +63,7 @@ func TestUsageCreatesKeyIdentityBeforeAnyFrontendSync(t *testing.T) {
 				t.Fatal(err)
 			}
 			keys := app.store.KeyViews()
-			if len(keys) != 1 || keys[0].Scope != billing.CallerScope(apiKey) || keys[0].Preview != "*******" || keys[0].InConfig {
+			if len(keys) != 1 || keys[0].Scope != billing.CallerScope(apiKey) || keys[0].Preview != billing.PreviewKey(apiKey) || keys[0].InConfig {
 				t.Fatalf("usage did not persist a complete key identity: %+v", keys)
 			}
 			result, err := app.store.SyncKeys([]string{apiKey}, false)
@@ -71,7 +71,7 @@ func TestUsageCreatesKeyIdentityBeforeAnyFrontendSync(t *testing.T) {
 				t.Fatalf("sync did not reuse the traffic-created key: %+v, %v", result, err)
 			}
 			events := requestEventEntries(t, app)
-			if len(events) != 1 || events[0].Preview != "*******" || events[0].Failed != failed {
+			if len(events) != 1 || events[0].Preview != billing.PreviewKey(apiKey) || events[0].Failed != failed {
 				t.Fatalf("sync changed usage history or lost its preview: %+v", events)
 			}
 		})
@@ -320,7 +320,7 @@ func TestAccountRoutingAndPricesRespectItsScope(t *testing.T) {
 		if err := json.Unmarshal(response.Body, &access); err != nil {
 			t.Fatal(err)
 		}
-		if !access.RoutingValid || len(access.Models) != 0 || len(access.Credentials) != 0 || len(access.DeniedModels) != 1 || len(access.DeniedCredentials) != 2 || len(access.Warnings) != 0 {
+		if !access.RoutingValid || !access.CredentialsRestricted || len(access.Models) != 0 || len(access.Credentials) != 0 || len(access.DeniedModels) != 1 || len(access.DeniedCredentials) != 2 || len(access.Warnings) != 1 {
 			t.Fatalf("blacklist-only account: %+v", access)
 		}
 		if strings.Contains(string(response.Body), "sha256:") || strings.Contains(string(response.Body), "dummy-denied") {

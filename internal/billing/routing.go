@@ -34,6 +34,8 @@ type RouteRule struct {
 
 type RouteBindings struct {
 	RouteIDs []string `json:"route_ids"`
+	// Configured distinguishes an explicitly emptied rule from an untouched key.
+	Configured bool `json:"configured,omitempty"`
 	RouteRule
 }
 
@@ -51,16 +53,18 @@ type RoutePatch struct {
 
 type RoutingDecision struct {
 	RouteRule
-	Model              string
-	ConfigurationError string
+	Model                      string
+	ConfigurationError         string
+	AccessDenied               string
+	RequireCredentialAllowlist bool
 }
 
 func (d RoutingDecision) RestrictsModels() bool {
-	return len(d.Models) > 0 || len(d.DeniedModels) > 0
+	return d.AccessDenied != "" || len(d.Models) > 0 || len(d.DeniedModels) > 0
 }
 
 func (d RoutingDecision) AllowsModel() bool {
-	if d.ConfigurationError != "" {
+	if d.ConfigurationError != "" || d.AccessDenied != "" {
 		return false
 	}
 	if d.Model == "" {
@@ -75,14 +79,14 @@ func containsRouteValue(values []string, value string) bool {
 }
 
 func (d RoutingDecision) RestrictsCredentials() bool {
-	return len(d.CredentialIDs) > 0 || len(d.CredentialProviders) > 0 ||
+	return d.RequireCredentialAllowlist || d.AccessDenied != "" || len(d.CredentialIDs) > 0 || len(d.CredentialProviders) > 0 ||
 		len(d.DeniedCredentialIDs) > 0 || len(d.DeniedCredentialProviders) > 0
 }
 
 // ref is a fingerprint, never the raw host credential ID or an API key.
 func (d RoutingDecision) AllowsCredential(ref, source, provider string) bool {
 	selector := CredentialProviderSelector{Source: strings.ToLower(strings.TrimSpace(source)), Provider: strings.ToLower(strings.TrimSpace(provider))}
-	if d.ConfigurationError != "" || containsRouteValue(d.DeniedCredentialIDs, ref) {
+	if d.ConfigurationError != "" || d.AccessDenied != "" || containsRouteValue(d.DeniedCredentialIDs, ref) {
 		return false
 	}
 	for _, denied := range d.DeniedCredentialProviders {
@@ -93,7 +97,7 @@ func (d RoutingDecision) AllowsCredential(ref, source, provider string) bool {
 			return false
 		}
 	}
-	return len(d.CredentialIDs) == 0 && len(d.CredentialProviders) == 0 ||
+	return !d.RequireCredentialAllowlist && len(d.CredentialIDs) == 0 && len(d.CredentialProviders) == 0 ||
 		containsRouteValue(d.CredentialIDs, ref) || slices.Contains(d.CredentialProviders, selector)
 }
 
@@ -113,7 +117,7 @@ func (r RouteRule) clone() RouteRule {
 }
 
 func (b RouteBindings) clone() RouteBindings {
-	return RouteBindings{RouteIDs: append([]string{}, b.RouteIDs...), RouteRule: b.RouteRule.clone()}
+	return RouteBindings{RouteIDs: append([]string{}, b.RouteIDs...), Configured: b.Configured, RouteRule: b.RouteRule.clone()}
 }
 
 type RouteDeleteResult struct {
@@ -315,12 +319,20 @@ func (s *Store) RouteViews() []RouteView {
 		for _, route := range state.Routes {
 			view := RouteView{Route: cloneRoute(route)}
 			for _, key := range state.Keys {
-				if key == nil || !slices.Contains(key.RouteBindings.RouteIDs, route.ID) {
+				if key == nil {
+					continue
+				}
+				groupBound := state.groupBindsRoute(key, route.ID)
+				if !groupBound && !slices.Contains(key.RouteBindings.RouteIDs, route.ID) {
 					continue
 				}
 				view.BoundKeyCount++
 				if !key.DeletedAt.IsZero() {
 					view.DeletedKeyCount++
+					continue
+				}
+				if groupBound {
+					// Deleting a route still used by a group is prohibited.
 					continue
 				}
 				copyKey := *key
@@ -333,6 +345,15 @@ func (s *Store) RouteViews() []RouteView {
 		}
 	})
 	return views
+}
+
+func (s *State) groupBindsRoute(key *KeyState, routeID string) bool {
+	for _, id := range key.GroupIDs {
+		if i := s.findGroupIndex(id); i >= 0 && slices.Contains(s.Groups[i].RouteIDs, routeID) {
+			return true
+		}
+	}
+	return false
 }
 
 func NormalizeRoute(route Route) (Route, error) {
@@ -450,6 +471,7 @@ func (s *Store) SetKeyRoutes(scope string, bindings RouteBindings) error {
 	if err != nil {
 		return err
 	}
+	bindings.Configured = true
 	_, err = editConfiguration(s, func(state *State) (struct{}, Changes, error) {
 		key := state.liveKey(scope)
 		if key == nil {
@@ -476,6 +498,11 @@ func (s *Store) DeleteRoute(id string) (RouteDeleteResult, error) {
 		i := state.findRouteIndex(id)
 		if i < 0 {
 			return RouteDeleteResult{}, Changes{}, notFoundf("路由规则 %q 不存在", id)
+		}
+		for _, group := range state.Groups {
+			if slices.Contains(group.RouteIDs, id) {
+				return RouteDeleteResult{}, Changes{}, conflictf("路由规则仍被分组 %q 使用，请先解除分组绑定", group.Name)
+			}
 		}
 		out := RouteDeleteResult{Deleted: id}
 		for scope, key := range state.Keys {
@@ -504,7 +531,7 @@ func (s *Store) DeleteRoute(id string) (RouteDeleteResult, error) {
 
 func routingRestricted(state *State, key *KeyState) bool {
 	decision := resolveRoutingState(state, key)
-	return decision.ConfigurationError != "" || decision.RestrictsModels() || decision.RestrictsCredentials()
+	return decision.ConfigurationError != "" || decision.AccessDenied != "" || decision.RestrictsModels() || decision.RestrictsCredentials()
 }
 
 func (s *Store) ResolveRouting(scope, upstreamModel, routeModel string) RoutingDecision {
@@ -524,13 +551,39 @@ func (s *Store) KeyDescription(scope string) string {
 	return result
 }
 
-// Merge each allow/deny dimension independently. Never subtract deny entries
-// from allowlists: an empty allowlist means unrestricted, not deny everything.
+// Merge each allow/deny dimension independently and retain deny entries for
+// precedence. Managed keys require an explicit credential allowlist; an empty
+// model allowlist still leaves models unrestricted.
 func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	d := RoutingDecision{RouteRule: RouteRule{}.clone()}
+	if !state.AccessControl.Enabled {
+		return d
+	}
+	if state.AccessControl.DenyUngrouped && (key == nil || len(key.GroupIDs) == 0) {
+		d.AccessDenied = "API Key 尚未加入分组，访问已被禁止"
+		return d
+	}
 	if key == nil {
 		return d
 	}
+	routeIDs := append([]string(nil), key.RouteBindings.RouteIDs...)
+	groupRoutes := false
+	for _, id := range key.GroupIDs {
+		i := state.findGroupIndex(id)
+		if i < 0 {
+			d.ConfigurationError = fmt.Sprintf("分组 %q 已不存在", id)
+			return d
+		}
+		group := state.Groups[i]
+		groupRoutes = groupRoutes || len(group.RouteIDs) > 0
+		routeIDs = append(routeIDs, group.RouteIDs...)
+	}
+	if len(key.GroupIDs) > 0 && !groupRoutes {
+		d.AccessDenied = "API Key 所属分组尚未绑定路由规则，访问已被禁止"
+		return d
+	}
+	direct := RoutingDecision{RouteRule: key.RouteBindings.RouteRule}
+	d.RequireCredentialAllowlist = key.RouteBindings.Configured || len(key.GroupIDs) > 0 || len(routeIDs) > 0 || direct.RestrictsModels() || direct.RestrictsCredentials()
 	merge := func(rule RouteRule) {
 		d.Models = append(d.Models, rule.Models...)
 		d.CredentialIDs = append(d.CredentialIDs, rule.CredentialIDs...)
@@ -539,7 +592,7 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 		d.DeniedCredentialIDs = append(d.DeniedCredentialIDs, rule.DeniedCredentialIDs...)
 		d.DeniedCredentialProviders = append(d.DeniedCredentialProviders, rule.DeniedCredentialProviders...)
 	}
-	for _, id := range key.RouteBindings.RouteIDs {
+	for _, id := range routeIDs {
 		route, ok := state.findRoute(id)
 		if !ok {
 			d.ConfigurationError = fmt.Sprintf("路由规则 %q 已不存在", id)

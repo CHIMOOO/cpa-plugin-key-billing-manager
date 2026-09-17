@@ -23,7 +23,7 @@ const (
 	MenuLabel       = "API Key 计费"
 	MenuDescription = "管理下游 API Key 的路由、计费、并发限制、订阅额度和用量"
 
-	GitHubRepository = "https://github.com/haowang02/cpa-plugin-key-billing"
+	GitHubRepository = "https://github.com/CHIMOOO/cpa-plugin-key-billing-manager"
 )
 
 const (

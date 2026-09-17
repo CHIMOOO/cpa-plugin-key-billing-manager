@@ -50,9 +50,19 @@ func TestPreviewKeyDoesNotLeakShortKeys(t *testing.T) {
 		want  string
 	}{
 		{name: "empty", input: "", want: ""},
-		{name: "short keys are fully masked", input: "sk-123", want: "******"},
-		{name: "boundary length is fully masked", input: "123456789012", want: "************"},
-		{name: "long keys keep head and tail", input: "sk-test-key-0001", want: "sk-tes…0001"},
+		{name: "one character", input: "a", want: "*"},
+		{name: "two characters", input: "ab", want: "**"},
+		{name: "three characters", input: "abc", want: "***"},
+		{name: "four characters", input: "abcd", want: "a…d"},
+		{name: "short key", input: "sk-123", want: "s…3"},
+		{name: "eight characters", input: "12345678", want: "12…78"},
+		{name: "twelve characters", input: "123456789012", want: "123…012"},
+		{name: "sixteen characters", input: "sk-test-key-0001", want: "sk-t…0001"},
+		{name: "eight visible per end", input: "12345678abcdefghijklmnop87654321", want: "12345678…87654321"},
+		{name: "long key", input: "sk-dummy-abcdefghijklmnopqrstuvwxyz-12345678", want: "sk-dummy…12345678"},
+		{name: "unicode characters", input: "甲乙丙丁", want: "甲…丁"},
+		{name: "unicode short key", input: "甲乙丙", want: "***"},
+		{name: "surrounding whitespace", input: " \tabcd\n", want: "a…d"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

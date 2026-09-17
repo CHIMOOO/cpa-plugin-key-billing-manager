@@ -71,6 +71,7 @@ func TestDeletedKeyRetainsUsageAndIdentity(t *testing.T) {
 	store := newSyncStore(t, &clock)
 	scope := CallerScope(deletedKeyPlaintext)
 	event := admittedEvent(store, scope, now)
+	event.KeyPreview = PreviewKey(deletedKeyPlaintext)
 
 	clock = now.Add(43 * time.Minute)
 	if _, errSync := store.SyncKeys([]string{keptKeyPlaintext}, false); errSync != nil {
@@ -105,6 +106,25 @@ func TestDeletedKeyRetainsUsageAndIdentity(t *testing.T) {
 	key := store.state.Keys[scope]
 	if key == nil || key.PlanID != "p" || key.Preview != PreviewKey(deletedKeyPlaintext) || key.DeletedAt.IsZero() {
 		t.Fatalf("history expiry changed the deleted key: %+v", key)
+	}
+}
+
+func TestUsageRefreshesKnownPreviewWithoutUnknownOverwriting(t *testing.T) {
+	state := NewState()
+	state.Keys["empty"] = &KeyState{}
+	state.ensureKey("empty", "")
+	if state.Keys["empty"].Preview != UnknownKeyPreview {
+		t.Fatal("empty historical preview was not repaired")
+	}
+	state.Keys["scope"] = &KeyState{Preview: "old…view"}
+	state.ensureKey("scope", "dummynew…12345678")
+	if state.Keys["scope"].Preview != "dummynew…12345678" {
+		t.Fatal("usage did not refresh the masked preview")
+	}
+	state.ensureKey("scope", UnknownKeyPreview)
+	state.ensureKey("scope", "")
+	if state.Keys["scope"].Preview != "dummynew…12345678" {
+		t.Fatal("unknown usage preview replaced a known mask")
 	}
 }
 

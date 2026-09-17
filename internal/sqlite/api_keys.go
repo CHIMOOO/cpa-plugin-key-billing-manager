@@ -46,6 +46,14 @@ func saveKey(tx *sql.Tx, scope string, key *billing.KeyState) error {
 	if errKey != nil {
 		return fmt.Errorf("保存 API Key %s：%w", scope, errKey)
 	}
+	if _, err := tx.Exec("DELETE FROM key_groups WHERE scope = ?", scope); err != nil {
+		return fmt.Errorf("保存 API Key 分组：%w", err)
+	}
+	for position, id := range key.GroupIDs {
+		if _, err := tx.Exec("INSERT INTO key_groups(scope, position, group_id) VALUES (?, ?, ?)", scope, position, id); err != nil {
+			return fmt.Errorf("保存 API Key 分组：%w", err)
+		}
+	}
 	return nil
 }
 

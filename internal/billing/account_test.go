@@ -72,7 +72,7 @@ func TestRecordUsageStoresSafeAccount(t *testing.T) {
 	const downstreamKey = "sk-dummy-downstream-0001"
 	for _, test := range []struct{ authType, account, want string }{
 		{"oauth", "user@example.com", "user@example.com"},
-		{"apikey", "sk-dummy-upstream-0001", "sk-dum…0001"},
+		{"apikey", "sk-dummy-upstream-0001", "sk-du…-0001"},
 		{"oauth", downstreamKey, ""},
 		{"", "dummy-unknown-secret", ""},
 	} {

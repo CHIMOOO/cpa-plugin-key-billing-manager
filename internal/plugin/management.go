@@ -31,6 +31,9 @@ const (
 	routeReferencePricesRefresh = "/prices/reference/refresh"
 	routePlans                  = "/plans"
 	routeRoutes                 = "/routes"
+	routeGroups                 = "/groups"
+	routeKeysGroups             = "/keys/groups"
+	routeAccessControl          = "/access-control"
 	routeKeysRoutes             = "/keys/routes"
 	routeKeysBind               = "/keys/bind"
 	routeKeysUnbind             = "/keys/unbind"
@@ -57,6 +60,17 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodGet, routeKeys, "查看 API Key 状态", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"keys": a.keyRows()})
 	}},
+	{http.MethodGet, routeGroups, "查看 API Key 分组", func(a *App, _ ManagementRequest) ManagementResponse {
+		return JSONResponse(http.StatusOK, map[string]any{"groups": a.store.GroupViews()})
+	}},
+	{http.MethodGet, routeAccessControl, "查看访问控制设置", func(a *App, _ ManagementRequest) ManagementResponse {
+		return JSONResponse(http.StatusOK, map[string]any{"access_control": a.store.AccessControl()})
+	}},
+	{http.MethodPut, routeAccessControl, "保存访问控制设置", (*App).setAccessControl},
+	{http.MethodPost, routeGroups, "新建 API Key 分组", (*App).createGroup},
+	{http.MethodPatch, routeGroups, "更新 API Key 分组", (*App).updateGroup},
+	{http.MethodDelete, routeGroups, "删除 API Key 分组", (*App).deleteGroup},
+	{http.MethodPut, routeKeysGroups, "替换 API Key 分组绑定", (*App).setKeyGroups},
 	{http.MethodGet, routePlans, "查看订阅计划", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"plans": a.store.Plans()})
 	}},

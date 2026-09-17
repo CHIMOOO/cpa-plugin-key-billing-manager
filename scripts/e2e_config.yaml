@@ -8,6 +8,7 @@ port: __PORT__
 auth-dir: "__RUNTIME_DIR__/auth"
 api-keys:
   - "e2e-downstream-key"
+  - "e2e-ungrouped-key"
 logging-to-file: false
 remote-management:
   allow-remote: false
@@ -33,6 +34,7 @@ openai-compatibility:
     api-key-entries:
       - api-key: __UPSTREAM_API_KEY__
     models:
+      - name: "unpriced-admission"
       - name: "gpt-4o"
       - name: "gpt-5.6-sol"
       - name: "e2e-chat-to-chat-nonstream"

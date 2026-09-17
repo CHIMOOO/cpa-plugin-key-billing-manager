@@ -183,7 +183,7 @@ func newStoreWithRepository(t *testing.T) (*Store, *memoryRepository) {
 func (s *Store) ReplaceAll(fn func(*State)) {
 	updateResult(s, func(state *State) (struct{}, Changes) {
 		fn(state)
-		return struct{}{}, Changes{AllKeys: true, Plans: true, Routes: true, ConfigCredentials: true}
+		return struct{}{}, Changes{AllKeys: true, Plans: true, Routes: true, Groups: true, AccessControl: true, ConfigCredentials: true}
 	})
 }
 

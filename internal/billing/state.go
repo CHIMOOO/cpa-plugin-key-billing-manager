@@ -11,6 +11,8 @@ type State struct {
 	Plans             []Plan
 	Keys              map[string]*KeyState
 	Routes            []Route
+	Groups            []KeyGroup
+	AccessControl     AccessControl
 	ConfigCredentials map[string]ConfigCredential
 }
 
@@ -25,6 +27,7 @@ func NewState() *State {
 		Prices:            make(map[string]CustomPrice),
 		Keys:              make(map[string]*KeyState),
 		ConfigCredentials: make(map[string]ConfigCredential),
+		AccessControl:     AccessControl{Enabled: true},
 	}
 }
 
@@ -58,5 +61,6 @@ type KeyState struct {
 	PlanID           string                `json:"plan_id,omitempty"`
 	ConcurrencyLimit int                   `json:"concurrency_limit,omitempty"`
 	RouteBindings    RouteBindings         `json:"route_bindings"`
+	GroupIDs         []string              `json:"group_ids"`
 	Cycles           map[string]QuotaCycle `json:"cycles"`
 }

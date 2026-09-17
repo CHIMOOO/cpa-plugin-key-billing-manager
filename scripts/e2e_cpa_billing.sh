@@ -418,14 +418,15 @@ request_body() {
 }
 
 provider_source() {
-  local provider
+  local provider edge=$((${#upstream_api_key} / 4))
   case "$1" in
     chat) provider="dummy-chat-e2e" ;;
     responses) provider="codex" ;;
     anthropic) provider="claude" ;;
     gemini) provider="gemini" ;;
   esac
-  printf '%s · %s…%s' "$provider" "${upstream_api_key:0:6}" "${upstream_api_key: -4}"
+  (( edge > 8 )) && edge=8
+  printf '%s · %s…%s' "$provider" "${upstream_api_key:0:edge}" "${upstream_api_key: -edge}"
 }
 
 wait_for_event_count() {
@@ -605,12 +606,9 @@ assert_route_model_policy() {
     return 1
   fi
 
-  # Clear the routing restrictions. The request that follows has to be billed
-  # exactly like any other.
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
-    -H "Content-Type: application/json" \
-    --data "$(jq -nc --arg scope "$scope" '{scope: $scope, bindings: {}}')" \
-    >/dev/null
+  # Explicitly allow the dummy providers after removing the model restriction.
+  # Saving an empty policy now means deny all credentials.
+  allow_all_test_credentials "$port" "$scope"
   management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route" >/dev/null
 
   body="$(request_body chat "gpt-5.6-sol" false "Reply with exactly OK.")"
@@ -621,7 +619,17 @@ assert_route_model_policy() {
     "$runtime_dir/responses/model-restored.json" false
 }
 
-# Deny-only policies, direct allow conflicts, and exact exclusions must affect
+allow_all_test_credentials() {
+  local port="$1" scope="$2"
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
+    -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{credential_providers:[
+      "openai-compatible-dummy-chat-e2e","codex","claude","gemini",
+      "openai-compatible-route-allowed-e2e","openai-compatible-route-denied-e2e"
+    ] | map({source:"ai-providers",provider:.})}}')" >/dev/null
+}
+
+# Empty allow lists, direct allow conflicts, and exact exclusions must affect
 # the real host candidate set and leave no usage records for refused requests.
 assert_route_blacklist_policy() {
   local port="$1" runtime_dir="$2" expected_count="$3"
@@ -637,11 +645,21 @@ assert_route_blacklist_policy() {
     --data "$(jq -nc --arg scope "$scope" '{name:"e2e-黑名单",scopes:[$scope],rule:{denied_credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-denied-e2e"}]}}')" \
     >"$runtime_dir/blacklist-route.json"
   route="$(jq -er '.route.id' "$runtime_dir/blacklist-route.json")"
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope:$scope,bindings:{route_ids:[$route]}}')" >/dev/null
   body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
-  api_call "$port" "纯黑名单：排除 blocked 类别" "/v1/chat/completions" "$body" chat "$runtime_dir/responses/blacklist-provider.json"
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("当前没有符合路由规则且可用的上游凭证"))' "$response_file" >/dev/null; then
+    echo "未配置允许凭证的路由没有拒绝请求。" >&2
+    return 1
+  fi
+  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+    -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg id "$route" '{id:$id,rule:{credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-allowed-e2e"}],denied_credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-denied-e2e"}]}}')" >/dev/null
+  api_call "$port" "类别黑名单：从显式允许的凭证中排除 blocked 类别" "/v1/chat/completions" "$body" chat "$runtime_dir/responses/blacklist-provider.json"
   wait_for_event_count "$port" "$((expected_count + 1))" "$events_file"
   if ! jq -e '.entries[0].provider == "openai-compatible-route-allowed-e2e" and .entries[0].failed == false' "$events_file" >/dev/null; then
-    echo "纯类别黑名单未限制候选集。" >&2
+    echo "类别黑名单未限制候选集。" >&2
     return 1
   fi
 
@@ -672,7 +690,7 @@ assert_route_blacklist_policy() {
     --data "$(jq -nc --arg id "$route" '{id:$id,rule:{denied_models:["gpt-5.6-sol"]}}')" >/dev/null
   management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
     -H "Content-Type: application/json" \
-    --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope:$scope,bindings:{route_ids:[$route],models:["gpt-5.6-sol"]}}')" >/dev/null
+    --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope:$scope,bindings:{route_ids:[$route],models:["gpt-5.6-sol"],credential_providers:[{source:"ai-providers",provider:"openai-compatible-dummy-chat-e2e"}]}}')" >/dev/null
   for requested in "gpt-5.6-sol" "gpt-5.6-sol(high)" "gpt-5.6-sol(max)"; do
     http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$(request_body chat "$requested" false "Reply with exactly OK.")" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
     if [[ "$http_status" != "403" ]] || ! jq -e '(.error.message | contains("denied by a routing rule"))' "$response_file" >/dev/null; then
@@ -690,7 +708,7 @@ assert_route_blacklist_policy() {
     echo "黑名单拦截进入了计费用量。" >&2
     return 1
   fi
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" -H "Content-Type: application/json" --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" >/dev/null
+  allow_all_test_credentials "$port" "$scope"
   management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route" >/dev/null
 }
 
@@ -740,7 +758,7 @@ assert_route_credential_policy() {
   management_call GET "$port" "/v0/management/plugins/cpa-key-billing/credentials" >"$access_file"
   if ! jq -e '
       first(.credentials[] | select(.source == "ai-providers" and .provider == "openai-compatible-route-allowed-e2e")) |
-      .display_name == "e2e-ro…1111"
+      .display_name == "e2e-r…-1111"
     ' "$access_file" >/dev/null; then
     echo "配置型上游凭证未显示安全的 API Key 掩码：$(jq -c '.credentials' "$access_file")" >&2
     return 1
@@ -805,10 +823,7 @@ assert_route_credential_policy() {
     return 1
   fi
 
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
-    -H "Content-Type: application/json" \
-    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" \
-    >/dev/null
+  allow_all_test_credentials "$port" "$scope"
   management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route" >/dev/null
 }
 
@@ -1088,20 +1103,28 @@ assert_headless_price_admission() {
     while IFS= read -r header_line; do
       headers+=(-H "$header_line")
     done < <(client_headers "$client")
-    body="$(request_body "$client" "e2e-chat-to-chat-nonstream" false "Reply with exactly OK.")"
-    endpoint="$(client_endpoint "$client" "e2e-chat-to-chat-nonstream" false)"
+    body="$(request_body "$client" "unpriced-admission" false "Reply with exactly OK.")"
+    endpoint="$(client_endpoint "$client" "unpriced-admission" false)"
     http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" \
       --output "$runtime_dir/unpriced-$client.json" --write-out '%{http_code}' \
       "http://127.0.0.1:$port$endpoint")"
-    if [[ "$http_status" != "503" ]] || ! jq -e '
-      .error.type == "cpa_key_billing_error" and .error.code == "model_price_error" and
-      .error.message == "模型 e2e-chat-to-chat-nonstream 尚未定价"
-    ' "$runtime_dir/unpriced-$client.json" >/dev/null; then
-      echo "未访问前端时的 ${client} 定价拦截失败，HTTP ${http_status}。" >&2
+    if [[ "$http_status" != "200" ]]; then
+      echo "未访问前端时的 ${client} 未定价模型请求失败，HTTP ${http_status}。" >&2
       return 1
     fi
   done
-  log_step "未访问前端：4 种协议均拒绝未定价模型"
+  wait_for_event_count "$port" 4 "$runtime_dir/unpriced-events.json"
+  if ! jq -e '
+    (.entries | length) == 4 and
+    all(.entries[]; .billing_model == "unpriced-admission" and .failed == false and
+      .price_source == "none" and .cost.total_usd == 0 and
+      .cost.uncached_input_tokens == 80 and .cost.cache_read_tokens == 32 and
+      .cost.cache_write_tokens == 16 and .cost.billed_output_tokens == 8)
+    ' "$runtime_dir/unpriced-events.json" >/dev/null; then
+    echo "未定价模型未正确保留零费用用量记录。" >&2
+    return 1
+  fi
+  log_step "未访问前端：4 种协议均允许未定价模型，并保留零费用用量"
 }
 
 assert_reference_price_billing() {
@@ -1148,6 +1171,126 @@ assert_reference_price_billing() {
     done
   done
   log_step "参考价已验证：普通模型及带前缀、思考后缀的模型，流式和非流式均按参考价记账"
+}
+
+assert_group_access_control() {
+  local port="$1" runtime_dir="$2" scope allowed_ref route_a route_b group_a group_b body http_status count
+  local events_file="$runtime_dir/group-events.json"
+  local response_file="$runtime_dir/responses/group-access.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/access-control" >"$runtime_dir/access-control-before.json"
+  if ! jq -e '.access_control.enabled == true and .access_control.deny_ungrouped == false' "$runtime_dir/access-control-before.json" >/dev/null; then
+    echo "访问控制或拒绝未分组 Key 的默认设置不正确。" >&2
+    return 1
+  fi
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/group-keys.json"
+  scope="$(jq -er 'first(.keys[] | select(.in_config)).scope' "$runtime_dir/group-keys.json")"
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" >/dev/null
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/credentials" >"$runtime_dir/group-credentials.json"
+  allowed_ref="$(jq -er 'first(.credentials[] | select(.provider == "openai-compatible-route-allowed-e2e")).ref' "$runtime_dir/group-credentials.json")"
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  count="$(jq -er '.entries | length' "$events_file")"
+
+  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg ref "$allowed_ref" '{name:"e2e-分组指定凭证",rule:{credential_ids:[$ref]}}')" >"$runtime_dir/group-route-a.json"
+  route_a="$(jq -er '.route.id' "$runtime_dir/group-route-a.json")"
+  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/routes" -H "Content-Type: application/json" \
+    --data '{"name":"e2e-分组Codex","rule":{"credential_providers":[{"source":"ai-providers","provider":"codex"}]}}' >"$runtime_dir/group-route-b.json"
+  route_b="$(jq -er '.route.id' "$runtime_dir/group-route-b.json")"
+  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg route "$route_a" '{name:"e2e-分组A",route_ids:[$route]}')" >"$runtime_dir/group-a.json"
+  group_a="$(jq -er '.group.id' "$runtime_dir/group-a.json")"
+  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg route "$route_b" '{name:"e2e-分组B",route_ids:[$route]}')" >"$runtime_dir/group-b.json"
+  group_b="$(jq -er '.group.id' "$runtime_dir/group-b.json")"
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" --arg a "$group_a" --arg b "$group_b" '{scopes:[$scope],group_ids:[$a,$b]}')" >/dev/null
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/group-keys.json"
+  if ! jq -e --arg scope "$scope" --arg a "$group_a" --arg b "$group_b" \
+      'first(.keys[] | select(.scope == $scope)) | (.group_ids | sort) == ([$a,$b] | sort)' "$runtime_dir/group-keys.json" >/dev/null; then
+    echo "同一个 API Key 没有保存两个分组。" >&2
+    return 1
+  fi
+
+  body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
+  api_call "$port" "多分组：仅使用分组 A 指定凭证" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 1))" "$events_file"
+  if ! jq -e '.entries[0].provider == "openai-compatible-route-allowed-e2e" and .entries[0].failed == false' "$events_file" >/dev/null; then
+    echo "分组路由没有限制实际使用的凭证。" >&2
+    return 1
+  fi
+  body="$(request_body chat "codex/gpt-5.6-sol" false "Reply with exactly OK.")"
+  api_call "$port" "多分组：同时允许分组 B 的 Codex 凭证" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 2))" "$events_file"
+  if ! jq -e '.entries[0].provider == "codex" and .entries[0].failed == false' "$events_file" >/dev/null; then
+    echo "第二个分组路由没有生效。" >&2
+    return 1
+  fi
+  body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("当前没有符合路由规则且可用的上游凭证"))' "$response_file" >/dev/null; then
+    echo "分组外的上游凭证没有被拒绝。" >&2
+    return 1
+  fi
+
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" --arg a "$group_a" '{scopes:[$scope],group_ids:[$a]}')" >/dev/null
+  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg id "$route_a" '{id:$id,rule:{}}')" >/dev/null
+  body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "503" ]]; then
+    echo "分组路由没有选择任何允许凭证时仍然放行请求。" >&2
+    return 1
+  fi
+
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+    --data '{"enabled":true,"deny_ungrouped":true}' >/dev/null
+  body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-ungrouped-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "403" ]] || ! jq -e '.error.code == "access_denied"' "$response_file" >/dev/null; then
+    echo "新 Key 未分组时没有被默认拒绝。" >&2
+    return 1
+  fi
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+    --data '{"enabled":false,"deny_ungrouped":true}' >/dev/null
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/access-control" >"$runtime_dir/access-control-disabled.json"
+  if ! jq -e '.access_control.enabled == false and .access_control.deny_ungrouped == true' "$runtime_dir/access-control-disabled.json" >/dev/null; then
+    echo "全局开关没有保存。" >&2
+    return 1
+  fi
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-ungrouped-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "200" ]]; then
+    echo "关闭访问控制后，未分组的新 Key 没有恢复访问。" >&2
+    return 1
+  fi
+  wait_for_event_count "$port" "$((count + 3))" "$events_file"
+  body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
+  api_call "$port" "关闭访问控制：空凭证分组恢复访问" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 4))" "$events_file"
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+    --data '{"enabled":true,"deny_ungrouped":true}' >/dev/null
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-ungrouped-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "403" ]]; then
+    echo "重新启用访问控制后，未分组 Key 仍可访问。" >&2
+    return 1
+  fi
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  if [[ "$(jq -er '.entries | length' "$events_file")" != "$((count + 4))" ]]; then
+    echo "分组或未分组访问拦截产生了额外用量。" >&2
+    return 1
+  fi
+
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+    --data "$(jq -c '.access_control' "$runtime_dir/access-control-before.json")" >/dev/null
+  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scopes:[$scope],group_ids:[]}')" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/groups?id=$group_a" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/groups?id=$group_b" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route_a" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route_b" >/dev/null
+  allow_all_test_credentials "$port" "$scope"
+  log_step "分组访问控制已验证：多组选中凭证、拒绝未选凭证、空允许列表、新 Key 默认拒绝和全局开关"
 }
 
 run_target() {
@@ -1416,7 +1559,7 @@ run_target() {
     request_events_file="$runtime_dir/responses/${request_number}-billing.json"
     api_call "$port" "${case_name}：${client_label} → ${upstream_label} ${mode_label}" \
       "$endpoint" "$body" "$client" "$response_file"
-    assert_billing_entry "$port" "$request_index" "$client" "$upstream" \
+    assert_billing_entry "$port" "$((request_index + 4))" "$client" "$upstream" \
       "$billing_model" "$upstream_models" "$request_events_file" "$response_file" "$stream"
     actual_upstream_model="$(jq -er '.entries[0].upstream_model' "$request_events_file")"
     printf '    [%d/3] %s：请求 %s；计费 %s；上游 %s\n' \
@@ -1426,8 +1569,8 @@ run_target() {
   request_events_file="$runtime_dir/request-events.json"
   management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$request_events_file"
   # Four client protocols against four upstream protocols in both modes, plus
-  # the three routing cases.
-  expected_requests=35
+  # the three routing cases and four unpriced admission cases.
+  expected_requests=39
   actual_requests="$(jq -er '.entries | length' "$request_events_file")"
   if [[ "$actual_requests" != "$expected_requests" ]]; then
     echo "CLIProxyAPI ${host_label} 请求事件数量为 ${actual_requests}，预期 ${expected_requests}。" >&2
@@ -1459,7 +1602,7 @@ run_target() {
     echo "CLIProxyAPI ${host_label} 的 API Key 自助查询范围或响应字段不正确。" >&2
     return 1
   fi
-  log_step "API Key 自助查询已验证：仅返回当前 Key 的 35 条请求事件"
+  log_step "API Key 自助查询已验证：仅返回当前 Key 的 39 条请求事件"
   management_call GET "$port" "/v0/management/plugins/cpa-key-billing/analysis" >"$runtime_dir/analysis.json"
   if ! jq -e '
       .usage_distribution.models as $models |
@@ -1468,12 +1611,13 @@ run_target() {
       all($matrix[]; .requests == 1) and
       ([ $models[] | select(.key == "gpt-5.6-sol") | .requests ] | add) == 1 and
       ([ $models[] | select(.key == "codex/gpt-5.6-sol") | .requests ] | add) == 1 and
-      ([ $models[] | select(.key == "gpt-auto") | .requests ] | add) == 1
+      ([ $models[] | select(.key == "gpt-auto") | .requests ] | add) == 1 and
+      ([ $models[] | select(.key == "unpriced-admission") | .requests ] | add) == 4
     ' "$runtime_dir/analysis.json" >/dev/null; then
     echo "复杂模型路由的用量统计不正确。" >&2
     return 1
   fi
-  log_step "聚合统计已验证：35 条基础计费记录"
+  log_step "聚合统计已验证：35 条已定价及 4 条未定价记录"
 
   log_step "并发限制：SSE 占槽、HTTP 拦截与完成释放"
   assert_concurrency_limit "$port" "$runtime_dir" "$expected_requests"
@@ -1501,11 +1645,12 @@ run_target() {
   fi
   log_step "插件启动事件已验证"
   assert_reference_price_billing "$port" "$runtime_dir"
+  assert_group_access_control "$port" "$runtime_dir"
 
   kill "$active_pid" >/dev/null 2>&1 || true
   wait "$active_pid" >/dev/null 2>&1 || true
   active_pid=""
-  log_ok "${host_label}：51 个上游请求（含 4 个参考价请求），1 次并发拦截，6 次模型拦截，4 次凭证路由，2 次凭证拦截，12 次额度拦截"
+  log_ok "${host_label}：59 个上游请求（含 4 个参考价、4 个未定价及 4 个分组开关请求），1 次并发拦截，6 次模型拦截，5 次凭证拦截，2 次未分组拦截，12 次额度拦截"
 }
 
 log_stage "启动 dummy provider"

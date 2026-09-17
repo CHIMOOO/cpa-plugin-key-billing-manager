@@ -106,6 +106,7 @@ func TestCompletionDuringReferencePriceRefresh(t *testing.T) {
 		{name: "completed non-generation", complete: true},
 		{name: "completed failed refresh", complete: true, generate: true, fail: true},
 		{name: "active generation", generate: true},
+		{name: "active generation with failed refresh", generate: true, fail: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			prices, err := os.ReadFile("../billing/testdata/models_dev_prices.json")

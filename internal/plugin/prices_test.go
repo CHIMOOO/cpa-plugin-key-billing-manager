@@ -24,14 +24,8 @@ func TestPriceAdmissionAndDeleteWithoutInventory(t *testing.T) {
 	}
 	for _, format := range []string{"openai", "openai-response", "claude", "gemini"} {
 		result := intercept(format, "unpriced-dummy")
-		var payload struct {
-			Error struct{ Type, Code, Message string }
-		}
-		if err := json.Unmarshal(result.ResponseBody, &payload); err != nil {
-			t.Fatal(err)
-		}
-		if !result.Terminate || result.StatusCode != 503 || payload.Error.Type != "cpa_key_billing_error" || payload.Error.Code != "model_price_error" || payload.Error.Message != "模型 unpriced-dummy 尚未定价" {
-			t.Fatal(format, result, payload)
+		if result.Terminate {
+			t.Fatal("unpriced model was refused", format, result)
 		}
 	}
 	for _, model := range []string{"unpriced-dummy", "gpt-4o"} {
@@ -44,8 +38,8 @@ func TestPriceAdmissionAndDeleteWithoutInventory(t *testing.T) {
 			t.Fatal(price, err)
 		}
 		callOK(t, app, http.MethodDelete, routePrices, url.Values{"model_id": {model}}, nil, 200, nil)
-		if result := intercept("openai", model); result.Terminate != (model == "unpriced-dummy") {
-			t.Fatal("delete did not fall back to reference/missing", result)
+		if result := intercept("openai", model); result.Terminate {
+			t.Fatal("deleting a price refused model access", result)
 		}
 	}
 	callOK(t, app, http.MethodPut, routePrices, nil, billing.CustomPrice{ModelID: "gpt-*"}, 200, nil)
@@ -68,6 +62,57 @@ func TestBuiltinPriceAdmissionAndListing(t *testing.T) {
 		if len(rows) != 1 || rows[0].Source != billing.PriceSourceBuiltin || rows[0].InputPer1M != test.input || rows[0].OutputPer1M != test.out {
 			t.Fatalf("builtin listing = %+v", rows)
 		}
+	}
+}
+
+func TestUnpricedUsageStillEnforcesTokenAndRequestQuotas(t *testing.T) {
+	for _, window := range []billing.QuotaWindow{
+		{Name: "requests", RequestLimit: 1, PeriodSeconds: 3600},
+		{Name: "tokens", TokenLimit: 125, PeriodSeconds: 3600},
+	} {
+		t.Run(window.Name, func(t *testing.T) {
+			app := newConfiguredApp(t)
+			const key = "sk-dummy-unpriced-quota-key"
+			const model = "house-model-without-reference"
+			scope := billing.CallerScope(key)
+			if _, err := app.store.SyncKeys([]string{key}, false); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := app.store.CreatePlanWithBindings(billing.Plan{
+				ID: "unpriced-quota", Windows: []billing.QuotaWindow{window},
+			}, []string{scope}); err != nil {
+				t.Fatal(err)
+			}
+			request := RequestInterceptRequest{
+				SourceFormat: "openai", Model: model, RequestedModel: model,
+				Metadata: map[string]any{MetadataCallerScope: scope},
+			}
+			intercept := func() RequestInterceptResponse {
+				t.Helper()
+				raw, err := app.HandleMethod(MethodRequestInterceptBefore, mustMarshal(t, request))
+				if err != nil {
+					t.Fatal(err)
+				}
+				var response RequestInterceptResponse
+				decodeResult(t, raw, &response)
+				return response
+			}
+			if response := intercept(); response.Terminate {
+				t.Fatalf("unpriced request was refused: %+v", response)
+			}
+			publishUsageRecord(t, app, UsageRecord{
+				Model: model, Alias: model, APIKey: key, Provider: "openai", RequestedAt: app.store.Now(),
+				Detail: UsageDetail{InputTokens: 100, OutputTokens: 25, TotalTokens: 125},
+			})
+			events := requestEventEntries(t, app)
+			if len(events) != 1 || events[0].PriceSource != billing.PriceSourceNone ||
+				events[0].Cost.TotalUSD != 0 || events[0].Cost.UncachedInputTokens != 100 || events[0].Cost.BilledOutputTokens != 25 {
+				t.Fatalf("unpriced usage was not retained: %+v", events)
+			}
+			if response := intercept(); !response.Terminate || response.StatusCode != http.StatusTooManyRequests {
+				t.Fatalf("unpriced usage did not enforce %s quota: %+v", window.Name, response)
+			}
+		})
 	}
 }
 

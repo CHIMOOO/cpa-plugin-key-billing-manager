@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"cpa-key-billing/internal/billing"
 )
@@ -209,6 +210,19 @@ func (a *App) observeCredentialUsage(authIndex, authType, source, scope string) 
 	a.credentials[ref] = credential
 }
 
+// The browser sends a masked display name, while older callers may send the
+// original key. Preserve only the bounded preview shapes produced by the UI;
+// mask everything else before it enters the credential inventory or database.
+func configuredCredentialPreview(value string) string {
+	if head, tail, masked := strings.Cut(value, "…"); masked && !strings.Contains(tail, "…") {
+		headLength, tailLength := utf8.RuneCountInString(head), utf8.RuneCountInString(tail)
+		if headLength >= 1 && headLength <= 8 && tailLength == headLength || headLength == 6 && tailLength == 4 {
+			return value
+		}
+	}
+	return billing.PreviewKey(value)
+}
+
 func (a *App) syncConfiguredCredentials(req ManagementRequest) ManagementResponse {
 	var body struct {
 		Credentials []struct {
@@ -237,7 +251,7 @@ func (a *App) syncConfiguredCredentials(req ManagementRequest) ManagementRespons
 			preview = ""
 		}
 		next[ref] = billing.ConfigCredential{
-			Provider: provider, KeyPreview: billing.PreviewKey(preview), Disabled: item.Disabled,
+			Provider: provider, KeyPreview: configuredCredentialPreview(preview), Disabled: item.Disabled,
 		}
 	}
 

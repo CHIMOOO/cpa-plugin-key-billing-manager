@@ -47,13 +47,18 @@ func TestRoutedRequestWritesOneCombinedDebugLog(t *testing.T) {
 	if err = json.Unmarshal([]byte(strings.TrimPrefix(page.Entries[0].Message, "route ")), &row); err != nil {
 		t.Fatal(err)
 	}
-	if row["model_policy"] != "restricted" || row["credential_policy"] != "unrestricted" || row["outcome"] != "succeeded" {
+	if row["model_policy"] != "restricted" || row["credential_policy"] != "restricted" || row["outcome"] != "succeeded" {
 		t.Fatalf("row=%+v", row)
 	}
 }
 
 func TestUnrestrictedRouteWritesNoRoutingDebugLog(t *testing.T) {
-	app, scope := configuredRoutingApp(t, billing.RouteRule{})
+	app := newConfiguredApp(t)
+	const key = "dummy-unmanaged-key"
+	if _, err := app.store.SyncKeys([]string{key}, false); err != nil {
+		t.Fatal(err)
+	}
+	scope := billing.CallerScope(key)
 	if _, err := app.HandleMethod(MethodRequestInterceptBefore, mustMarshal(t, RequestInterceptRequest{RequestID: "unrestricted", SourceFormat: "openai", Model: "gpt-5.6", RequestedModel: "gpt-5.6", Metadata: map[string]any{MetadataCallerScope: scope}})); err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +310,7 @@ func TestUnclassifiedCandidateRequiresExactAllowlistReference(t *testing.T) {
 func TestSchedulerDelegatesAnUnchangedCandidateSet(t *testing.T) {
 	for _, rule := range []billing.RouteRule{
 		{CredentialProviders: []billing.CredentialProviderSelector{{Source: billing.CredentialSourceAIProviders, Provider: "codex"}}},
-		{DeniedCredentialIDs: []string{billing.CredentialFingerprint("outside")}},
+		{CredentialIDs: []string{billing.CredentialFingerprint("config-codex")}, DeniedCredentialIDs: []string{billing.CredentialFingerprint("outside")}},
 	} {
 		app, scope := configuredRoutingApp(t, rule)
 		raw, err := app.HandleMethod(MethodSchedulerPick, mustMarshal(t, schedulerRequest(scope, SchedulerAuthCandidate{ID: "config-codex", Provider: "codex", Attributes: map[string]string{"source": "config:codex[abc]"}})))
@@ -448,7 +453,7 @@ func TestSubsetSchedulerUsesCandidateWeights(t *testing.T) {
 		rule billing.RouteRule
 	}{
 		{"allow", billing.RouteRule{CredentialIDs: []string{billing.CredentialFingerprint("a"), billing.CredentialFingerprint("b")}}},
-		{"deny", billing.RouteRule{DeniedCredentialIDs: []string{billing.CredentialFingerprint("outside")}}},
+		{"deny", billing.RouteRule{CredentialIDs: []string{billing.CredentialFingerprint("a"), billing.CredentialFingerprint("b")}, DeniedCredentialIDs: []string{billing.CredentialFingerprint("outside")}}},
 		{"provider with exception", billing.RouteRule{
 			CredentialProviders: []billing.CredentialProviderSelector{{Source: billing.CredentialSourceAuthFiles, Provider: "codex"}},
 			DeniedCredentialIDs: []string{billing.CredentialFingerprint("outside")},

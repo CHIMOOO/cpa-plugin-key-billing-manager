@@ -555,13 +555,14 @@ def make_key(index):
     plan = next((item for item in PLANS if item["id"] == profile["plan_id"]), None)
     result = {
         "scope": hashlib.sha256(CALLER_SCOPE_SALT + f"sk-demo-{index:04d}".encode()).hexdigest(),
-        "preview": f"sk-demo…{index:04d}",
+        "preview": f"sk-…{index:03d}",
         "label": profile["label"],
         "in_config": True,
         "plan_id": profile["plan_id"],
         "concurrency_limit": profile["concurrency_limit"],
         "current_concurrency": profile["current_concurrency"],
         "route_bindings": profile["route_bindings"],
+        "group_ids": ["engineering-group"] if index <= 2 else ["production-group"] if index <= 4 else [],
     }
     cycles = {}
     for position, window in enumerate(plan["windows"] if plan and index != 4 else []):
@@ -588,6 +589,11 @@ KEYS[-1]["in_config"] = False
 KEYS[-1]["deleted_at"] = iso(NOW - timedelta(days=1))
 KEYS[-1]["route_bindings"]["route_ids"] = ["economy"]
 LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
+ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
+GROUPS = [
+    {"id": "engineering-group", "name": "研发团队", "route_ids": ["coding", "ci"]},
+    {"id": "production-group", "name": "生产服务", "route_ids": ["analytics"]},
+]
 
 PRICES = [
     {
@@ -834,8 +840,15 @@ def filter_event_time(entries, query):
 
 
 def account_routing(index):
-    bindings = LIVE_KEYS[index]["route_bindings"]
-    rules = [bindings] + [route["rule"] for route in ROUTES if route["id"] in bindings["route_ids"]]
+    key = LIVE_KEYS[index]
+    bindings = key["route_bindings"]
+    route_ids = set(bindings["route_ids"])
+    for group in GROUPS:
+        if group["id"] in key.get("group_ids", []):
+            route_ids.update(group["route_ids"])
+    rules = [bindings] + [route["rule"] for route in ROUTES if route["id"] in route_ids]
+    if not ACCESS_CONTROL["enabled"]:
+        rules = []
     result = []
     for prefix in ("", "denied_"):
         models, refs, providers = set(), set(), set()
@@ -849,6 +862,13 @@ def account_routing(index):
 
 def account_routing_view(index):
     models, refs, providers, denied_models, denied_refs, denied_providers = account_routing(index)
+    key = LIVE_KEYS[index]
+    group_ids = key.get("group_ids", [])
+    managed = ACCESS_CONTROL["enabled"] and (bool(group_ids) or any(key["route_bindings"].values()))
+    denied = ACCESS_CONTROL["enabled"] and (
+        ACCESS_CONTROL["deny_ungrouped"] and not group_ids or
+        bool(group_ids) and not any(group["route_ids"] for group in GROUPS if group["id"] in group_ids)
+    )
     def credential_view(item):
         return {"source": item["source"], "provider": item["provider"], "name": item["display_name"], "status": item["status"],
                 "denied": item["ref"] in denied_refs or (item["source"], item["provider"]) in denied_providers}
@@ -857,14 +877,18 @@ def account_routing_view(index):
         "credentials": [credential_view(item) for item in CREDENTIALS if item["ref"] in refs or (item["source"], item["provider"]) in providers],
         "denied_credentials": [credential_view(item) for item in CREDENTIALS if item["ref"] in denied_refs] +
             [{"source": source, "provider": provider, "provider_wide": True, "denied": True} for source, provider in sorted(denied_providers)],
-        "routing_valid": True, "warnings": [],
+        "routing_valid": not denied, "credentials_restricted": managed,
+        "warnings": ["访问被默认策略拒绝"] if denied else ["尚未允许任何上游凭证"] if managed and not refs and not providers else [],
     }
 
 
 def account_auth_files(index):
     _, refs, providers, _, denied_refs, denied_providers = account_routing(index)
+    view = account_routing_view(index)
+    if not view["routing_valid"]:
+        return []
     return [item for item in AUTH_FILES
-            if (not refs and not providers or AUTH_FILE_CREDENTIAL_REFS.get(item["auth_index"]) in refs or ("auth-files", item["category"]) in providers)
+            if (not view["credentials_restricted"] or AUTH_FILE_CREDENTIAL_REFS.get(item["auth_index"]) in refs or ("auth-files", item["category"]) in providers)
             and AUTH_FILE_CREDENTIAL_REFS.get(item["auth_index"]) not in denied_refs
             and ("auth-files", item["category"]) not in denied_providers]
 
@@ -1241,7 +1265,15 @@ def route_rows():
     return [dict(route, credential_labels=credential_labels(route["rule"].get("credential_ids", []) + route["rule"].get("denied_credential_ids", []))) for route in ROUTES]
 
 
+def group_rows():
+    return [dict(group, scopes=[key["scope"] for key in KEYS if group["id"] in key.get("group_ids", [])]) for group in GROUPS]
+
+
 def payload_for(path, query):
+    if path == f"{API_BASE}/access-control":
+        return {"access_control": ACCESS_CONTROL}
+    if path == f"{API_BASE}/groups":
+        return {"groups": group_rows()}
     if path == f"{API_BASE}/keys":
         refresh_route_counts()
         return {"keys": key_rows()}
@@ -1334,9 +1366,11 @@ class Handler(BaseHTTPRequestHandler):
         if 200 <= status < 300 and getattr(self, "mutation_view", None) is not None:
             path = urlparse(self.path).path
             view = {}
-            if path in {f"{API_BASE}/plans", f"{API_BASE}/routes"} or path.startswith(f"{API_BASE}/keys/"):
+            if path in {f"{API_BASE}/plans", f"{API_BASE}/routes", f"{API_BASE}/groups", f"{API_BASE}/access-control"} or path.startswith(f"{API_BASE}/keys/"):
                 refresh_route_counts()
                 view["keys"] = key_rows()
+                view["groups"] = group_rows()
+                view["access_control"] = ACCESS_CONTROL
                 if path == f"{API_BASE}/plans":
                     view["plans"] = PLANS
                 if path in {f"{API_BASE}/routes", f"{API_BASE}/keys/routes"}:
@@ -1371,7 +1405,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_html(body)
             return
         if parsed.path in ("/", "/ui"):
-            body = UI_PATH.read_text()
+            body = UI_PATH.read_text(encoding="utf-8")
             if self.host_mode != "standalone":
                 body = body.replace(
                     "</head>",
@@ -1462,7 +1496,50 @@ class Handler(BaseHTTPRequestHandler):
             self.mutation_view = json.loads(request_body or b"{}")
             request_body = json.dumps(self.mutation_view.get("data") or {}).encode()
         route = self.command, parsed.path
-        if route == ("POST", "/v0/management/api-call"):
+        if route == ("PUT", f"{API_BASE}/access-control"):
+            body = json.loads(request_body or b"{}")
+            if any(type(body.get(field)) is not bool for field in ("enabled", "deny_ungrouped")):
+                self.send_json(400, {"error": {"message": "invalid access control settings"}})
+                return
+            ACCESS_CONTROL.update(body)
+            self.send_json(200, {"access_control": ACCESS_CONTROL})
+        elif route in {("POST", f"{API_BASE}/groups"), ("PATCH", f"{API_BASE}/groups")}:
+            body = json.loads(request_body or b"{}")
+            group_id = body.get("id") or "group-" + str(time.time_ns())
+            group = next((item for item in GROUPS if item["id"] == group_id), None)
+            if self.command == "POST":
+                group = {"id": group_id, "route_ids": []}
+                GROUPS.append(group)
+            if group is None:
+                self.send_json(404, {"error": {"message": "group not found"}})
+                return
+            group.update({field: body[field] for field in ("name", "route_ids") if field in body})
+            if "scopes" in body:
+                scopes = set(body["scopes"])
+                for key in KEYS:
+                    ids = [value for value in key.get("group_ids", []) if value != group_id]
+                    if key["scope"] in scopes:
+                        ids.append(group_id)
+                    key["group_ids"] = ids
+            self.send_json(200, {"group": group})
+        elif route == ("DELETE", f"{API_BASE}/groups"):
+            group_id = parse_qs(parsed.query).get("id", [""])[0]
+            GROUPS[:] = [group for group in GROUPS if group["id"] != group_id]
+            for key in KEYS:
+                key["group_ids"] = [value for value in key.get("group_ids", []) if value != group_id]
+            self.send_json(200, {"deleted": group_id})
+        elif route == ("PUT", f"{API_BASE}/keys/groups"):
+            body = json.loads(request_body or b"{}")
+            scopes = set(body.get("scopes", []))
+            ids = body.get("group_ids", [])
+            if any(group_id not in {group["id"] for group in GROUPS} for group_id in ids):
+                self.send_json(400, {"error": {"message": "unknown group"}})
+                return
+            for key in KEYS:
+                if key["scope"] in scopes:
+                    key["group_ids"] = list(ids)
+            self.send_json(200, {"updated": len(scopes)})
+        elif route == ("POST", "/v0/management/api-call"):
             body = json.loads(request_body or b"{}")
             auth_index = body.get("auth_index", "")
             auth_file = next((item for item in AUTH_FILES if item["auth_index"] == auth_index), None)
@@ -1551,6 +1628,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"credentials": CREDENTIALS})
         elif route == ("DELETE", f"{API_BASE}/routes"):
             route_id = parse_qs(parsed.query).get("id", [""])[0]
+            if any(route_id in group["route_ids"] for group in GROUPS):
+                self.send_json(409, {"error": {"message": "请先从分组中解除此路由规则"}})
+                return
             affected = 0
             unrestricted = 0
             deleted = 0
@@ -1622,6 +1702,7 @@ class Handler(BaseHTTPRequestHandler):
             for key in KEYS:
                 if key["scope"] == body.get("scope"):
                     key["route_bindings"] = {
+                        "configured": True,
                         "route_ids": bindings.get("route_ids", []),
                         "models": bindings.get("models", []),
                         "credential_ids": bindings.get("credential_ids", []),

@@ -76,6 +76,9 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	if !helper {
 		routing := a.store.ResolveRouting(scope, req.Model, req.RequestedModel)
 		a.beginRouteLog(req.RequestID, scope, routing)
+		if routing.AccessDenied != "" {
+			return OKEnvelope(accessDeniedResponse(req.SourceFormat, routing.AccessDenied))
+		}
 		if routing.ConfigurationError != "" {
 			return OKEnvelope(routingConfigurationResponse(req.SourceFormat, routing.ConfigurationError))
 		}
@@ -84,16 +87,12 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 		}
 	}
 
-	price, model, priceErr := a.store.ResolveModelPrice(req.Model, req.RequestedModel, true)
-	if priceErr != nil {
-		return OKEnvelope(priceRefusal(req.SourceFormat, "price_storage_error", "读取模型价格失败，请稍后重试"))
-	}
-	if price.Source == billing.PriceSourceNone {
-		return OKEnvelope(priceRefusal(req.SourceFormat, "model_price_error", fmt.Sprintf("模型 %s 尚未定价", model)))
-	}
+	// Refresh reference prices when possible, but pricing is not an admission
+	// requirement. usage.handle retains unpriced usage at zero cost, including
+	// the tokens and successful requests needed for quota enforcement.
+	_, _, _ = a.store.ResolveModelPrice(req.Model, req.RequestedModel, true)
 	if helper {
-		// Nested plugin helpers do not consume another client admission slot, but
-		// still need a price: usage.handle can attribute their usage to the client.
+		// Nested plugin helpers do not consume another client admission slot.
 		return OKEnvelope(RequestInterceptResponse{})
 	}
 	generate := true
@@ -148,7 +147,7 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 			metadataString(req.Metadata, MetadataSelectedIndex),
 		)
 	}
-	return OKEnvelope(RequestInterceptResponse{})
+	return OKEnvelope(a.enforceSelectedCredential(req))
 }
 
 func (a *App) completeRequest(raw []byte) ([]byte, error) {

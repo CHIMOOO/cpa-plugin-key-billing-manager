@@ -33,6 +33,8 @@ type Changes struct {
 
 	Plans             bool
 	Routes            bool
+	Groups            bool
+	AccessControl     bool
 	ConfigCredentials bool
 
 	NormalRequestEvents []RequestEvent
@@ -43,7 +45,7 @@ type Changes struct {
 const maxPendingRequestRecords = 1000
 
 func (c Changes) empty() bool {
-	return len(c.Keys) == 0 && !c.AllKeys && !c.Plans && !c.Routes && !c.ConfigCredentials &&
+	return len(c.Keys) == 0 && !c.AllKeys && !c.Plans && !c.Routes && !c.Groups && !c.AccessControl && !c.ConfigCredentials &&
 		len(c.NormalRequestEvents) == 0 && len(c.RequestErrorEvents) == 0 && c.RequestEventCutoff.IsZero()
 }
 
@@ -58,6 +60,8 @@ func (c Changes) merge(next Changes) Changes {
 		AllKeys:             c.AllKeys || next.AllKeys,
 		Plans:               c.Plans || next.Plans,
 		Routes:              c.Routes || next.Routes,
+		Groups:              c.Groups || next.Groups,
+		AccessControl:       c.AccessControl || next.AccessControl,
 		ConfigCredentials:   c.ConfigCredentials || next.ConfigCredentials,
 		NormalRequestEvents: append(append([]RequestEvent(nil), c.NormalRequestEvents...), next.NormalRequestEvents...),
 		RequestErrorEvents:  append(append([]RequestErrorEvent(nil), c.RequestErrorEvents...), next.RequestErrorEvents...),

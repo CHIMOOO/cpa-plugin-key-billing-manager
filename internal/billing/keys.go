@@ -18,6 +18,7 @@ type KeyView struct {
 	ConcurrencyLimit   int           `json:"concurrency_limit"`
 	CurrentConcurrency int           `json:"current_concurrency"`
 	RouteBindings      RouteBindings `json:"route_bindings"`
+	GroupIDs           []string      `json:"group_ids"`
 	QuotaView
 }
 
@@ -58,6 +59,7 @@ func keyView(scope string, key *KeyState, plan Plan, currentConcurrency int, now
 		ConcurrencyLimit:   key.ConcurrencyLimit,
 		CurrentConcurrency: currentConcurrency,
 		RouteBindings:      key.RouteBindings.clone(),
+		GroupIDs:           append([]string{}, key.GroupIDs...),
 	}
 }
 
@@ -251,7 +253,7 @@ func (s *State) ensureKey(scope, preview string) *KeyState {
 	if key == nil {
 		key = &KeyState{Preview: preview}
 		s.Keys[scope] = key
-	} else if key.Preview == "" || key.Preview == UnknownKeyPreview {
+	} else if key.Preview == "" || preview != UnknownKeyPreview && key.Preview != preview {
 		key.Preview = preview
 	}
 	return key

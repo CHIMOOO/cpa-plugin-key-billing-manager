@@ -221,6 +221,10 @@ func editConfiguration[T any](s *Store, fn func(*State) (T, Changes, error)) (T,
 		for i, route := range s.state.Routes {
 			next.Routes[i] = cloneRoute(route)
 		}
+		next.Groups = make([]KeyGroup, len(s.state.Groups))
+		for i, group := range s.state.Groups {
+			next.Groups[i] = cloneGroup(group)
+		}
 		next.Keys = make(map[string]*KeyState, len(s.state.Keys))
 		for scope, key := range s.state.Keys {
 			if key == nil {
@@ -230,6 +234,7 @@ func editConfiguration[T any](s *Store, fn func(*State) (T, Changes, error)) (T,
 			copyKey := *key
 			copyKey.Cycles = maps.Clone(key.Cycles)
 			copyKey.RouteBindings = key.RouteBindings.clone()
+			copyKey.GroupIDs = append([]string(nil), key.GroupIDs...)
 			next.Keys[scope] = &copyKey
 		}
 

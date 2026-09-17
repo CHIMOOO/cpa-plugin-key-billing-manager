@@ -274,7 +274,7 @@ func TestUsageHandlePersistsBillWithoutPlaintextKeys(t *testing.T) {
 	if errRequests != nil || len(requests.Entries) != 1 || requests.Entries[0].Cost.TotalUSD <= 0 {
 		t.Fatalf("persisted request events = %+v, err = %v", requests.Entries, errRequests)
 	}
-	if entry := requests.Entries[0]; entry.Account != "sk-ups…0001" || entry.Source != "deepseek · sk-ups…0001" {
+	if entry := requests.Entries[0]; entry.Account != "sk-up…-0001" || entry.Source != "deepseek · sk-up…-0001" {
 		t.Fatalf("persisted event identity = %+v", entry)
 	}
 

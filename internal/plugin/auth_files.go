@@ -134,7 +134,7 @@ func (a *App) authQuota(req ManagementRequest, access viewAccess) ManagementResp
 	}
 	if access.APIKey {
 		decision := a.store.ResolveRouting(access.Scope, "", "")
-		if decision.ConfigurationError != "" || (decision.RestrictsCredentials() && !routingAllowsAuthFile(*selected, decision)) {
+		if decision.ConfigurationError != "" || decision.AccessDenied != "" || (decision.RestrictsCredentials() && !routingAllowsAuthFile(*selected, decision)) {
 			return viewJSONError(access, http.StatusNotFound, "not_found", "认证文件不存在")
 		}
 	}
@@ -162,7 +162,7 @@ func (a *App) listAuthFiles(access viewAccess) ([]authFileView, error) {
 	}
 	if access.APIKey {
 		decision := a.store.ResolveRouting(access.Scope, "", "")
-		if decision.ConfigurationError != "" {
+		if decision.ConfigurationError != "" || decision.AccessDenied != "" {
 			files = nil
 		} else if decision.RestrictsCredentials() {
 			filtered := files[:0]
