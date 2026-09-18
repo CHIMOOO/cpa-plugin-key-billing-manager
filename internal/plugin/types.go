@@ -18,7 +18,7 @@ const (
 const (
 	PluginID   = "cpa-key-billing"
 	PluginName = "cpa-key-billing"
-	Version    = "0.0.1"
+	Version    = "0.0.2"
 
 	MenuLabel       = "API Key 管理"
 	MenuDescription = "管理下游 API Key 的路由、计费、并发限制、订阅额度和用量"
