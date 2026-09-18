@@ -61,6 +61,14 @@ CREATE TABLE forwarded_for_block (
 INSERT INTO forwarded_for_block(id, enabled, model_keywords_json, message) VALUES (1, 0, '[]', '');
 `
 
+// v17 lets a group select models and credentials directly. Stored rules are
+// route-rule JSON; '{}' stands for an empty selection and loading normalizes it.
+// The CREATE TABLE above stays as v15 created it, because older databases run
+// that exact text before this migration.
+const groupRuleSchema = `
+ALTER TABLE groups ADD COLUMN rule_json TEXT NOT NULL DEFAULT '{}';
+`
+
 const schema = `
 CREATE TABLE api_keys (
 	scope                 TEXT    PRIMARY KEY,
@@ -181,4 +189,4 @@ CREATE TABLE plugin_logs (
 	level   TEXT    NOT NULL DEFAULT '',
 	message TEXT    NOT NULL DEFAULT ''
 );
-` + accessControlSchema + forwardedForBlockSchema
+` + accessControlSchema + forwardedForBlockSchema + groupRuleSchema

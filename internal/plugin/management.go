@@ -62,7 +62,7 @@ var managementEndpoints = []managementEndpoint{
 		return JSONResponse(http.StatusOK, map[string]any{"keys": a.keyRows()})
 	}},
 	{http.MethodGet, routeGroups, "查看 API Key 分组", func(a *App, _ ManagementRequest) ManagementResponse {
-		return JSONResponse(http.StatusOK, map[string]any{"groups": a.store.GroupViews()})
+		return JSONResponse(http.StatusOK, map[string]any{"groups": a.groupRows()})
 	}},
 	{http.MethodGet, routeAccessControl, "查看访问控制设置", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"access_control": a.store.AccessControl()})

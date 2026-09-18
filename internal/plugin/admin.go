@@ -24,6 +24,11 @@ type routeRow struct {
 	CredentialLabels map[string]string `json:"credential_labels"`
 }
 
+type groupRow struct {
+	billing.GroupView
+	CredentialLabels map[string]string `json:"credential_labels"`
+}
+
 func (a *App) keyRows() []keyRow {
 	keys := a.store.KeyViews()
 	rows := make([]keyRow, 0, len(keys))
@@ -46,6 +51,19 @@ func (a *App) routeRows() []routeRow {
 		rows = append(rows, routeRow{RouteView: route, CredentialLabels: a.credentialLabels(route.Rule.CredentialRefs())})
 	}
 	return rows
+}
+
+func (a *App) groupRows() []groupRow {
+	groups := a.store.GroupViews()
+	rows := make([]groupRow, 0, len(groups))
+	for _, group := range groups {
+		rows = append(rows, a.groupRow(group))
+	}
+	return rows
+}
+
+func (a *App) groupRow(group billing.GroupView) groupRow {
+	return groupRow{GroupView: group, CredentialLabels: a.credentialLabels(group.Rule.CredentialRefs())}
 }
 
 func (a *App) createPlan(req ManagementRequest) ManagementResponse {

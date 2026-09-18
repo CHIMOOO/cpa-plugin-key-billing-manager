@@ -11,6 +11,15 @@ import (
 	"cpa-key-billing/internal/billing"
 )
 
+// v17 adds each group's direct model and credential selection, empty for every
+// existing group, and leaves every other table untouched.
+func migrateToV17(tx *sql.Tx) error {
+	if _, err := tx.Exec(groupRuleSchema); err != nil {
+		return fmt.Errorf("迁移分组直接选择：%w", err)
+	}
+	return nil
+}
+
 // v16 adds the X-Forwarded-For model block, disabled, and leaves every existing
 // table untouched.
 func migrateToV16(tx *sql.Tx) error {

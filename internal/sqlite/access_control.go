@@ -20,11 +20,16 @@ func replaceGroups(tx *sql.Tx, state *billing.State) error {
 		return fmt.Errorf("保存分组：%w", err)
 	}
 	for position, group := range state.Groups {
-		raw, err := json.Marshal(group.RouteIDs)
+		routeIDs, err := json.Marshal(group.RouteIDs)
 		if err != nil {
 			return err
 		}
-		if _, err := tx.Exec("INSERT INTO groups(position, id, name, route_ids_json) VALUES (?, ?, ?, ?)", position, group.ID, group.Name, string(raw)); err != nil {
+		rule, err := json.Marshal(group.Rule)
+		if err != nil {
+			return fmt.Errorf("保存分组 %s：%w", group.ID, err)
+		}
+		if _, err := tx.Exec("INSERT INTO groups(position, id, name, route_ids_json, rule_json) VALUES (?, ?, ?, ?, ?)",
+			position, group.ID, group.Name, string(routeIDs), string(rule)); err != nil {
 			return fmt.Errorf("保存分组：%w", err)
 		}
 	}
@@ -32,25 +37,28 @@ func replaceGroups(tx *sql.Tx, state *billing.State) error {
 }
 
 func (d *DB) loadGroups(state *billing.State) error {
-	rows, err := d.db.Query("SELECT id, name, route_ids_json FROM groups ORDER BY position")
+	rows, err := d.db.Query("SELECT id, name, route_ids_json, rule_json FROM groups ORDER BY position")
 	if err != nil {
 		return fmt.Errorf("读取分组：%w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var group billing.KeyGroup
-		var raw string
-		if err := rows.Scan(&group.ID, &group.Name, &raw); err != nil {
+		var routeIDs, rule string
+		if err := rows.Scan(&group.ID, &group.Name, &routeIDs, &rule); err != nil {
 			return err
 		}
-		if err := json.Unmarshal([]byte(raw), &group.RouteIDs); err != nil {
+		if err := json.Unmarshal([]byte(routeIDs), &group.RouteIDs); err != nil {
 			return fmt.Errorf("解析分组路由：%w", err)
 		}
-		group, err = billing.NormalizeGroup(group)
-		if err != nil {
-			return err
+		if err := json.Unmarshal([]byte(rule), &group.Rule); err != nil {
+			return fmt.Errorf("解析分组 %s 的直接选择：%w", group.ID, err)
 		}
-		state.Groups = append(state.Groups, group)
+		normalized, err := billing.NormalizeGroup(group)
+		if err != nil {
+			return fmt.Errorf("校验分组 %s：%w", group.ID, err)
+		}
+		state.Groups = append(state.Groups, normalized)
 	}
 	return rows.Err()
 }

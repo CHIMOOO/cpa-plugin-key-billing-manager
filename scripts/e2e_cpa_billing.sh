@@ -1293,6 +1293,114 @@ assert_group_access_control() {
   log_step "分组访问控制已验证：多组选中凭证、拒绝未选凭证、空允许列表、新 Key 默认拒绝和全局开关"
 }
 
+# A group needs no route: its own selection grants exactly the chosen upstream
+# credential and models, merged like a bound route, while a group that selects
+# nothing refuses its members.
+assert_group_direct_credentials() {
+  local port="$1" runtime_dir="$2" scope allowed_ref group body http_status count
+  local base="/v0/management/plugins/cpa-key-billing"
+  local events_file="$runtime_dir/group-direct-events.json"
+  local group_file="$runtime_dir/group-direct.json"
+  local response_file="$runtime_dir/responses/group-direct.json"
+  local missing_ref="sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  management_call GET "$port" "$base/keys" >"$runtime_dir/group-direct-keys.json"
+  scope="$(jq -er 'first(.keys[] | select(.in_config)).scope' "$runtime_dir/group-direct-keys.json")"
+  # Drop the Key's own allow-all selection so only the group can grant access.
+  management_call PUT "$port" "$base/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" >/dev/null
+  management_call GET "$port" "$base/credentials" >"$runtime_dir/group-direct-credentials.json"
+  allowed_ref="$(jq -er 'first(.credentials[] | select(.provider == "openai-compatible-route-allowed-e2e")).ref' "$runtime_dir/group-direct-credentials.json")"
+  management_call GET "$port" "$base/events?limit=100" >"$events_file"
+  count="$(jq -er '.entries | length' "$events_file")"
+
+  management_call POST "$port" "$base/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{name:"e2e-分组直选凭证",route_ids:[],scopes:[$scope]}')" >"$group_file"
+  group="$(jq -er '.group.id' "$group_file")"
+  if ! jq -e --arg scope "$scope" '.group |
+      .route_ids == [] and .scopes == [$scope] and .credential_labels == {} and
+      .rule == {models:[],credential_ids:[],credential_providers:[],denied_models:[],denied_credential_ids:[],denied_credential_providers:[]}
+    ' "$group_file" >/dev/null; then
+    echo "新建分组的直接选择格式不正确：$(jq -c '.group' "$group_file")" >&2
+    return 1
+  fi
+  body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "403" ]] || ! jq -e '.error.code == "access_denied" and (.error.message | contains("尚未绑定路由规则或上游凭证"))' "$response_file" >/dev/null; then
+    echo "既无路由也无直接选择的分组没有拒绝请求：HTTP ${http_status} $(jq -c '.' "$response_file")" >&2
+    return 1
+  fi
+
+  http_status="$(curl -sS --max-time 30 -X PATCH -H "Authorization: Bearer e2e-management-key" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg id "$group" --arg ref "$missing_ref" '{id:$id,rule:{credential_ids:[$ref]}}')" \
+    --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port$base/groups")"
+  if [[ "$http_status" != "400" ]] || ! jq -e '.error.message | contains("上游凭证已不存在")' "$response_file" >/dev/null; then
+    echo "分组直接选择不存在的上游凭证时没有返回 400：HTTP ${http_status}" >&2
+    return 1
+  fi
+  management_call PATCH "$port" "$base/groups?view=1" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg id "$group" --arg ref "$allowed_ref" '{data:{id:$id,rule:{credential_ids:[$ref]}}}')" >"$group_file"
+  if ! jq -e --arg id "$group" --arg ref "$allowed_ref" '
+      (.group | .route_ids == [] and .rule.credential_ids == [$ref] and .rule.models == [] and
+        (.credential_labels[$ref] | startswith("openai-compatible-route-allowed-e2e · "))) and
+      ([.view.groups[] | select(.id == $id and .rule.credential_ids == [$ref] and (.credential_labels[$ref] | type) == "string")] | length) == 1
+    ' "$group_file" >/dev/null; then
+    echo "分组直接选择的上游凭证没有保存或缺少凭证名称：$(jq -c '.' "$group_file")" >&2
+    return 1
+  fi
+  management_call GET "$port" "$base/groups" >"$runtime_dir/group-direct-list.json"
+  if ! jq -e --arg id "$group" --arg ref "$allowed_ref" \
+      '[.groups[] | select(.id == $id and .rule.credential_ids == [$ref] and (.credential_labels | has($ref)))] | length == 1' \
+      "$runtime_dir/group-direct-list.json" >/dev/null; then
+    echo "分组列表缺少直接选择的上游凭证：$(jq -c '.groups' "$runtime_dir/group-direct-list.json")" >&2
+    return 1
+  fi
+
+  api_call "$port" "分组直选凭证：不绑定路由，仅允许 route-allowed-e2e" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 1))" "$events_file"
+  if ! jq -e '.entries[0].provider == "openai-compatible-route-allowed-e2e" and .entries[0].failed == false' "$events_file" >/dev/null; then
+    echo "分组直选凭证没有限制实际使用的凭证：$(jq -c '.entries[0]' "$events_file")" >&2
+    return 1
+  fi
+  account_call "$port" "/v0/resource/plugins/cpa-key-billing/routing" >"$runtime_dir/group-direct-account.json"
+  if ! jq -e '.routing_valid == true and .credentials_restricted == true and
+      ([.credentials[].provider] == ["openai-compatible-route-allowed-e2e"])' "$runtime_dir/group-direct-account.json" >/dev/null; then
+    echo "API Key 自助查询没有显示分组直选的上游凭证：$(jq -c '.' "$runtime_dir/group-direct-account.json")" >&2
+    return 1
+  fi
+  body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("当前没有符合路由规则且可用的上游凭证"))' "$response_file" >/dev/null; then
+    echo "分组直选范围外的上游凭证没有被拒绝：HTTP ${http_status}" >&2
+    return 1
+  fi
+
+  management_call PATCH "$port" "$base/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg id "$group" --arg ref "$allowed_ref" '{id:$id,rule:{models:["e2e-credential-route"],credential_ids:[$ref]}}')" >/dev/null
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "403" ]] || ! jq -e '.error.type == "permission_error" and .error.code == "insufficient_quota" and (.error.message | contains("\"gpt-4o\""))' "$response_file" >/dev/null; then
+    echo "分组直选范围外的模型没有被拒绝：HTTP ${http_status} $(jq -c '.' "$response_file")" >&2
+    return 1
+  fi
+  body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
+  api_call "$port" "分组直选模型与凭证：允许的模型仍走 route-allowed-e2e" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 2))" "$events_file"
+  if ! jq -e '[.entries[] | select(.billing_model == "e2e-credential-route")][0:2] | length == 2 and all(.[]; .provider == "openai-compatible-route-allowed-e2e" and .failed == false)' "$events_file" >/dev/null; then
+    echo "分组直选模型后使用了错误的凭证：$(jq -c '.entries[0:2]' "$events_file")" >&2
+    return 1
+  fi
+  management_call GET "$port" "$base/events?limit=100" >"$events_file"
+  if [[ "$(jq -er '.entries | length' "$events_file")" != "$((count + 2))" ]]; then
+    echo "分组直选凭证的拦截产生了额外用量。" >&2
+    return 1
+  fi
+
+  management_call PUT "$port" "$base/keys/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scopes:[$scope],group_ids:[]}')" >/dev/null
+  management_call DELETE "$port" "$base/groups?id=$group" >/dev/null
+  allow_all_test_credentials "$port" "$scope"
+  log_step "分组直选凭证已验证：空分组拒绝、失效凭证拒绝保存、不绑定路由仅用选中凭证、范围外凭证与模型均被拒绝"
+}
+
 # The rule is off by default and read on every request: once saved, only a model
 # matching a keyword that arrives with X-Forwarded-For is refused, and neither a
 # refusal nor the forwarded address may reach usage, the response or the logs.
@@ -1772,12 +1880,13 @@ run_target() {
   log_step "插件启动事件已验证"
   assert_reference_price_billing "$port" "$runtime_dir"
   assert_group_access_control "$port" "$runtime_dir"
+  assert_group_direct_credentials "$port" "$runtime_dir"
   assert_forwarded_for_block "$port" "$runtime_dir"
 
   kill "$active_pid" >/dev/null 2>&1 || true
   wait "$active_pid" >/dev/null 2>&1 || true
   active_pid=""
-  log_ok "${host_label}：62 个上游请求（含 4 个参考价、4 个未定价、4 个分组开关及 3 个 X-Forwarded-For 规则请求），1 次并发拦截，6 次模型拦截，5 次凭证拦截，2 次未分组拦截，2 次 X-Forwarded-For 拦截，12 次额度拦截"
+  log_ok "${host_label}：64 个上游请求（含 4 个参考价、4 个未定价、4 个分组开关、2 个分组直选凭证及 3 个 X-Forwarded-For 规则请求），1 次并发拦截，7 次模型拦截，6 次凭证拦截，2 次未分组拦截，1 次空分组拦截，2 次 X-Forwarded-For 拦截，12 次额度拦截"
 }
 
 log_stage "启动 dummy provider"

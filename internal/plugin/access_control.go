@@ -24,20 +24,30 @@ func (a *App) setAccessControl(req ManagementRequest) ManagementResponse {
 	return JSONResponse(http.StatusOK, map[string]any{"access_control": settings})
 }
 
+// A group's direct selection is validated like a route rule: only credential
+// references it newly adds must still exist, so retired ones survive an edit.
 func (a *App) createGroup(req ManagementRequest) ManagementResponse {
 	var body struct {
-		Name     string   `json:"name"`
-		RouteIDs []string `json:"route_ids"`
-		Scopes   []string `json:"scopes"`
+		Name     string            `json:"name"`
+		RouteIDs []string          `json:"route_ids"`
+		Rule     billing.RouteRule `json:"rule"`
+		Scopes   []string          `json:"scopes"`
 	}
 	if err := decodeStrict(req.Body, &body); err != nil {
 		return errorResponse(err)
 	}
-	group, err := a.store.CreateGroup(billing.KeyGroup{Name: body.Name, RouteIDs: body.RouteIDs}, body.Scopes)
+	rule, err := billing.NormalizeRouteRule(body.Rule)
 	if err != nil {
 		return errorResponse(err)
 	}
-	return JSONResponse(http.StatusCreated, map[string]any{"group": group})
+	if response := a.validateNewCredentialRefs(rule.CredentialRefs(), nil); response != nil {
+		return *response
+	}
+	group, err := a.store.CreateGroup(billing.KeyGroup{Name: body.Name, RouteIDs: body.RouteIDs, Rule: rule}, body.Scopes)
+	if err != nil {
+		return errorResponse(err)
+	}
+	return JSONResponse(http.StatusCreated, map[string]any{"group": a.groupRow(group)})
 }
 
 func (a *App) updateGroup(req ManagementRequest) ManagementResponse {
@@ -45,11 +55,25 @@ func (a *App) updateGroup(req ManagementRequest) ManagementResponse {
 	if err := decodeStrict(req.Body, &body); err != nil {
 		return errorResponse(err)
 	}
+	if body.Rule != nil {
+		rule, err := billing.NormalizeRouteRule(*body.Rule)
+		if err != nil {
+			return errorResponse(err)
+		}
+		body.Rule = &rule
+		var existing []string
+		if group, ok := a.store.Group(body.ID); ok {
+			existing = group.Rule.CredentialRefs()
+		}
+		if response := a.validateNewCredentialRefs(rule.CredentialRefs(), existing); response != nil {
+			return *response
+		}
+	}
 	group, err := a.store.UpdateGroup(body)
 	if err != nil {
 		return errorResponse(err)
 	}
-	return JSONResponse(http.StatusOK, map[string]any{"group": group})
+	return JSONResponse(http.StatusOK, map[string]any{"group": a.groupRow(group)})
 }
 
 func (a *App) deleteGroup(req ManagementRequest) ManagementResponse {

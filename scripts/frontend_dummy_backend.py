@@ -562,7 +562,7 @@ def make_key(index):
         "concurrency_limit": profile["concurrency_limit"],
         "current_concurrency": profile["current_concurrency"],
         "route_bindings": profile["route_bindings"],
-        "group_ids": ["engineering-group"] if index <= 2 else ["production-group"] if index <= 4 else [],
+        "group_ids": ["engineering-group"] if index <= 2 else ["production-group"] if index <= 4 else ["docs-group"] if index == 5 else [],
     }
     cycles = {}
     for position, window in enumerate(plan["windows"] if plan and index != 4 else []):
@@ -592,9 +592,28 @@ LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE = "当前禁止模型混用，请联系相关管理员了解详情。"
 FORWARDED_FOR_BLOCK = {"enabled": False, "model_keywords": [], "message": DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE}
+ROUTE_RULE_FIELDS = ("models", "credential_ids", "credential_providers", "denied_models", "denied_credential_ids", "denied_credential_providers")
+
+
+def empty_rule():
+    return {field: [] for field in ROUTE_RULE_FIELDS}
+
+
 GROUPS = [
-    {"id": "engineering-group", "name": "研发团队", "route_ids": ["coding", "ci"]},
-    {"id": "production-group", "name": "生产服务", "route_ids": ["analytics"]},
+    {"id": "engineering-group", "name": "研发团队", "route_ids": ["coding", "ci"], "rule": empty_rule()},
+    {"id": "production-group", "name": "生产服务", "route_ids": ["analytics"], "rule": empty_rule()},
+    {
+        "id": "docs-group",
+        "name": "文档服务",
+        "route_ids": [],
+        "rule": {
+            **empty_rule(),
+            "models": ["gpt-5.5"],
+            "credential_ids": ["sha256:" + "c" * 64],
+            "credential_providers": [{"source": "auth-files", "provider": "claude"}],
+            "denied_models": ["gpt-image-2"],
+        },
+    },
 ]
 
 PRICES = [
@@ -845,10 +864,12 @@ def account_routing(index):
     key = LIVE_KEYS[index]
     bindings = key["route_bindings"]
     route_ids = set(bindings["route_ids"])
+    group_rules = []
     for group in GROUPS:
         if group["id"] in key.get("group_ids", []):
             route_ids.update(group["route_ids"])
-    rules = [bindings] + [route["rule"] for route in ROUTES if route["id"] in route_ids]
+            group_rules.append(group["rule"])
+    rules = [bindings] + group_rules + [route["rule"] for route in ROUTES if route["id"] in route_ids]
     if not ACCESS_CONTROL["enabled"]:
         rules = []
     result = []
@@ -869,7 +890,7 @@ def account_routing_view(index):
     managed = ACCESS_CONTROL["enabled"] and (bool(group_ids) or any(key["route_bindings"].values()))
     denied = ACCESS_CONTROL["enabled"] and (
         ACCESS_CONTROL["deny_ungrouped"] and not group_ids or
-        bool(group_ids) and not any(group["route_ids"] for group in GROUPS if group["id"] in group_ids)
+        bool(group_ids) and not any(group_grants_access(group) for group in GROUPS if group["id"] in group_ids)
     )
     def credential_view(item):
         return {"source": item["source"], "provider": item["provider"], "name": item["display_name"], "status": item["status"],
@@ -1267,8 +1288,64 @@ def route_rows():
     return [dict(route, credential_labels=credential_labels(route["rule"].get("credential_ids", []) + route["rule"].get("denied_credential_ids", []))) for route in ROUTES]
 
 
+def group_grants_access(group):
+    return bool(group["route_ids"]) or any(group["rule"].values())
+
+
+def rule_credential_refs(rule):
+    return rule["credential_ids"] + rule["denied_credential_ids"]
+
+
+def normalize_route_rule(rule):
+    """Mirror billing.NormalizeRouteRule closely enough for UI checks."""
+    if rule is None:
+        rule = {}
+    if not isinstance(rule, dict):
+        raise ValueError("路由规则格式无效")
+    unknown = set(rule) - set(ROUTE_RULE_FIELDS)
+    if unknown:
+        raise ValueError("未知字段：" + ", ".join(sorted(unknown)))
+    result = {}
+    for field in ROUTE_RULE_FIELDS:
+        values = rule.get(field) or []
+        if not isinstance(values, list):
+            raise ValueError(field + " 必须是数组")
+        items, seen = [], set()
+        for value in values:
+            if field.endswith("credential_providers"):
+                if not isinstance(value, dict) or not isinstance(value.get("source"), str) or not isinstance(value.get("provider"), str):
+                    raise ValueError("凭证类别无效")
+                item = {"source": value["source"].strip(), "provider": value["provider"].strip().lower()}
+                if item["source"] not in {"auth-files", "ai-providers"} or not item["provider"]:
+                    raise ValueError("凭证类别无效")
+                key = (item["source"], item["provider"])
+            else:
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError("路由选项无效")
+                item = value.strip()
+                if field.endswith("credential_ids"):
+                    item = item.lower()
+                    if not item.startswith("sha256:") or len(item) != 71:
+                        raise ValueError("上游凭证引用无效")
+                key = item.lower()
+            if key not in seen:
+                seen.add(key)
+                items.append(item)
+        result[field] = items
+    for field, name in (("models", "模型"), ("credential_ids", "凭证"), ("credential_providers", "凭证类别")):
+        allowed = [json.dumps(item, sort_keys=True).lower() for item in result[field]]
+        if any(json.dumps(item, sort_keys=True).lower() in allowed for item in result["denied_" + field]):
+            raise ValueError(f"同一{name}不能同时加入黑白名单")
+    return result
+
+
+def group_row(group):
+    return dict(group, scopes=[key["scope"] for key in KEYS if group["id"] in key.get("group_ids", [])],
+                credential_labels=credential_labels(rule_credential_refs(group["rule"])))
+
+
 def group_rows():
-    return [dict(group, scopes=[key["scope"] for key in KEYS if group["id"] in key.get("group_ids", [])]) for group in GROUPS]
+    return [group_row(group) for group in GROUPS]
 
 
 def normalize_forwarded_for_block(body):
@@ -1554,12 +1631,24 @@ class Handler(BaseHTTPRequestHandler):
             group_id = body.get("id") or "group-" + str(time.time_ns())
             group = next((item for item in GROUPS if item["id"] == group_id), None)
             if self.command == "POST":
-                group = {"id": group_id, "route_ids": []}
-                GROUPS.append(group)
+                group = {"id": group_id, "route_ids": [], "rule": empty_rule()}
             if group is None:
                 self.send_json(404, {"error": {"message": "group not found"}})
                 return
-            group.update({field: body[field] for field in ("name", "route_ids") if field in body})
+            try:
+                rule = normalize_route_rule(body["rule"]) if "rule" in body else group["rule"]
+            except ValueError as error:
+                self.send_json(400, {"error": {"code": "invalid", "message": str(error)}})
+                return
+            # Only newly added references must still exist, as on the plugin.
+            known = {item["ref"] for item in CREDENTIALS} | set(rule_credential_refs(group["rule"]))
+            missing = [ref for ref in rule_credential_refs(rule) if ref not in known]
+            if missing:
+                self.send_json(400, {"error": {"code": "invalid", "message": "上游凭证已不存在：" + ", ".join(missing)}})
+                return
+            if self.command == "POST":
+                GROUPS.append(group)
+            group.update({field: body[field] for field in ("name", "route_ids") if field in body}, rule=rule)
             if "scopes" in body:
                 scopes = set(body["scopes"])
                 for key in KEYS:
@@ -1567,7 +1656,7 @@ class Handler(BaseHTTPRequestHandler):
                     if key["scope"] in scopes:
                         ids.append(group_id)
                     key["group_ids"] = ids
-            self.send_json(200, {"group": group})
+            self.send_json(200, {"group": group_row(group)})
         elif route == ("DELETE", f"{API_BASE}/groups"):
             group_id = parse_qs(parsed.query).get("id", [""])[0]
             GROUPS[:] = [group for group in GROUPS if group["id"] != group_id]

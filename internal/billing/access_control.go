@@ -11,10 +11,14 @@ type AccessControl struct {
 	DenyUngrouped bool `json:"deny_ungrouped"`
 }
 
+// A group grants what its bound routes and its own Rule select. Rule is merged
+// exactly like a bound route's rule, so operators can select credentials and
+// models directly without creating a route first.
 type KeyGroup struct {
-	ID       string   `json:"id"`
-	Name     string   `json:"name"`
-	RouteIDs []string `json:"route_ids"`
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	RouteIDs []string  `json:"route_ids"`
+	Rule     RouteRule `json:"rule"`
 }
 
 type GroupView struct {
@@ -23,10 +27,11 @@ type GroupView struct {
 }
 
 type GroupPatch struct {
-	ID       string    `json:"id"`
-	Name     *string   `json:"name,omitempty"`
-	RouteIDs *[]string `json:"route_ids,omitempty"`
-	Scopes   *[]string `json:"scopes,omitempty"`
+	ID       string     `json:"id"`
+	Name     *string    `json:"name,omitempty"`
+	RouteIDs *[]string  `json:"route_ids,omitempty"`
+	Rule     *RouteRule `json:"rule,omitempty"`
+	Scopes   *[]string  `json:"scopes,omitempty"`
 }
 
 func (s *Store) AccessControl() AccessControl {
@@ -45,6 +50,7 @@ func (s *Store) SetAccessControl(settings AccessControl) error {
 
 func cloneGroup(group KeyGroup) KeyGroup {
 	group.RouteIDs = append([]string{}, group.RouteIDs...)
+	group.Rule = group.Rule.clone()
 	return group
 }
 
@@ -57,8 +63,30 @@ func NormalizeGroup(group KeyGroup) (KeyGroup, error) {
 		return KeyGroup{}, invalidf("分组名称不能为空且不能超过 %d 字节", maxRouteNameBytes)
 	}
 	var err error
-	group.RouteIDs, err = normalizeRouteStrings(group.RouteIDs)
-	return group, err
+	if group.RouteIDs, err = normalizeRouteStrings(group.RouteIDs); err != nil {
+		return KeyGroup{}, err
+	}
+	if group.Rule, err = NormalizeRouteRule(group.Rule); err != nil {
+		return KeyGroup{}, err
+	}
+	return group, nil
+}
+
+// grantsAccess reports whether the group configures any permission: a bound
+// route or a direct selection. An unconfigured group denies its members.
+func (g KeyGroup) grantsAccess() bool {
+	return len(g.RouteIDs) > 0 || !g.Rule.empty()
+}
+
+func (s *Store) Group(id string) (KeyGroup, bool) {
+	var result KeyGroup
+	found := false
+	s.read(func(state *State) {
+		if i := state.findGroupIndex(strings.TrimSpace(id)); i >= 0 {
+			result, found = cloneGroup(state.Groups[i]), true
+		}
+	})
+	return result, found
 }
 
 func (s *State) findGroupIndex(id string) int {
@@ -138,6 +166,9 @@ func (s *Store) UpdateGroup(patch GroupPatch) (GroupView, error) {
 		}
 		if patch.RouteIDs != nil {
 			group.RouteIDs = *patch.RouteIDs
+		}
+		if patch.Rule != nil {
+			group.Rule = *patch.Rule
 		}
 		group, err := NormalizeGroup(group)
 		if err != nil {

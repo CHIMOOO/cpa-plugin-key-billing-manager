@@ -101,6 +101,11 @@ func (d RoutingDecision) AllowsCredential(ref, source, provider string) bool {
 		containsRouteValue(d.CredentialIDs, ref) || slices.Contains(d.CredentialProviders, selector)
 }
 
+func (r RouteRule) empty() bool {
+	return len(r.Models) == 0 && len(r.CredentialIDs) == 0 && len(r.CredentialProviders) == 0 &&
+		len(r.DeniedModels) == 0 && len(r.DeniedCredentialIDs) == 0 && len(r.DeniedCredentialProviders) == 0
+}
+
 func (r RouteRule) CredentialRefs() []string {
 	return append(slices.Clone(r.CredentialIDs), r.DeniedCredentialIDs...)
 }
@@ -551,8 +556,9 @@ func (s *Store) KeyDescription(scope string) string {
 	return result
 }
 
-// Merge each allow/deny dimension independently and retain deny entries for
-// precedence. Managed keys require an explicit credential allowlist; an empty
+// Merge each allow/deny dimension of the bound routes, the groups' direct
+// selections and the key's own selection independently, retaining deny entries
+// for precedence. Managed keys require an explicit credential allowlist; an empty
 // model allowlist still leaves models unrestricted.
 func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	d := RoutingDecision{RouteRule: RouteRule{}.clone()}
@@ -567,7 +573,8 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 		return d
 	}
 	routeIDs := append([]string(nil), key.RouteBindings.RouteIDs...)
-	groupRoutes := false
+	groupRules := make([]RouteRule, 0, len(key.GroupIDs))
+	groupConfigured := false
 	for _, id := range key.GroupIDs {
 		i := state.findGroupIndex(id)
 		if i < 0 {
@@ -575,11 +582,12 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 			return d
 		}
 		group := state.Groups[i]
-		groupRoutes = groupRoutes || len(group.RouteIDs) > 0
+		groupConfigured = groupConfigured || group.grantsAccess()
 		routeIDs = append(routeIDs, group.RouteIDs...)
+		groupRules = append(groupRules, group.Rule)
 	}
-	if len(key.GroupIDs) > 0 && !groupRoutes {
-		d.AccessDenied = "API Key 所属分组尚未绑定路由规则，访问已被禁止"
+	if len(key.GroupIDs) > 0 && !groupConfigured {
+		d.AccessDenied = "API Key 所属分组尚未绑定路由规则或上游凭证，访问已被禁止"
 		return d
 	}
 	direct := RoutingDecision{RouteRule: key.RouteBindings.RouteRule}
@@ -599,6 +607,10 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 			return d
 		}
 		merge(route.Rule)
+	}
+	// A group's direct selection counts exactly like one more bound route.
+	for _, rule := range groupRules {
+		merge(rule)
 	}
 	merge(key.RouteBindings.RouteRule)
 	for _, values := range []*[]string{&d.Models, &d.CredentialIDs, &d.DeniedModels, &d.DeniedCredentialIDs} {

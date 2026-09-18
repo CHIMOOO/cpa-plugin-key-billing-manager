@@ -1490,6 +1490,8 @@
       .group-dialog { width: min(740px, calc(100vw - 32px)); }
       .group-dialog .selection-list { max-height: min(23dvh, 220px); }
       .group-dialog .field { margin: 12px 0; }
+      .group-dialog .access-help { margin: 0; }
+      .group-dialog .routing-list { max-height: min(34dvh, 320px); }
       .credential-tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--border-primary); }
       .credential-tabs button { min-height: 28px; padding: 4px 10px; font-size: 12px; }
       :root .credential-tabs button.active,
@@ -2268,7 +2270,7 @@
           </div>
           <div class="card">
             <div class="row spread settings-section-header"><h2>API Key 分组</h2><button id="group-new" type="button">新建分组</button></div>
-            <p class="access-help">每个 Key 可以加入多个分组，每个分组可以绑定多条路由规则。要限定到指定认证文件，请在路由规则中仅将这些文件设为白名单。所有所属分组均未绑定规则时，Key 禁止访问。</p>
+            <p class="access-help">每个 Key 可以加入多个分组。分组可以绑定多条路由规则，也可以直接选择上游凭证和模型，两者按相同的黑白名单规则合并：白名单取并集，黑名单优先。要限定到指定认证文件，直接在分组中仅将这些文件设为白名单即可。分组内的 Key 必须获得至少一个上游凭证白名单才能访问；所有所属分组均未绑定路由规则、也未直接选择上游凭证或模型时，Key 禁止访问。</p>
             <div id="groups-body"></div>
           </div>
           <dialog id="group-dialog" class="settings-dialog group-dialog">
@@ -2276,7 +2278,19 @@
             <div class="editor-state notice hidden"></div>
             <input id="group-id" type="hidden" />
             <label class="field">分组名称<input id="group-name" placeholder="例如：Codex 团队" /></label>
-            <div class="selection-section"><div class="small muted">绑定路由规则（可多选）</div><div id="group-route-list" class="selection-list"></div></div>
+            <div class="selection-section">
+              <div class="small muted">绑定路由规则或直接选择上游凭证、模型</div>
+              <p class="access-help">路由规则与直接选择合并生效，黑名单优先；仅授权白名单中的上游凭证，未选择的凭证不允许访问。</p>
+              <div class="route-form-toolbar">
+                <input id="group-rule-search" type="search" placeholder="搜索路由规则、上游凭证或模型" aria-label="搜索路由规则、上游凭证或模型" autocomplete="off" />
+                <div class="row compact-actions">
+                  <button id="group-rule-all" class="link" type="button" title="绑定当前筛选出的路由规则，并将模型和凭证加入白名单">全白选</button>
+                  <button id="group-rule-deny-all" class="link" type="button" title="绑定当前筛选出的路由规则，并将模型和凭证加入黑名单">全黑选</button>
+                  <button id="group-rule-clear" class="link" type="button">清空</button>
+                </div>
+              </div>
+              <div id="group-rule-list" class="routing-list"></div>
+            </div>
             <div class="selection-section">
               <div class="small muted">绑定 API Key（可多选）</div>
               <div class="group-toolbar">
@@ -2932,7 +2946,8 @@
       const EDITOR_RESOURCES = {
         plan: ["keys", "plans"],
         route: ["keys", "routes", "credentials", "models"],
-        group: ["keys", "groups", "routes"]
+        group: ["keys", "groups", "routes", "credentials", "models"],
+        keyGroups: ["keys", "groups"]
       };
 
       // A query caches one explicit selection. Changing that selection or starting
@@ -4365,7 +4380,7 @@
           const keyFilter = keyedSection(["eventKeys"], renderEventKeys);
           for (const tab of ["analysis", "request-events", "errors"]) result[tab].sections.unshift(keyFilter);
           result.keys = {
-            editors: ["route", "group"],
+            editors: ["route", "keyGroups"],
             sections: [keyedSection(["keys", "plans", "routes", "groups", "accessControl", "credentials"], renderKeys)]
           };
           result.settings = {
@@ -4374,7 +4389,7 @@
             sections: [
               section(["accessControl"], renderAccessControl),
               section(["forwardedForBlock"], renderForwardedForBlock),
-              keyedSection(["groups", "keys", "routes"], renderGroups),
+              keyedSection(["groups", "keys", "routes", "credentials"], renderGroups),
               keyedSection(["plans", "keys"], renderPlans),
               keyedSection(["routes", "keys", "credentials"], renderRoutes),
               section(["catalog"], renderPriceTable),
@@ -6076,9 +6091,9 @@
                         ? resources.admin.accessControl.value.deny_ungrouped
                         : resources.admin.groups.value !== null &&
                           !(view.group_ids || []).some((id) =>
-                            resources.admin.groups.value.some((group) => group.id === id && group.route_ids?.length)
+                            resources.admin.groups.value.some((group) => group.id === id && groupGrantsAccess(group))
                           ))
-                    ? el("span", { class: "tag bad", text: "禁止访问", title: "未分组 Key 被默认拒绝，或所属分组尚未绑定路由规则" })
+                    ? el("span", { class: "tag bad", text: "禁止访问", title: "未分组 Key 被默认拒绝，或所属分组尚未绑定路由规则或上游凭证" })
                     : view.blocked
                       ? el("span", { class: "tag bad", text: "额度用尽" })
                       : el("span", { class: "tag " + (view.unlimited ? "plain" : "ok"), text: view.unlimited ? "不限制" : "正常" })
@@ -6371,6 +6386,16 @@
           editors.get($("route-dialog")).data,
           $("route-rule-search").value,
           renderRouteRuleList
+        );
+      }
+
+      function renderGroupRuleList() {
+        renderRoutingList(
+          $("group-rule-list"),
+          groupSelection,
+          editors.get($("group-dialog")).data,
+          $("group-rule-search").value,
+          renderGroupRuleList
         );
       }
 
@@ -6776,6 +6801,37 @@
         select.value = [...select.options].some((option) => option.value === value) ? value : "";
       }
 
+      // A group grants access through bound route rules or its own direct selection.
+      function groupGrantsAccess(group) {
+        return !!group.route_ids?.length || Object.values(group.rule || {}).some((values) => Array.isArray(values) && values.length > 0);
+      }
+
+      function groupBindingSummary(group) {
+        const rule = group.rule || {};
+        const count = (field) => (rule[field] || []).length + (rule["denied_" + field] || []).length;
+        const credentials = count("credential_ids") + count("credential_providers");
+        const parts = [];
+        if (group.route_ids?.length) parts.push(group.route_ids.length + " 条路由规则");
+        if (credentials) parts.push(credentials + " 项上游凭证");
+        if (count("models")) parts.push(count("models") + " 个模型");
+        return parts.length ? parts.join("、") : "未绑定规则或凭证，不授权访问";
+      }
+
+      function groupRoutingFields(group) {
+        if (!groupGrantsAccess(group)) return [settingsEntryField("路由规则", settingsChipList([], "未绑定规则或凭证（不授权访问）"))];
+        const routes = (group.route_ids || []).map((id) => ({
+          iconName: "route",
+          text: resources.admin.routes.value.find((route) => route.id === id)?.name || id
+        }));
+        return [
+          ["路由规则", routes],
+          ["上游凭证", routingDimensionChips(group.rule || {}, "credential", group.credential_labels)],
+          ["模型", routingDimensionChips(group.rule || {}, "model", group.credential_labels)]
+        ]
+          .filter(([, items]) => items.length)
+          .map(([label, items]) => settingsEntryField(label, settingsChipList(items)));
+      }
+
       function renderGroups() {
         if (
           renderDataPending(
@@ -6793,16 +6849,7 @@
             settingsCard(
               group.name || group.id,
               [
-                settingsEntryField(
-                  "路由规则",
-                  settingsChipList(
-                    (group.route_ids || []).map((id) => ({
-                      iconName: "route",
-                      text: resources.admin.routes.value.find((route) => route.id === id)?.name || id
-                    })),
-                    "未绑定规则（不授权访问）"
-                  )
-                ),
+                ...groupRoutingFields(group),
                 boundKeyField(resources.admin.keys.value.filter((key) => (key.group_ids || []).includes(group.id)))
               ],
               () => editGroup(group),
@@ -6873,13 +6920,11 @@
           $("group-dialog-title").textContent = current ? "编辑分组" : "新建分组";
           groupSelection = {
             routeIDs: new Set(current?.route_ids || []),
+            ...routingEditorState(current?.rule, "group-credential-enabled-only"),
             scopes: new Set(data.keys.filter((key) => current && (key.group_ids || []).includes(current.id)).map((key) => key.scope))
           };
-          $("group-route-list").replaceChildren(
-            ...(data.routes.length
-              ? data.routes.map((route) => routeBindingChoice(groupSelection, route.id, route.name || route.id, () => {}))
-              : [el("div", { class: "empty", text: "请先创建路由规则" })])
-          );
+          $("group-rule-search").value = "";
+          renderGroupRuleList();
           $("group-key-search").value = "";
           renderGroupFilter($("group-key-filter"), data.groups);
           $("group-key-filter").value = "";
@@ -6888,7 +6933,7 @@
       }
 
       function editKeyGroups(scopes) {
-        openEditor("group-picker", "group", (data) => {
+        openEditor("group-picker", "keyGroups", (data) => {
           const keys = scopes.map((scope) => data.keys.find((key) => key.scope === scope && !key.deleted_at));
           if (!keys.length || keys.some((key) => !key)) throw new Error("所选 Key 已不存在，请刷新列表");
           keyGroupSelection = {
@@ -6914,7 +6959,7 @@
                       })
                     }),
                     el("span", { text: displayLabel(group.name || group.id) }),
-                    el("span", { class: "small muted", text: group.route_ids?.length ? group.route_ids.length + " 条路由规则" : "未绑定规则，不授权访问" })
+                    el("span", { class: "small muted", text: groupBindingSummary(group) })
                   )
                 )
               : [el("div", { class: "empty", text: "暂无分组，请在设置中创建" })])
@@ -9220,6 +9265,15 @@
       $("forwarded-for-block-enabled").addEventListener("change", () => setForwardedForBlockKeywordsError(""));
       $("forwarded-for-block-keywords").addEventListener("input", () => setForwardedForBlockKeywordsError(""));
       $("group-new").onclick = () => editGroup();
+      $("group-rule-search").addEventListener("input", renderGroupRuleList);
+      $("group-rule-all").onclick = () => setVisibleRouteChoices("group-dialog", groupSelection, "allow", renderGroupRuleList);
+      $("group-rule-deny-all").onclick = () => setVisibleRouteChoices("group-dialog", groupSelection, "deny", renderGroupRuleList);
+      $("group-rule-clear").onclick = () => {
+        groupSelection.routeIDs.clear();
+        Object.assign(groupSelection, routingSelection());
+        renderGroupRuleList();
+      };
+      $("group-dialog").addEventListener("close", () => { if (!$("group-dialog").open) groupSelection = null; });
       $("group-key-search").addEventListener("input", renderGroupKeyList);
       $("group-key-filter").addEventListener("change", renderGroupKeyList);
       $("group-key-all").onclick = () => {
@@ -9235,7 +9289,12 @@
           const name = $("group-name").value.trim();
           if (!name) throw new Error("请输入分组名称");
           const id = $("group-id").value;
-          const data = { name, route_ids: [...groupSelection.routeIDs], scopes: [...groupSelection.scopes] };
+          const data = {
+            name,
+            route_ids: [...groupSelection.routeIDs],
+            rule: routingPayload(groupSelection),
+            scopes: [...groupSelection.scopes]
+          };
           await mutateAdmin(id ? "PATCH" : "POST", "/groups", id ? { id, ...data } : data);
           notify("分组已保存");
         });
@@ -9322,7 +9381,8 @@
       function setVisibleRouteChoices(id, selection, state, rerender) {
         const dialog = $(id);
         const data = editors.get(dialog).data;
-        const term = dialog.querySelector('input[type="search"]').value.trim().toLowerCase();
+        // Each routing dialog keeps its rule search in the toolbar, apart from its key and credential searches.
+        const term = dialog.querySelector('.route-form-toolbar input[type="search"]').value.trim().toLowerCase();
         for (const [, , choices] of routingChoiceGroups(selection, data, term)) {
           for (const item of choices) {
             if (item.kind === "route") selection.routeIDs.add(item.value); else setRouteChoice(selection, item.kind, item.value, state);
