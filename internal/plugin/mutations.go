@@ -32,6 +32,8 @@ func (a *App) mutateWithView(req ManagementRequest, path string, handle func(*Ap
 		view["keys"] = a.keyRows()
 		view["access_control"] = a.store.AccessControl()
 		view["routes"] = a.routeRows()
+	case routeForwardedForBlock:
+		view["forwarded_for_block"] = a.store.ForwardedForBlock()
 	case routePlans, routeRoutes, routeKeysBind, routeKeysUnbind, routeKeysReset, routeKeysLabel, routeKeysConcurrency, routeKeysRoutes:
 		view["keys"] = a.keyRows()
 		if path == routePlans {

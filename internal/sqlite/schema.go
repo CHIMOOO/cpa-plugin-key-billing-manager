@@ -50,6 +50,17 @@ CREATE TABLE groups (
 );
 `
 
+// An empty stored message stands for the default one; loading normalizes it.
+const forwardedForBlockSchema = `
+CREATE TABLE forwarded_for_block (
+	id INTEGER PRIMARY KEY CHECK (id = 1),
+	enabled INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+	model_keywords_json TEXT NOT NULL DEFAULT '[]',
+	message TEXT NOT NULL DEFAULT ''
+);
+INSERT INTO forwarded_for_block(id, enabled, model_keywords_json, message) VALUES (1, 0, '[]', '');
+`
+
 const schema = `
 CREATE TABLE api_keys (
 	scope                 TEXT    PRIMARY KEY,
@@ -170,4 +181,4 @@ CREATE TABLE plugin_logs (
 	level   TEXT    NOT NULL DEFAULT '',
 	message TEXT    NOT NULL DEFAULT ''
 );
-` + accessControlSchema
+` + accessControlSchema + forwardedForBlockSchema

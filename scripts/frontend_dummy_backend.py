@@ -590,6 +590,8 @@ KEYS[-1]["deleted_at"] = iso(NOW - timedelta(days=1))
 KEYS[-1]["route_bindings"]["route_ids"] = ["economy"]
 LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
+DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE = "当前禁止模型混用，请联系相关管理员了解详情。"
+FORWARDED_FOR_BLOCK = {"enabled": False, "model_keywords": [], "message": DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE}
 GROUPS = [
     {"id": "engineering-group", "name": "研发团队", "route_ids": ["coding", "ci"]},
     {"id": "production-group", "name": "生产服务", "route_ids": ["analytics"]},
@@ -1269,9 +1271,43 @@ def group_rows():
     return [dict(group, scopes=[key["scope"] for key in KEYS if group["id"] in key.get("group_ids", [])]) for group in GROUPS]
 
 
+def normalize_forwarded_for_block(body):
+    if not isinstance(body, dict):
+        raise ValueError("请求格式无效")
+    unknown = set(body) - {"enabled", "model_keywords", "message"}
+    if unknown:
+        raise ValueError("未知字段：" + ", ".join(sorted(unknown)))
+    if type(body.get("enabled")) is not bool:
+        raise ValueError("enabled 必须是布尔值")
+    keywords = body.get("model_keywords")
+    if not isinstance(keywords, list) or any(not isinstance(keyword, str) for keyword in keywords):
+        raise ValueError("model_keywords 必须是字符串数组")
+    message = body.get("message", "")
+    if not isinstance(message, str):
+        raise ValueError("message 必须是字符串")
+    normalized, seen = [], set()
+    for keyword in keywords:
+        keyword = keyword.strip()
+        if len(keyword.encode()) > 512:
+            raise ValueError("模型关键词过长")
+        if keyword and keyword.lower() not in seen:
+            seen.add(keyword.lower())
+            normalized.append(keyword)
+    if len(normalized) > 100:
+        raise ValueError("模型关键词不能超过 100 个")
+    if body["enabled"] and not normalized:
+        raise ValueError("启用 X-Forwarded-For 拦截时至少填写一个模型关键词")
+    message = message.strip()
+    if len(message.encode()) > 1024:
+        raise ValueError("提示语过长")
+    return {"enabled": body["enabled"], "model_keywords": normalized, "message": message or DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE}
+
+
 def payload_for(path, query):
     if path == f"{API_BASE}/access-control":
         return {"access_control": ACCESS_CONTROL}
+    if path == f"{API_BASE}/forwarded-for-block":
+        return {"forwarded_for_block": FORWARDED_FOR_BLOCK}
     if path == f"{API_BASE}/groups":
         return {"groups": group_rows()}
     if path == f"{API_BASE}/keys":
@@ -1378,6 +1414,8 @@ class Handler(BaseHTTPRequestHandler):
             elif path in {f"{API_BASE}/prices", f"{API_BASE}/prices/reference/refresh"}:
                 view["prices"] = model_prices({"model": self.mutation_view.get("models", [])}, include_custom=True)
                 view["metadata"] = price_status()["metadata"]
+            elif path == f"{API_BASE}/forwarded-for-block":
+                view["forwarded_for_block"] = FORWARDED_FOR_BLOCK
             elif path == f"{API_BASE}/plugin-logs":
                 view["logs_cleared"] = True
             payload = dict(payload, view=view)
@@ -1503,6 +1541,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             ACCESS_CONTROL.update(body)
             self.send_json(200, {"access_control": ACCESS_CONTROL})
+        elif route == ("PUT", f"{API_BASE}/forwarded-for-block"):
+            try:
+                value = normalize_forwarded_for_block(json.loads(request_body or b"{}"))
+            except ValueError as error:
+                self.send_json(400, {"error": {"code": "invalid", "message": str(error)}})
+                return
+            FORWARDED_FOR_BLOCK.update(value)
+            self.send_json(200, {"forwarded_for_block": FORWARDED_FOR_BLOCK})
         elif route in {("POST", f"{API_BASE}/groups"), ("PATCH", f"{API_BASE}/groups")}:
             body = json.loads(request_body or b"{}")
             group_id = body.get("id") or "group-" + str(time.time_ns())

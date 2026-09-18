@@ -375,7 +375,9 @@
       }
       label.field > .native-select, label.field > .native-select > select { width: 100%; }
       label.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 500; color: var(--text-secondary); }
-      :root:not([data-cpamp-plugin-host="true"]) label.field input, :root:not([data-cpamp-plugin-host="true"]) label.field select {
+      :root:not([data-cpamp-plugin-host="true"]) label.field input,
+      :root:not([data-cpamp-plugin-host="true"]) label.field select,
+      :root:not([data-cpamp-plugin-host="true"]) label.field textarea {
         font-size: 14px;
         line-height: 1.5;
       }
@@ -526,7 +528,9 @@
       :root[data-cpamp-plugin-host="true"] input:not([type="checkbox"]):not([type="radio"]), :root[data-cpamp-plugin-host="true"] select {
         padding-block: 5px;
       }
-      :root[data-cpamp-plugin-host="true"] label.field input, :root[data-cpamp-plugin-host="true"] label.field select {
+      :root[data-cpamp-plugin-host="true"] label.field input,
+      :root[data-cpamp-plugin-host="true"] label.field select,
+      :root[data-cpamp-plugin-host="true"] label.field textarea {
         font-size: 13px;
         line-height: 1.5;
       }
@@ -1468,6 +1472,15 @@
       .route-rule-list { margin-top: 16px; max-height: min(28dvh, 240px); }
       .access-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
       .access-help { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
+      .forwarded-for-fields { display: grid; gap: 12px; margin-top: 14px; }
+      .forwarded-for-field { display: grid; gap: 4px; min-width: 0; }
+      .forwarded-for-fields .field { min-width: 0; }
+      .forwarded-for-fields input, .forwarded-for-fields textarea { width: 100%; min-width: 0; }
+      .forwarded-for-fields textarea { resize: vertical; }
+      :root .forwarded-for-fields textarea[aria-invalid="true"] {
+        border-color: var(--error-color);
+        box-shadow: inset 0 0 0 1px var(--error-color);
+      }
       .group-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
       .group-toolbar input { flex: 1 1 160px; min-width: 0; }
       .group-toolbar .native-select { max-width: 100%; }
@@ -2238,6 +2251,22 @@
             <p class="access-help">访问控制开启时执行分组和路由限制。开启「默认拒绝未分组 Key」后，未加入任何分组的新 Key 和现有 Key 均无法访问上游。关闭访问控制后不执行这些限制，订阅额度与并发限制仍然生效。</p>
           </div>
           <div class="card">
+            <div class="row spread settings-section-header"><h2>X-Forwarded-For 拦截</h2><button id="forwarded-for-block-save" class="primary" type="button" disabled>保存</button></div>
+            <div id="forwarded-for-block-status" class="notice hidden" role="status"></div>
+            <div class="access-controls">
+              <label class="toggle-filter"><input id="forwarded-for-block-enabled" type="checkbox" role="switch" disabled /><span>启用拦截</span></label>
+            </div>
+            <div class="forwarded-for-fields">
+              <div class="forwarded-for-field">
+                <label class="field">模型关键词<textarea id="forwarded-for-block-keywords" rows="3" placeholder="gpt&#10;claude" aria-describedby="forwarded-for-block-keywords-hint forwarded-for-block-keywords-error" disabled></textarea></label>
+                <div id="forwarded-for-block-keywords-hint" class="small muted">多个关键词用换行或逗号分隔；模型名称包含任一关键词即命中，不区分大小写</div>
+                <div id="forwarded-for-block-keywords-error" class="field-error small" role="alert"></div>
+              </div>
+              <label class="field">提示语<textarea id="forwarded-for-block-message" rows="2" placeholder="当前禁止模型混用，请联系相关管理员了解详情。" disabled></textarea></label>
+            </div>
+            <p class="access-help">开启后，模型名称包含任一关键词且请求头携带 X-Forwarded-For 的请求会被拒绝，返回 HTTP 403 和上面的提示语；提示语留空时使用默认提示语。保存后立即生效，无需重启。通过 WebSocket 调用 Responses API 的客户端（如 Codex CLI）只会看到连接被关闭，收不到提示语。注意：如果 CPA 部署在会自动添加 X-Forwarded-For 的反向代理之后，所有命中关键词的模型请求都会被拦截。</p>
+          </div>
+          <div class="card">
             <div class="row spread settings-section-header"><h2>API Key 分组</h2><button id="group-new" type="button">新建分组</button></div>
             <p class="access-help">每个 Key 可以加入多个分组，每个分组可以绑定多条路由规则。要限定到指定认证文件，请在路由规则中仅将这些文件设为白名单。所有所属分组均未绑定规则时，Key 禁止访问。</p>
             <div id="groups-body"></div>
@@ -2839,6 +2868,7 @@
           routes: "路由规则",
           groups: "API Key 分组",
           accessControl: "访问控制",
+          forwardedForBlock: "X-Forwarded-For 拦截",
           credentials: "凭证目录",
           models: "模型目录",
           catalog: "模型价格",
@@ -2886,7 +2916,10 @@
 
       const resourceGroups = {
         admin: {
-          configuration: { names: ["keys", "plans", "routes", "groups", "accessControl", "credentials", "models"], syncErrors: [] },
+          configuration: {
+            names: ["keys", "plans", "routes", "groups", "accessControl", "forwardedForBlock", "credentials", "models"],
+            syncErrors: []
+          },
           pricing: { names: ["catalog", "priceStatus"], after: "configuration" },
           authFiles: { names: ["authFiles"] }
         },
@@ -3927,6 +3960,9 @@
         await settleLoads([
           read("plans", () => fetchAdminCollection("plans")),
           read("accessControl", async () => validateAccessControl((await plugin("GET", "/access-control"))?.access_control)),
+          read("forwardedForBlock", async () =>
+            validateForwardedForBlock((await plugin("GET", "/forwarded-for-block"))?.forwarded_for_block)
+          ),
           read("models", async () => fetchModels(false, (await configuredKeys).find((key) => key.trim())?.trim() || "")),
           synced.then(() =>
             settleLoads(["keys", "routes", "groups", "credentials"].map((name) => read(name, () => fetchAdminCollection(name))))
@@ -3962,6 +3998,9 @@
         }
         if (Object.hasOwn(view, "access_control")) {
           Object.assign(resources.admin.accessControl, { value: validateAccessControl(view.access_control), error: "" });
+        }
+        if (Object.hasOwn(view, "forwarded_for_block")) {
+          Object.assign(resources.admin.forwardedForBlock, { value: validateForwardedForBlock(view.forwarded_for_block), error: "" });
         }
         const catalog = resources.admin.catalog;
         if (Object.hasOwn(view, "prices")) {
@@ -4334,6 +4373,7 @@
             query: "logs",
             sections: [
               section(["accessControl"], renderAccessControl),
+              section(["forwardedForBlock"], renderForwardedForBlock),
               keyedSection(["groups", "keys", "routes"], renderGroups),
               keyedSection(["plans", "keys"], renderPlans),
               keyedSection(["routes", "keys", "credentials"], renderRoutes),
@@ -6578,6 +6618,7 @@
         const value = resource.value;
         for (const id of ["access-control-enabled", "access-control-deny-ungrouped", "access-control-save"])
           $(id).disabled = !value || !!adminUIState.accessSaving;
+        $("access-control-save").textContent = adminUIState.accessSaving ? "正在保存…" : "保存";
         if (value) {
           $("access-control-enabled").checked = value.enabled;
           $("access-control-deny-ungrouped").checked = value.deny_ungrouped;
@@ -6612,6 +6653,111 @@
           if (owner === adminUIState) {
             for (const id of ["access-control-enabled", "access-control-deny-ungrouped", "access-control-save"]) $(id).disabled = false;
             $("access-control-save").textContent = "保存";
+          }
+        }
+      }
+
+      const FORWARDED_FOR_BLOCK_CONTROLS = [
+        "forwarded-for-block-enabled",
+        "forwarded-for-block-keywords",
+        "forwarded-for-block-message",
+        "forwarded-for-block-save"
+      ];
+
+      function validateForwardedForBlock(value) {
+        const keywords = value?.model_keywords;
+        if (
+          !value || typeof value.enabled !== "boolean" || typeof value.message !== "string" || !Array.isArray(keywords) ||
+          keywords.some((keyword) => typeof keyword !== "string")
+        )
+          throw new Error("X-Forwarded-For 拦截响应格式无效");
+        return value;
+      }
+
+      // Mirrors the server: trimmed, non-empty, case-insensitively unique, first spelling kept.
+      function forwardedForBlockKeywords(text) {
+        const seen = new Set();
+        return text.split(/[\n,，]/).map((keyword) => keyword.trim()).filter((keyword) => {
+          const folded = keyword.toLowerCase();
+          if (!keyword || seen.has(folded)) return false;
+          seen.add(folded);
+          return true;
+        });
+      }
+
+      function sameForwardedForBlock(left, right) {
+        return (
+          left.enabled === right.enabled && left.message === right.message && left.model_keywords.length === right.model_keywords.length &&
+          left.model_keywords.every((keyword, index) => keyword === right.model_keywords[index])
+        );
+      }
+
+      function setForwardedForBlockKeywordsError(message) {
+        const input = $("forwarded-for-block-keywords");
+        if (message) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid");
+        $("forwarded-for-block-keywords-error").textContent = message;
+      }
+
+      // Refreshes replace the resource object; only a changed saved value may replace unsaved input.
+      function fillForwardedForBlock(value) {
+        $("forwarded-for-block-enabled").checked = value.enabled;
+        $("forwarded-for-block-keywords").value = value.model_keywords.join("\n");
+        $("forwarded-for-block-message").value = value.message;
+        setForwardedForBlockKeywordsError("");
+        adminUIState.forwardedForBlockShown = value;
+      }
+
+      function renderForwardedForBlock() {
+        const resource = resources.admin.forwardedForBlock;
+        const value = resource.value;
+        for (const id of FORWARDED_FOR_BLOCK_CONTROLS) $(id).disabled = !value || !!adminUIState.forwardedForBlockSaving;
+        $("forwarded-for-block-save").textContent = adminUIState.forwardedForBlockSaving ? "正在保存…" : "保存";
+        const shown = adminUIState.forwardedForBlockShown;
+        if (value && !(shown && sameForwardedForBlock(shown, value))) fillForwardedForBlock(value);
+        const status = $("forwarded-for-block-status");
+        status.className = resource.error ? "notice err show" : value ? "notice hidden" : "notice show";
+        status.textContent = resource.error || (value ? "" : "正在读取已保存的 X-Forwarded-For 拦截设置…");
+      }
+
+      async function saveForwardedForBlock() {
+        const owner = adminUIState;
+        if (owner.forwardedForBlockSaving || !resources.admin.forwardedForBlock.value) return;
+        // A new attempt supersedes the previous save failure.
+        Object.assign($("forwarded-for-block-status"), { className: "notice hidden", textContent: "" });
+        const payload = {
+          enabled: $("forwarded-for-block-enabled").checked,
+          model_keywords: forwardedForBlockKeywords($("forwarded-for-block-keywords").value),
+          message: $("forwarded-for-block-message").value.trim()
+        };
+        if (payload.enabled && !payload.model_keywords.length) {
+          setForwardedForBlockKeywordsError("启用 X-Forwarded-For 拦截时至少填写一个模型关键词");
+          $("forwarded-for-block-keywords").focus();
+          return;
+        }
+        setForwardedForBlockKeywordsError("");
+        owner.forwardedForBlockSaving = true;
+        for (const id of FORWARDED_FOR_BLOCK_CONTROLS) $(id).disabled = true;
+        $("forwarded-for-block-save").textContent = "正在保存…";
+        try {
+          const result = await writeAdmin("PUT", "/forwarded-for-block", payload);
+          const saved = validateForwardedForBlock(result.view?.forwarded_for_block);
+          if (!sameForwardedForBlock(saved, { ...payload, message: saved.message })) throw new Error("保存后的设置与请求不一致，请刷新确认");
+          Object.assign(resources.admin.forwardedForBlock, { value: saved, error: "" });
+          // Show the normalized values even when they equal the previously displayed ones.
+          if (owner === adminUIState) fillForwardedForBlock(saved);
+          notify("X-Forwarded-For 拦截设置已保存");
+          renderPage();
+        } catch (error) {
+          if (error instanceof AuthError || error instanceof StaleRequestError) return fail(error);
+          if (owner === adminUIState) {
+            $("forwarded-for-block-status").className = "notice err show";
+            $("forwarded-for-block-status").textContent = "保存失败：" + (error.message || error);
+          }
+        } finally {
+          owner.forwardedForBlockSaving = false;
+          if (owner === adminUIState) {
+            for (const id of FORWARDED_FOR_BLOCK_CONTROLS) $(id).disabled = false;
+            $("forwarded-for-block-save").textContent = "保存";
           }
         }
       }
@@ -9070,6 +9216,9 @@
       };
       $("keys-edit-groups").onclick = () => editKeyGroups([...adminUIState.selectedKeys]);
       $("access-control-save").onclick = saveAccessControl;
+      $("forwarded-for-block-save").onclick = saveForwardedForBlock;
+      $("forwarded-for-block-enabled").addEventListener("change", () => setForwardedForBlockKeywordsError(""));
+      $("forwarded-for-block-keywords").addEventListener("input", () => setForwardedForBlockKeywordsError(""));
       $("group-new").onclick = () => editGroup();
       $("group-key-search").addEventListener("input", renderGroupKeyList);
       $("group-key-filter").addEventListener("change", renderGroupKeyList);

@@ -22,6 +22,7 @@ func (d *DB) Load(requestEventCutoff, pluginLogCutoff time.Time) (billing.Snapsh
 		d.loadPrices,
 		d.loadRoutes,
 		d.loadAccessControl,
+		d.loadForwardedForBlock,
 		d.loadGroups,
 		d.loadKeyGroups,
 		d.loadConfigCredentials,
@@ -93,6 +94,11 @@ func saveStateTables(tx *sql.Tx, state *billing.State, changes billing.Changes) 
 	}
 	if changes.AccessControl {
 		if _, err := tx.Exec("UPDATE access_control SET enabled = ?, deny_ungrouped = ? WHERE id = 1", state.AccessControl.Enabled, state.AccessControl.DenyUngrouped); err != nil {
+			return err
+		}
+	}
+	if changes.ForwardedForBlock {
+		if err := saveForwardedForBlock(tx, state.ForwardedForBlock); err != nil {
 			return err
 		}
 	}

@@ -133,6 +133,7 @@ type RequestInterceptRequest struct {
 	SourceFormat   string         `json:"SourceFormat"`
 	Model          string         `json:"Model"`
 	RequestedModel string         `json:"RequestedModel"`
+	Headers        http.Header    `json:"Headers"`
 	Metadata       map[string]any `json:"Metadata"`
 }
 

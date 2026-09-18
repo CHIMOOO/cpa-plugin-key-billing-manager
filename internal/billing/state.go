@@ -13,6 +13,7 @@ type State struct {
 	Routes            []Route
 	Groups            []KeyGroup
 	AccessControl     AccessControl
+	ForwardedForBlock ForwardedForBlock
 	ConfigCredentials map[string]ConfigCredential
 }
 
@@ -28,6 +29,7 @@ func NewState() *State {
 		Keys:              make(map[string]*KeyState),
 		ConfigCredentials: make(map[string]ConfigCredential),
 		AccessControl:     AccessControl{Enabled: true},
+		ForwardedForBlock: DefaultForwardedForBlock(),
 	}
 }
 

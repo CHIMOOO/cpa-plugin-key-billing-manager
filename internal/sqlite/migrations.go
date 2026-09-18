@@ -11,6 +11,15 @@ import (
 	"cpa-key-billing/internal/billing"
 )
 
+// v16 adds the X-Forwarded-For model block, disabled, and leaves every existing
+// table untouched.
+func migrateToV16(tx *sql.Tx) error {
+	if _, err := tx.Exec(forwardedForBlockSchema); err != nil {
+		return fmt.Errorf("迁移 X-Forwarded-For 拦截设置：%w", err)
+	}
+	return nil
+}
+
 // v15 adds group membership and persisted admission policy without rewriting
 // keys, quotas, routes, or historical request records.
 func migrateToV15(tx *sql.Tx) error {

@@ -55,7 +55,10 @@ func TestV14AccessControlMigrationPreservesHistoryAndRollsBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer raw.Close()
-			oldSchema := strings.TrimSuffix(schema, accessControlSchema)
+			oldSchema := strings.TrimSuffix(strings.TrimSuffix(schema, forwardedForBlockSchema), accessControlSchema)
+			if oldSchema == schema || strings.Contains(oldSchema, "forwarded_for_block") || strings.Contains(oldSchema, "access_control") {
+				t.Fatal("v14 fixture still contains later tables")
+			}
 			if _, err := raw.Exec(oldSchema + `
 PRAGMA user_version=14;
 INSERT INTO api_keys(scope,preview,label,route_bindings_json) VALUES('scope','dum…001','History','{"route_ids":["legacy"]}');
@@ -80,7 +83,7 @@ INSERT INTO request_errors(request_event_id,status_code,body) VALUES(2,502,'pres
 				if err := raw.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 14 {
 					t.Fatalf("migration version did not roll back: %d %v", version, err)
 				}
-				if err := raw.QueryRow("SELECT count(*) FROM sqlite_master WHERE name IN ('access_control', 'key_groups')").Scan(&tables); err != nil || tables != 0 {
+				if err := raw.QueryRow("SELECT count(*) FROM sqlite_master WHERE name IN ('access_control', 'key_groups', 'forwarded_for_block')").Scan(&tables); err != nil || tables != 0 {
 					t.Fatalf("partial schema committed: %d %v", tables, err)
 				}
 				var marker string
@@ -96,6 +99,9 @@ INSERT INTO request_errors(request_event_id,status_code,body) VALUES(2,502,'pres
 			state := mustLoad(t, d).State
 			if !state.AccessControl.Enabled || state.AccessControl.DenyUngrouped || len(state.Groups) != 0 || state.Keys["scope"].Label != "History" || len(state.Keys["scope"].RouteBindings.RouteIDs) != 1 {
 				t.Fatalf("migration changed legacy config: %+v", state)
+			}
+			if !reflect.DeepEqual(state.ForwardedForBlock, billing.DefaultForwardedForBlock()) {
+				t.Fatalf("v14 migration did not add the disabled X-Forwarded-For block: %+v", state.ForwardedForBlock)
 			}
 			events, err := d.RequestEvents(billing.RequestEventQuery{}, time.Time{})
 			if err != nil || events.Total != 3 || events.Statuses.Failed != 1 {

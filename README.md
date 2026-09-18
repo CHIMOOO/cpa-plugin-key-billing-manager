@@ -18,6 +18,7 @@
 - 支持为每个 API Key 绑定**路由规则**，限制模型访问范围和上游凭证
 - 支持 API Key 加入多个分组，按组绑定路由规则，批量设置成员与凭证白名单
 - 支持全局访问控制开关，以及可选的未分组 Key 默认拒绝策略
+- 支持 **X-Forwarded-For 拦截**：按模型名称关键词拒绝携带 `X-Forwarded-For` 请求头的请求，默认关闭，保存后立即生效
 - 可从 [models.dev](https://models.dev/) 获取模型参考价
 
 ## 工作原理
@@ -136,6 +137,8 @@ http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing/ui#account
 
 **启用访问控制**默认开启，保存后刷新页面或重启 CPA 都会保留。关闭后暂停分组、模型与凭证访问限制，CPA 自身认证及插件的计费、额度和并发限制仍然生效。**默认拒绝未分组 Key**默认关闭；开启并保存后，所有未分组 Key（包括后续新建的 Key）都不能访问模型。关闭时，没有任何分组或路由限制的 Key 可使用 CPA 提供的上游。
 
+**X-Forwarded-For 拦截**默认关闭，在访问控制设置下方配置。启用时至少填写一个模型关键词：模型名称包含任一关键词即命中，不区分大小写，例如填写 `gpt` 会命中所有名称含 gpt 的模型。请求模型命中且请求头携带 `X-Forwarded-For`（无论取值）时，插件在路由、并发和额度检查之前返回 HTTP 403 和提示语；提示语可自定义，留空时为“当前禁止模型混用，请联系相关管理员了解详情。”。保存后下一个请求即按新设置处理，无需重启 CPA；该规则不受访问控制开关影响。被拦截的请求不产生用量记录，只写入插件日志：同一 API Key 命中同一关键词时每 10 分钟最多记录一条（保存设置后重新计算），日志包含 Key、接口、模型和关键词，不记录请求头中的 IP。**注意**：如果 CPA 部署在会自动添加 `X-Forwarded-For` 的反向代理、负载均衡或 CDN 之后，所有命中关键词的模型请求都会被拦截。
+
 凭证选择器提供 Codex、xAI、OAuth 分类和搜索；OAuth 按认证文件来源筛选。API Key 只显示脱敏值：足够长时显示首尾各 8 个字符，短 Key 按长度缩减，4 个字符只显示首尾各 1 个字符。
 
 升级前已有的仅模型或仅拒绝列表路由也遵循凭证白名单规则，需明确选择允许凭证后才能继续访问。
@@ -172,8 +175,11 @@ flowchart TB
 | 订阅额度用尽 | `429` | `rate_limit_error` | `rate_limit_exceeded` |
 | 模型无权访问 | `403` | `permission_error` | `insufficient_quota` |
 | 未分组默认拒绝、空组或最终凭证未授权 | `403` | `permission_error` | `access_denied` |
+| 模型命中 X-Forwarded-For 拦截规则 | `403` | `permission_error` | `access_denied` |
 | 没有符合规则且可用的凭证 | `503` | `server_error` | `internal_server_error` |
 | 已绑定的路由规则不存在或损坏 | `503` | `server_error` | `routing_configuration_error` |
+
+通过 WebSocket 调用 `/v1/responses`（如 Codex CLI 的 WebSocket 传输）时，CPA 遇到插件拦截会直接关闭连接，客户端收不到上表的状态码和提示语，通常表现为连接断开后重试。
 
 ## 在 CPA 中调试本地修改
 

@@ -35,6 +35,9 @@ type Store struct {
 	// blocked remembers which keys have already had their exhausted quota
 	// reported, so retries against one do not repeat it.
 	blocked blockedKeys
+	// forwardedForReports throttles X-Forwarded-For refusal reports per key and
+	// keyword, and starts over whenever the rule is saved.
+	forwardedForReports forwardedForReports
 
 	errMu     sync.Mutex
 	lastError string
@@ -225,6 +228,7 @@ func editConfiguration[T any](s *Store, fn func(*State) (T, Changes, error)) (T,
 		for i, group := range s.state.Groups {
 			next.Groups[i] = cloneGroup(group)
 		}
+		next.ForwardedForBlock = cloneForwardedForBlock(s.state.ForwardedForBlock)
 		next.Keys = make(map[string]*KeyState, len(s.state.Keys))
 		for scope, key := range s.state.Keys {
 			if key == nil {

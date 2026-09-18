@@ -1293,6 +1293,132 @@ assert_group_access_control() {
   log_step "分组访问控制已验证：多组选中凭证、拒绝未选凭证、空允许列表、新 Key 默认拒绝和全局开关"
 }
 
+# The rule is off by default and read on every request: once saved, only a model
+# matching a keyword that arrives with X-Forwarded-For is refused, and neither a
+# refusal nor the forwarded address may reach usage, the response or the logs.
+assert_forwarded_for_block() {
+  local port="$1" runtime_dir="$2" client body endpoint header_line http_status count
+  local route="/v0/management/plugins/cpa-key-billing/forwarded-for-block"
+  local settings_file="$runtime_dir/forwarded-for-block.json"
+  local events_file="$runtime_dir/forwarded-for-events.json"
+  local logs_file="$runtime_dir/forwarded-for-plugin-logs.json"
+  local response_file="$runtime_dir/responses/forwarded-for.json"
+  local forwarded_ip="203.0.113.7"
+  local default_message="当前禁止模型混用，请联系相关管理员了解详情。"
+  local custom_message="e2e：经代理转发的请求禁止使用该模型"
+  local -a headers
+
+  management_call GET "$port" "$route" >"$settings_file"
+  if ! jq -e --arg message "$default_message" \
+      '.forwarded_for_block == {enabled: false, model_keywords: [], message: $message}' "$settings_file" >/dev/null; then
+    echo "X-Forwarded-For 拦截的默认设置不正确：$(jq -c '.' "$settings_file")" >&2
+    return 1
+  fi
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  count="$(jq -er '.entries | length' "$events_file")"
+
+  http_status="$(curl -sS --max-time 30 -X PUT -H "Authorization: Bearer e2e-management-key" -H "Content-Type: application/json" \
+    --data '{"enabled":true,"model_keywords":[" "]}' --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port$route")"
+  if [[ "$http_status" != "400" ]] || ! jq -e '.error.code == "invalid"' "$response_file" >/dev/null; then
+    echo "启用 X-Forwarded-For 拦截但未填写关键词时没有返回 400。" >&2
+    return 1
+  fi
+
+  # A request the suite already routes: gpt-5.6-sol on the chat provider.
+  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg message "$custom_message" '{enabled:true,model_keywords:["  GPT-5.6 ","gpt-5.6",""],message:$message}')" \
+    >"$settings_file"
+  if ! jq -e --arg message "$custom_message" \
+      '.forwarded_for_block == {enabled: true, model_keywords: ["GPT-5.6"], message: $message}' "$settings_file" >/dev/null; then
+    echo "X-Forwarded-For 拦截设置没有按规范保存：$(jq -c '.' "$settings_file")" >&2
+    return 1
+  fi
+
+  for client in chat anthropic; do
+    headers=(-H "X-Forwarded-For: $forwarded_ip")
+    while IFS= read -r header_line; do
+      headers+=(-H "$header_line")
+    done < <(client_headers "$client")
+    body="$(request_body "$client" "gpt-5.6-sol" false "Reply with exactly OK.")"
+    endpoint="$(client_endpoint "$client" "gpt-5.6-sol" false)"
+    http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" --output "$response_file" \
+      --write-out '%{http_code}' "http://127.0.0.1:$port$endpoint")"
+    if [[ "$http_status" != "403" ]]; then
+      echo "携带 X-Forwarded-For 的 ${client} 请求返回 HTTP ${http_status}，预期 403。" >&2
+      return 1
+    fi
+    if ! jq -e --arg client "$client" --arg message "$custom_message" '
+        (if $client == "anthropic" then .type == "error" else true end) and
+        .error.type == "permission_error" and .error.code == "access_denied" and .error.message == $message
+      ' "$response_file" >/dev/null || grep -Fq "$forwarded_ip" "$response_file"; then
+      echo "X-Forwarded-For 拦截 ${client} 的错误内容不正确：$(jq -c '.' "$response_file")" >&2
+      return 1
+    fi
+  done
+
+  body="$(request_body chat "gpt-5.6-sol" false "Reply with exactly OK.")"
+  api_call "$port" "X-Forwarded-For 拦截启用：不携带请求头的同一模型" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 1))" "$events_file"
+
+  headers=(-H "X-Forwarded-For: $forwarded_ip")
+  while IFS= read -r header_line; do
+    headers+=(-H "$header_line")
+  done < <(client_headers chat)
+  body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
+  http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" --output "$response_file" \
+    --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "200" ]] || jq -e '.error? != null' "$response_file" >/dev/null 2>&1; then
+    echo "未命中关键词的模型携带 X-Forwarded-For 时被拦截：HTTP ${http_status}。" >&2
+    return 1
+  fi
+  wait_for_event_count "$port" "$((count + 2))" "$events_file"
+
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs" >"$logs_file"
+  if ! jq -e --arg ip "$forwarded_ip" '
+      [.entries[] | select(.message | startswith("X-Forwarded-For 拦截："))] as $blocked |
+      ($blocked | length) == 1 and $blocked[0].level == "info" and
+      ($blocked[0].message | contains("模型 gpt-5.6-sol") and contains("命中关键词 GPT-5.6") and (contains($ip) | not))
+    ' "$logs_file" >/dev/null; then
+    echo "插件日志的 X-Forwarded-For 拦截记录不正确：$(jq -c '[.entries[] | select(.message | startswith("X-Forwarded-For"))]' "$logs_file")" >&2
+    return 1
+  fi
+
+  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg message "$custom_message" '{enabled:false,model_keywords:["GPT-5.6"],message:$message}')" >/dev/null
+  management_call GET "$port" "$route" >"$settings_file"
+  if ! jq -e '.forwarded_for_block.enabled == false and .forwarded_for_block.model_keywords == ["GPT-5.6"]' "$settings_file" >/dev/null; then
+    echo "关闭 X-Forwarded-For 拦截的设置没有保存。" >&2
+    return 1
+  fi
+  headers=(-H "X-Forwarded-For: $forwarded_ip")
+  while IFS= read -r header_line; do
+    headers+=(-H "$header_line")
+  done < <(client_headers chat)
+  body="$(request_body chat "gpt-5.6-sol" false "Reply with exactly OK.")"
+  http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" --output "$response_file" \
+    --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "200" ]] || jq -e '.error? != null' "$response_file" >/dev/null 2>&1; then
+    echo "关闭 X-Forwarded-For 拦截后，携带请求头的请求没有恢复：HTTP ${http_status}。" >&2
+    return 1
+  fi
+  wait_for_event_count "$port" "$((count + 3))" "$events_file"
+
+  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
+    --data '{"enabled":false,"model_keywords":[],"message":""}' >/dev/null
+  management_call GET "$port" "$route" >"$settings_file"
+  if ! jq -e --arg message "$default_message" \
+      '.forwarded_for_block == {enabled: false, model_keywords: [], message: $message}' "$settings_file" >/dev/null; then
+    echo "X-Forwarded-For 拦截设置没有恢复默认值。" >&2
+    return 1
+  fi
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  if [[ "$(jq -er '.entries | length' "$events_file")" != "$((count + 3))" ]]; then
+    echo "X-Forwarded-For 拦截产生了额外用量。" >&2
+    return 1
+  fi
+  log_step "X-Forwarded-For 拦截已验证：默认关闭、关键词规范化、2 种协议拦截、无请求头及未命中模型放行、即时关闭与恢复默认"
+}
+
 run_target() {
   local target="$1"
   local index="$2"
@@ -1646,11 +1772,12 @@ run_target() {
   log_step "插件启动事件已验证"
   assert_reference_price_billing "$port" "$runtime_dir"
   assert_group_access_control "$port" "$runtime_dir"
+  assert_forwarded_for_block "$port" "$runtime_dir"
 
   kill "$active_pid" >/dev/null 2>&1 || true
   wait "$active_pid" >/dev/null 2>&1 || true
   active_pid=""
-  log_ok "${host_label}：59 个上游请求（含 4 个参考价、4 个未定价及 4 个分组开关请求），1 次并发拦截，6 次模型拦截，5 次凭证拦截，2 次未分组拦截，12 次额度拦截"
+  log_ok "${host_label}：62 个上游请求（含 4 个参考价、4 个未定价、4 个分组开关及 3 个 X-Forwarded-For 规则请求），1 次并发拦截，6 次模型拦截，5 次凭证拦截，2 次未分组拦截，2 次 X-Forwarded-For 拦截，12 次额度拦截"
 }
 
 log_stage "启动 dummy provider"

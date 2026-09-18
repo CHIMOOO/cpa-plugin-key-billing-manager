@@ -72,6 +72,17 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	scope := metadataString(req.Metadata, MetadataCallerScope)
 	endpoint := metadataString(req.Metadata, MetadataRequestPath)
 
+	// The X-Forwarded-For rule is read on every request, so saving it applies to
+	// the next one. It refuses before routing, pricing, slots and quota are touched.
+	if !helper && carriesForwardedFor(req.Headers) {
+		if match, blocked := a.store.MatchForwardedForBlock(req.RequestedModel, req.Model); blocked {
+			report := match
+			report.Model = forwardedForLogModel(match.Model)
+			a.store.ReportForwardedForBlock(scope, endpoint, report)
+			return OKEnvelope(accessDeniedResponse(req.SourceFormat, match.Message))
+		}
+	}
+
 	// Reject disallowed models before quota checks can open a subscription period.
 	if !helper {
 		routing := a.store.ResolveRouting(scope, req.Model, req.RequestedModel)
