@@ -76,6 +76,10 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodGet, "/account-runtime", "View upstream account usage and concurrency", (*App).getAccountRuntime},
 	{http.MethodGet, "/account-runtime/settings", "View account runtime settings", (*App).getAccountRuntimeSettings},
 	{http.MethodPut, "/account-runtime/settings", "Save account runtime settings", (*App).setAccountRuntimeSettings},
+	{http.MethodGet, "/risk-center", "View content risk policies and redacted events", (*App).getRiskCenter},
+	{http.MethodPut, "/risk-center/config", "Save content risk policy", (*App).setRiskConfig},
+	{http.MethodDelete, "/risk-center/events", "Clear redacted content risk events", (*App).clearRiskEvents},
+	{http.MethodDelete, "/risk-center/hashes", "Clear content risk hash memory", (*App).clearRiskHashes},
 	{http.MethodGet, routeKeys, "View API key status", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"keys": a.keyRows()})
 	}},

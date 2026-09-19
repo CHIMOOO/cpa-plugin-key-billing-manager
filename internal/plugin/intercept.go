@@ -69,6 +69,11 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	if !a.store.Enabled() {
 		return OKEnvelope(RequestInterceptResponse{})
 	}
+	if !helper && a.risk != nil {
+		if response := a.risk.inspect(req); response.Terminate {
+			return OKEnvelope(response)
+		}
+	}
 	scope := metadataString(req.Metadata, MetadataCallerScope)
 	endpoint := metadataString(req.Metadata, MetadataRequestPath)
 

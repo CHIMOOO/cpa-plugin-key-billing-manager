@@ -17,6 +17,7 @@ type App struct {
 	store                 *billing.Store
 	turnState             *turnstate.Manager
 	accountRuntime        *accountRuntime
+	risk                  *riskControl
 	hostSchema            atomic.Uint32
 	hostCaller            HostCaller
 	integrationsMu        sync.Mutex
@@ -46,6 +47,7 @@ func newApp(store *billing.Store) *App {
 		store:                 store,
 		turnState:             turnstate.New(),
 		accountRuntime:        newAccountRuntime(),
+		risk:                  newRiskControl(),
 		admissions:            make(map[string]*requestAdmission),
 		credentials:           make(map[string]credentialView),
 		credentialsByRawID:    make(map[string]string),
@@ -128,6 +130,11 @@ func (a *App) configure(raw []byte) error {
 	if errRuntime != nil {
 		return errRuntime
 	}
+	riskPath := cfg.StateFile + ".risk-control.json"
+	riskState, errRisk := loadRiskControl(riskPath)
+	if errRisk != nil {
+		return errRisk
+	}
 	if errConfigure := a.turnState.ConfigureWith(cfg.StateFile, func() error {
 		a.routingMu.Lock()
 		defer a.routingMu.Unlock()
@@ -145,6 +152,7 @@ func (a *App) configure(raw []byte) error {
 	a.accountRuntime.mu.Lock()
 	a.accountRuntime.path, a.accountRuntime.settings = runtimePath, runtimeSettings
 	a.accountRuntime.mu.Unlock()
+	a.risk.install(riskPath, riskState)
 	a.hostSchema.Store(req.SchemaVersion)
 	// Refresh records its result; a download failure does not disable custom prices.
 	_, _ = a.store.EnsureReferencePrices()

@@ -140,6 +140,7 @@ type RequestInterceptRequest struct {
 	Model          string         `json:"Model"`
 	RequestedModel string         `json:"RequestedModel"`
 	Headers        http.Header    `json:"Headers"`
+	Body           []byte         `json:"Body"`
 	Metadata       map[string]any `json:"Metadata"`
 }
 

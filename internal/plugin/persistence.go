@@ -69,6 +69,7 @@ func persistenceStatePaths(rawStatePath string) []persistencePath {
 		{Kind: "billing_database", Path: resolvePersistencePath(strings.TrimSuffix(rawStatePath, ".turn-state.json"))},
 		{Kind: "turn_state", Path: resolvePersistencePath(rawStatePath)},
 		{Kind: "account_runtime", Path: resolvePersistencePath(strings.TrimSuffix(rawStatePath, ".turn-state.json") + ".account-runtime.json")},
+		{Kind: "risk_control", Path: resolvePersistencePath(strings.TrimSuffix(rawStatePath, ".turn-state.json") + ".risk-control.json")},
 	}
 }
 
