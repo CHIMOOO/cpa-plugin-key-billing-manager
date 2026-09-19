@@ -1095,6 +1095,65 @@ assert_quota_exhausted() {
   management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/plans?id=$plan" >/dev/null
 }
 
+assert_scoped_subscription_quotas() {
+  local port="$1" runtime_dir="$2" scope plan status model
+  local base="/v0/management/plugins/cpa-key-billing"
+  # Bind the same downstream key used by client_headers, not whichever key sorts first.
+  scope="$(python3 -c 'import hashlib; print(hashlib.sha256(b"cli-proxy-api:caller-scope:v1\x00e2e-downstream-key").hexdigest())')"
+  management_call POST "$port" "$base/plans" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{name:"e2e-scoped",scopes:[$scope],windows:[
+      {name:"Specific GPT",period_seconds:3600,amount_usd:0.00000001,scope:{models:["gpt-5.6-sol","codex/gpt-5.6-sol"]}},
+      {name:"OpenAI family",period_seconds:3600,amount_usd:100,scope:{providers:["openai"]}},
+      {name:"Claude family",period_seconds:3600,amount_usd:100,scope:{providers:["claude"]}}
+    ]}')" >"$runtime_dir/scoped-plan.json"
+  plan="$(jq -er '.plan.id' "$runtime_dir/scoped-plan.json")"
+  # auto can have different public/upstream identities across the two host
+  # callbacks. Scoped plans require an explicit model and must open no cycle.
+  for model in 'auto' 'auto(high)'; do
+    status="$(curl -sS --max-time 30 -H 'Authorization: Bearer e2e-downstream-key' -H 'Content-Type: application/json' \
+      --data "$(request_body chat "$model" false 'Reply OK.')" -o "$runtime_dir/responses/scoped-auto.json" -w '%{http_code}' \
+      "http://127.0.0.1:$port/v1/chat/completions")"
+    if [[ "$status" != 503 ]] || ! jq -e '.error.code == "quota_model_unresolved" and (.error.message | contains("Choose an explicit model"))' "$runtime_dir/responses/scoped-auto.json" >/dev/null; then
+      echo "动态 auto 应要求明确模型：$model HTTP $status" >&2
+      return 1
+    fi
+  done
+  management_call GET "$port" "$base/keys" >"$runtime_dir/scoped-auto-balances.json"
+  jq -e --arg scope "$scope" 'first(.keys[] | select(.scope==$scope)) | .current_concurrency==0 and all(.windows[]; (.started|not) and .dimensions[0].used==0)' \
+    "$runtime_dir/scoped-auto-balances.json" >/dev/null || { echo "auto 拒绝改变了额度周期或并发槽" >&2; return 1; }
+  api_call "$port" "独立额度：带前缀和推理后缀的模型" "/v1/responses" \
+    "$(request_body responses 'codex/gpt-5.6-sol(high)' false 'Reply OK.')" responses "$runtime_dir/responses/scoped-spend.json"
+  sleep "$usage_settle_seconds"
+  for model in 'gpt-5.6-sol' 'codex/gpt-5.6-sol(high)'; do
+    status="$(curl -sS --max-time 30 -H 'Authorization: Bearer e2e-downstream-key' -H 'Content-Type: application/json' \
+      --data "$(request_body chat "$model" false 'Reply OK.')" -o "$runtime_dir/responses/scoped-blocked.json" -w '%{http_code}' \
+      "http://127.0.0.1:$port/v1/chat/completions")"
+    [[ "$status" == 429 ]] || { echo "指定模型共享额度未拦截 $model：$status" >&2; return 1; }
+  done
+  for model in 'gpt-4o' 'claude-opus-5' 'unpriced-admission'; do
+    api_call "$port" "独立额度：其他模型 $model 保持可用" "/v1/chat/completions" \
+      "$(request_body chat "$model" false 'Reply OK.')" chat "$runtime_dir/responses/scoped-other.json"
+  done
+  sleep "$usage_settle_seconds"
+  management_call GET "$port" "$base/keys" >"$runtime_dir/scoped-balances.json"
+  jq -e --arg scope "$scope" 'first(.keys[]|select(.scope==$scope)) |
+    (.blocked|not) and .partially_blocked and
+    any(.windows[]; .name=="Specific GPT" and .blocked) and
+    all(.windows[]|select(.name!="Specific GPT"); (.blocked|not) and .dimensions[0].used>0)' \
+    "$runtime_dir/scoped-balances.json" >/dev/null || { echo "分模型/家族额度状态不正确" >&2; return 1; }
+  # Exhaust the OpenAI family without resetting it; unrelated Claude stays usable.
+  management_call PATCH "$port" "$base/plans" -H "Content-Type: application/json" \
+    --data "$(jq -c '.plan|{id,windows:(.windows|map(if .name=="OpenAI family" then .amount_usd=0.00000001 else . end))}' "$runtime_dir/scoped-plan.json")" >/dev/null
+  status="$(curl -sS --max-time 30 -H 'Authorization: Bearer e2e-downstream-key' -H 'Content-Type: application/json' \
+    --data "$(request_body chat 'gpt-4o' false 'Reply OK.')" -o "$runtime_dir/responses/scoped-family-blocked.json" -w '%{http_code}' \
+    "http://127.0.0.1:$port/v1/chat/completions")"
+  [[ "$status" == 429 ]] || { echo "模型家族额度未拦截：$status" >&2; return 1; }
+  api_call "$port" "独立额度：OpenAI 耗尽不影响 Claude" "/v1/chat/completions" \
+    "$(request_body chat 'claude-opus-5' false 'Reply OK.')" chat "$runtime_dir/responses/scoped-claude.json"
+  management_call DELETE "$port" "$base/plans?id=$plan" >/dev/null
+  log_step "分模型/多模型/模型家族独立额度、前缀与推理后缀、未匹配模型通过"
+}
+
 assert_headless_price_admission() {
   local port="$1" runtime_dir="$2" client header_line body endpoint http_status
   local -a headers
@@ -1615,6 +1674,9 @@ assert_turn_state_round_trip() {
     echo "turn-state 学习和注入改变了正常的 usage.handle 用量记录。" >&2
     return 1
   fi
+  if [[ "${CPA_E2E_TURN_STATE_ONLY:-0}" == "1" ]]; then
+    assert_turn_state_controls "$port" "$runtime_dir"
+  fi
   management_call PUT "$port" "$base/turn-state" -H "Content-Type: application/json" \
     --data '{"enabled":false,"inject_mode":"replace-only"}' >/dev/null
   management_call DELETE "$port" "$base/turn-state/templates" -H "Content-Type: application/json" --data '{}' >/dev/null
@@ -1625,6 +1687,103 @@ assert_turn_state_round_trip() {
   fi
 }
 
+assert_turn_state_controls() {
+  local port="$1" runtime_dir="$2"
+  python3 - "$port" "$upstream_port" "$runtime_dir" <<'PY'
+import json
+from pathlib import Path
+import sys
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+origin = "http://127.0.0.1:" + sys.argv[1]
+base = "/v0/management/plugins/cpa-key-billing"
+evidence = {}
+
+def call(method, suffix, data=None, expected=200, token="e2e-management-key", prefix=base):
+    request = Request(origin + prefix + suffix, method=method,
+        data=None if data is None else json.dumps(data).encode(),
+        headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+    try:
+        response = urlopen(request, timeout=45)
+    except HTTPError as error:
+        response = error
+    with response:
+        assert response.code in ((expected,) if isinstance(expected, int) else expected), (suffix, response.code)
+        raw = response.read()
+        headers = dict(response.headers)
+    return json.loads(raw) if raw else {}, headers
+
+status, _ = call("GET", "/turn-state")
+assert status["probe_progress"]["active"] is False
+assert status["probe_stats"]["attempts"] == 0 and status["probe_stats"]["since"]
+assert status["counters"]["inserted"] >= 2 and status["counters"]["since"]
+assert all(key in status["counters"] for key in ("skipped", "substituted", "dry_run", "errors"))
+assert len(status["templates"]) == 1, "fixture expects one learned dummy Codex bucket"
+account = status["templates"][0]["account"]
+scope = {"account": account, "model": "gpt-5.6-sol"}
+
+for endpoint in ("/turn-state/cooldowns/clear", "/turn-state/self-test"):
+    rejected, headers = call("POST", endpoint, scope, expected=400)
+    assert rejected["error"]["code"] == "confirmation_required"
+    assert "no-store" in headers.get("Cache-Control", "")
+    for token in ("", "e2e-downstream-key"):
+        call("POST", endpoint, {**scope, "confirm": True}, expected=(401, 403), token=token)
+    call("POST", endpoint, {**scope, "confirm": True}, expected=404,
+        token="e2e-downstream-key", prefix="/v0/resource/plugins/cpa-key-billing")
+
+call("POST", "/turn-state/cooldowns/clear", {"confirm": True, "account": account}, expected=400)
+call("POST", "/turn-state/self-test", {"confirm": True, "account": "missing-dummy", "model": "gpt-5.6-sol"}, expected=400)
+tested, headers = call("POST", "/turn-state/self-test", {**scope, "confirm": True})
+assert tested["reached"] and tested["status"] == 200 and tested["harvested"] is False, tested
+assert tested["account"] == account and tested["model"] == "gpt-5.6-sol"
+assert "no-store" in headers.get("Cache-Control", "")
+with urlopen("http://127.0.0.1:" + sys.argv[2] + "/e2e/turn-state", timeout=5) as response:
+    observed = json.load(response)
+assert observed["phase"] == "self-test" and observed["model"] == "gpt-5.6-sol"
+assert observed["dummy_credential_matched"] and observed["received"] == "", observed
+after, _ = call("GET", "/turn-state")
+assert [(t["account"], t["model"], t["issued_at"]) for t in after["templates"]] == [(t["account"], t["model"], t["issued_at"]) for t in status["templates"]]
+assert after["counters"] == status["counters"]
+assert after["probe_stats"] == status["probe_stats"], "self-test must not count as harvesting"
+
+# This disabled OAuth file has no access token, so credential parsing fails
+# before any direct external HTTP probe. It exercises real scheduling/cooldowns
+# and cannot consume production quota or send a credential to the Internet.
+assert any(row["account"] == "turn-state-invalid-dummy.json" and row["disabled"] for row in status["probe_accounts"])
+account = "turn-state-invalid-dummy.json"
+scope = {"account": account, "model": "gpt-5.6-sol"}
+call("PUT", "/turn-state", {"probe_accounts": [account], "models": ["gpt-5.6-sol"]})
+failed, _ = call("POST", "/turn-state/probe", scope)
+assert failed["action"] == "error", failed
+assert failed["reason_message"]["message_key"] == "backend.turn_state_credential_unavailable", failed
+waiting, _ = call("POST", "/turn-state/probe", scope)
+assert waiting["action"] == "cooling", waiting
+after, _ = call("GET", "/turn-state")
+assert after["probe_stats"]["attempts"] == 1 and after["probe_stats"]["failed"] == 1
+assert after["last_probe"]["action"] == "cooling" and after["probe_progress"]["active"] is False
+cleared, headers = call("POST", "/turn-state/cooldowns/clear", {**scope, "confirm": True})
+assert cleared["cleared"] == 2 and len(cleared["templates"]) == 1
+assert cleared["probe_stats"]["attempts"] == 1, "reset secretly probed"
+assert "no-store" in headers.get("Cache-Control", "")
+retried, _ = call("POST", "/turn-state/probe", scope)
+assert retried["action"] == "error"
+after, _ = call("GET", "/turn-state")
+assert after["probe_stats"]["attempts"] == 2 and after["probe_stats"]["failed"] == 2
+call("POST", "/turn-state/cooldowns/clear", {"confirm": True})
+call("PUT", "/turn-state", {"probe_accounts": [], "models": ["gpt-6-astra", "gpt-5.6-sol"]})
+
+persistence, headers = call("GET", "/persistence")
+assert persistence["can_configure"] is False and "no-store" in headers.get("Cache-Control", "")
+assert isinstance(persistence["detected"], bool) and isinstance(persistence["at_risk"], bool)
+call("GET", "/persistence", expected=(401, 403), token="e2e-downstream-key")
+call("GET", "/persistence", expected=404, prefix="/v0/resource/plugins/cpa-key-billing", token="e2e-downstream-key")
+evidence.update(self_test=tested, cooldown_clear=cleared["cleared"], probe_stats=after["probe_stats"], persistence=persistence)
+Path(sys.argv[3], "turn-state-controls.json").write_text(json.dumps(evidence, indent=2), encoding="utf-8")
+print("  - Turn State 操作实测通过：确切账号自检、dummy 上游确认、无模板注入或采集、冷却确认/清除/重试、统计刷新、管理鉴权及持久化诊断")
+PY
+}
+
 assert_turn_state_settings() {
   local port="$1" runtime_dir="$2" http_status
   local route="/v0/management/plugins/cpa-key-billing/turn-state"
@@ -1632,7 +1791,7 @@ assert_turn_state_settings() {
   local response_file="$runtime_dir/responses/turn-state-settings.json"
   management_call GET "$port" "$route" >"$settings_file"
   if ! jq -e '.config.enabled == false and .config.inject_mode == "replace-only" and
-      .config.models == ["gpt6", "gpt-5.6-sol"] and
+      .config.models == ["gpt-6-astra", "gpt-5.6-sol"] and
       .config.template_length == 292 and .config.replace_length == 312 and .config.renew_before_minutes == 0 and
       .renewal_lead_seconds == 300 and .templates == []' "$settings_file" >/dev/null; then
     echo "Codex turn-state 默认设置不正确。" >&2
@@ -1643,7 +1802,7 @@ assert_turn_state_settings() {
     --data '{"enabled":true,"inject_mode":"always"}' >/dev/null
   management_call GET "$port" "$route" >"$settings_file"
   if ! jq -e '.config.enabled == true and .config.inject_mode == "always" and
-      .config.models == ["gpt6", "gpt-5.6-sol"] and
+      .config.models == ["gpt-6-astra", "gpt-5.6-sol"] and
       .config.template_length == 292 and .config.replace_length == 312 and .templates == []' "$settings_file" >/dev/null; then
     echo "Codex turn-state 注入模式未保存或改变了未提交的配置。" >&2
     return 1
@@ -1879,6 +2038,21 @@ run_target() {
     return 1
   fi
   chmod 600 "$runtime_dir/config.yaml"
+
+  if [[ "${CPA_E2E_TURN_STATE_ONLY:-0}" == "1" ]]; then
+    # A self-test names the actual upstream model rather than a downstream
+    # prefix. Keep that model registered for the pinned dummy API credential.
+    python3 - "$runtime_dir/config.yaml" <<'PY'
+from pathlib import Path
+import sys
+file = Path(sys.argv[1])
+file.write_text(file.read_text().replace("force-model-prefix: true", "force-model-prefix: false"))
+PY
+    # Upgrade the exact legacy default list without changing custom aliases.
+    printf '%s' '{"version":1,"config":{"models":["gpt6","gpt-5.6-sol"]}}' >"$runtime_dir/state.db.turn-state.json"
+    chmod 600 "$runtime_dir/state.db.turn-state.json"
+    printf '%s' '{"type":"codex","disabled":true,"email":"dummy-invalid@example.invalid"}' >"$runtime_dir/auth/turn-state-invalid-dummy.json"
+  fi
 
   if ! port_available "$port"; then
     echo "测试端口已被占用：127.0.0.1:${port}。" >&2
@@ -2211,6 +2385,7 @@ run_target() {
     return 1
   fi
   log_step "插件启动事件已验证"
+  assert_scoped_subscription_quotas "$port" "$runtime_dir"
   assert_reference_price_billing "$port" "$runtime_dir"
   assert_group_access_control "$port" "$runtime_dir"
   assert_group_direct_credentials "$port" "$runtime_dir"

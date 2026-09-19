@@ -152,7 +152,12 @@ class DummyProviderHandler(BaseHTTPRequestHandler):
 
         response_headers = {}
         prompt = json.dumps(body, ensure_ascii=False)
-        if protocol == "responses" and (TURN_STATE_LEARN_PROMPT in prompt or TURN_STATE_CHECK_PROMPT in prompt):
+        self_test = protocol == "responses" and any(
+            item.get("text") == "ping"
+            for message in body.get("input", []) if isinstance(message, dict)
+            for item in message.get("content", []) if isinstance(item, dict)
+        )
+        if protocol == "responses" and (TURN_STATE_LEARN_PROMPT in prompt or TURN_STATE_CHECK_PROMPT in prompt or self_test):
             with self.server.turn_state_lock:
                 if TURN_STATE_LEARN_PROMPT in prompt:
                     # Fernet wire layout and timestamp, deliberately unsigned:
@@ -163,7 +168,8 @@ class DummyProviderHandler(BaseHTTPRequestHandler):
                 self.server.turn_state_observation.update({
                     "model": model,
                     "received": self.headers.get(TURN_STATE_HEADER, ""),
-                    "phase": "learn" if TURN_STATE_LEARN_PROMPT in prompt else "check",
+                    "phase": "self-test" if self_test else ("learn" if TURN_STATE_LEARN_PROMPT in prompt else "check"),
+                    "dummy_credential_matched": self.headers.get("Authorization") == "Bearer dummy-upstream-key-e2e",
                 })
 
         turn = Turn(model)
