@@ -7,22 +7,26 @@ import (
 	"time"
 
 	"cpa-key-billing/internal/billing"
+	"cpa-key-billing/internal/messages"
 	"cpa-key-billing/internal/turnstate"
 )
 
-const turnStateHostRequirement = "HTTP/SSE 注入需要 CLIProxyAPI v7.3.4 或已包含 X-Codex-Turn-State 转发支持的版本；v7.2.143 会在 Codex HTTP executor 丢弃此请求头。WebSocket 仅新建连接握手可注入，复用连接无法逐条更新。"
+const turnStateHostRequirement = "HTTP/SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards X-Codex-Turn-State; v7.2.143 drops this header in the Codex HTTP executor. WebSocket injection only applies to new connection handshakes; reused connections cannot update it per turn."
 
 type turnStateAccount struct {
-	Account string `json:"account"`
-	Label   string `json:"label"`
+	Account  string `json:"account"`
+	Label    string `json:"label"`
+	Disabled bool   `json:"disabled"`
 }
 
 type turnStateStatus struct {
 	turnstate.Status
-	ProbeAccounts          []turnStateAccount `json:"probe_accounts"`
-	ProbeSupported         bool               `json:"probe_supported"`
-	ProbeUnavailableReason string             `json:"probe_unavailable_reason,omitempty"`
-	HostRequirement        string             `json:"host_requirement"`
+	ProbeAccounts           []turnStateAccount `json:"probe_accounts"`
+	ProbeSupported          bool               `json:"probe_supported"`
+	ProbeUnavailableReason  string             `json:"probe_unavailable_reason,omitempty"`
+	ProbeUnavailableMessage messages.Message   `json:"probe_unavailable_message,omitzero"`
+	HostRequirement         string             `json:"host_requirement"`
+	HostRequirementMessage  messages.Message   `json:"host_requirement_message,omitzero"`
 }
 
 func codexAuthFile(file hostAuthFile) bool {
@@ -30,38 +34,39 @@ func codexAuthFile(file hostAuthFile) bool {
 	if provider == "" {
 		provider = strings.ToLower(strings.TrimSpace(file.Type))
 	}
-	// A management caller must not use the probe endpoint to bypass CPA's
-	// account switch. Unavailable may describe a different model's cooldown;
-	// it must not prevent explicitly requested recovery probes for every model.
-	return provider == "codex" && file.ID != "" && file.AuthIndex != "" && !file.Disabled &&
-		!strings.EqualFold(strings.TrimSpace(file.Status), "disabled")
+	// Explicit management probes use only this account's OAuth credential and
+	// never change the host's enabled state or business-routing candidates.
+	// Disabled and cooling accounts remain eligible for recovery probes.
+	return provider == "codex" && file.ID != "" && file.AuthIndex != ""
 }
 
 func (a *App) getTurnState(_ ManagementRequest) ManagementResponse {
 	status := turnStateStatus{Status: a.turnState.Status(), ProbeAccounts: []turnStateAccount{},
-		ProbeSupported: turnstate.ProbeSupported(), HostRequirement: turnStateHostRequirement}
+		ProbeSupported: true, HostRequirement: turnStateHostRequirement}
 	files, err := a.listHostAuthFiles()
 	if err != nil {
 		status.ProbeSupported = false
-		status.ProbeUnavailableReason = "当前宿主不能读取认证文件列表"
+		status.ProbeUnavailableReason = "This host cannot read the authentication file list"
 	} else {
 		for _, file := range files {
 			if !codexAuthFile(file) {
 				continue
 			}
 			label := safeCredentialName(file.Name, file.Account, "codex", billing.CredentialFingerprint(file.ID))
-			status.ProbeAccounts = append(status.ProbeAccounts, turnStateAccount{Account: file.ID, Label: label})
-		}
-		if !status.ProbeSupported {
-			status.ProbeUnavailableReason = "服务器需要安装 curl 才能执行同步探测"
+			status.ProbeAccounts = append(status.ProbeAccounts, turnStateAccount{
+				Account: file.ID, Label: label,
+				Disabled: file.Disabled || strings.EqualFold(strings.TrimSpace(file.Status), "disabled"),
+			})
 		}
 	}
+	status.HostRequirementMessage = messages.Literal(status.HostRequirement)
+	status.ProbeUnavailableMessage = messages.Literal(status.ProbeUnavailableReason)
 	return JSONResponse(http.StatusOK, status)
 }
 
 func (a *App) setTurnState(req ManagementRequest) ManagementResponse {
 	if err := a.turnState.Update(req.Body); err != nil {
-		return JSONError(http.StatusBadRequest, "invalid_turn_state", err.Error())
+		return jsonMessageError(http.StatusBadRequest, "invalid_turn_state", messages.FromError(err))
 	}
 	return a.getTurnState(req)
 }
@@ -72,10 +77,10 @@ func (a *App) clearTurnState(req ManagementRequest) ManagementResponse {
 		Model   string `json:"model"`
 	}
 	if len(req.Body) > 0 && json.Unmarshal(req.Body, &input) != nil {
-		return JSONError(http.StatusBadRequest, "invalid_turn_state", "清理模板参数无效")
+		return JSONError(http.StatusBadRequest, "invalid_turn_state", "Invalid template clearing parameters")
 	}
 	if err := a.turnState.Clear(input.Account, input.Model); err != nil {
-		return JSONError(http.StatusBadRequest, "invalid_turn_state", err.Error())
+		return jsonMessageError(http.StatusBadRequest, "invalid_turn_state", messages.FromError(err))
 	}
 	return a.getTurnState(req)
 }
@@ -86,14 +91,11 @@ func (a *App) probeTurnState(req ManagementRequest) ManagementResponse {
 		Model   string `json:"model"`
 	}
 	if len(req.Body) > 0 && json.Unmarshal(req.Body, &input) != nil {
-		return JSONError(http.StatusBadRequest, "invalid_turn_state", "探测参数无效")
-	}
-	if !turnstate.ProbeSupported() {
-		return JSONError(http.StatusServiceUnavailable, "probe_unavailable", "服务器未安装 curl")
+		return JSONError(http.StatusBadRequest, "invalid_turn_state", "Invalid probe parameters")
 	}
 	files, err := a.listHostAuthFiles()
 	if err != nil {
-		return JSONError(http.StatusBadGateway, "probe_unavailable", "无法读取认证文件列表")
+		return JSONError(http.StatusBadGateway, "probe_unavailable", "Failed to read the authentication file list")
 	}
 	available := map[string]struct{}{}
 	for _, file := range files {
@@ -122,7 +124,7 @@ func (a *App) probeTurnState(req ManagementRequest) ManagementResponse {
 		return turnstate.Credential{}, &turnStateMissingAccount{}
 	})
 	if err != nil {
-		return JSONError(http.StatusInternalServerError, "probe_failed", err.Error())
+		return jsonMessageError(http.StatusInternalServerError, "probe_failed", messages.FromError(err))
 	}
 	return JSONResponse(http.StatusOK, result)
 }
@@ -130,7 +132,7 @@ func (a *App) probeTurnState(req ManagementRequest) ManagementResponse {
 type turnStateMissingAccount struct{}
 
 func (*turnStateMissingAccount) Error() string {
-	return "探测账号不存在或不是 Codex OAuth 账号"
+	return "The probe account does not exist or is not a Codex OAuth account"
 }
 
 // Request-level provider identity must come from CPA's auth inventory. ToFormat
@@ -199,7 +201,7 @@ func (a *App) handleTurnStateResponse(raw []byte, stream bool) ([]byte, error) {
 		}
 		if err := a.turnState.Learn(req.RequestID, metadataString(req.Metadata, MetadataSelectedAuth), model, req.ResponseHeaders); err != nil {
 			// Failing to save an optional template must not break a paid response.
-			a.store.AddPluginLog(billing.PluginLogError, "保存 turn-state 模板失败：%v", err)
+			a.store.AddPluginLog(billing.PluginLogError, "Failed to save the turn-state template: %v", err)
 		}
 	}
 	return OKEnvelope(struct{}{})

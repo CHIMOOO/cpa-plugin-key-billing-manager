@@ -118,7 +118,7 @@ type Manager struct {
 
 func New() *Manager {
 	return &Manager{state: diskState{Version: 1, Config: DefaultConfig(), Templates: map[string]Template{}, Cooldowns: map[string]cooldown{}},
-		pending: map[string]pending{}, now: time.Now, runProbe: runCurlProbe}
+		pending: map[string]pending{}, now: time.Now, runProbe: runHTTPProbe}
 }
 
 // Configure stores turn-state data beside (not inside) the billing database.
@@ -264,7 +264,7 @@ func validateProxy(value string) error {
 // credentials; [] explicitly clears a pool. Masked status URLs cannot be saved.
 func (m *Manager) Update(raw []byte) error {
 	// Do not let a completed probe commit a result under a newer configuration.
-	// Probe holds this same gate for the whole bounded upstream call.
+	// Probe holds this same gate for the whole bounded HTTP call.
 	m.probeMu.Lock()
 	defer m.probeMu.Unlock()
 	m.mu.Lock()

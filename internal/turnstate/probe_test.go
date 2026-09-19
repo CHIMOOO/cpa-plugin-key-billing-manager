@@ -229,7 +229,7 @@ func TestProbeErrorsNeverExposeCredentials(t *testing.T) {
 
 func TestProbeSkipsUnavailableAccountsBeforeSelectingBucket(t *testing.T) {
 	m, now := newTestManager(t)
-	if err := m.Update([]byte(`{"probe_accounts":["disabled","account-a"]}`)); err != nil {
+	if err := m.Update([]byte(`{"probe_accounts":["deleted","account-a"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	called := ""
@@ -249,41 +249,6 @@ func TestProbeSkipsUnavailableAccountsBeforeSelectingBucket(t *testing.T) {
 	})
 	if err != nil || result.Action != "error" {
 		t.Fatalf("all unavailable = %+v, %v", result, err)
-	}
-}
-
-func TestCurlHeadersRejectProxyConnectAndHonorFinalStatus(t *testing.T) {
-	for _, tc := range []struct {
-		input  string
-		status int
-		value  string
-	}{
-		{"HTTP/1.1 200 Connection established\r\nX-Codex-Turn-State: proxy-token\r\n\r\nHTTP_STATUS:000\n", 0, ""},
-		{"HTTP/1.1 200 Connection established\r\nX-Codex-Turn-State: proxy-token\r\n", 0, ""},
-		{"HTTP/1.1 200 Connection established\r\nX-Codex-Turn-State: proxy-token\r\n\r\nHTTP/2 200\r\nx-codex-turn-state: upstream-token\r\n\r\nHTTP_STATUS:200\n", 200, "upstream-token"},
-		{"HTTP/1.1 100 Continue\r\n\r\nHTTP/2 429\r\n\r\nHTTP_STATUS:429\n", 429, ""},
-	} {
-		got := parseCurlHeaders(tc.input)
-		if got.Status != tc.status || got.Value != tc.value {
-			t.Fatalf("parseCurlHeaders = %+v; wanted %d/%q", got, tc.status, tc.value)
-		}
-	}
-}
-
-func TestProbePayloadAndCurlConfiguration(t *testing.T) {
-	credential, _ := dummyCredential("")
-	config := buildCurlConfig(credential, "model-a", "socks5://user:p\\\"assword@proxy.invalid:1080")
-	for _, required := range []string{
-		`https://chatgpt.com/backend-api/codex/responses`, `max-time = 25`, `proxy = "socks5h://`,
-		`Authorization: Bearer dummy-oauth-token`, `Chatgpt-Account-Id: dummy-account-id`,
-		`\"instructions\":\"\"`, `\"store\":false`, `\"stream\":true`, `\"model\":\"model-a\"`,
-	} {
-		if !strings.Contains(config, required) {
-			t.Fatalf("missing required probe field %q", required)
-		}
-	}
-	if strings.Contains(config, "\npassword") || strings.Contains(config, "location") || strings.Contains(config, "insecure") {
-		t.Fatal("unsafe curl configuration")
 	}
 }
 
