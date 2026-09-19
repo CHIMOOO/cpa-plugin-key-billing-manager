@@ -9,7 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const DefaultStateFile = "plugins/cpa-key-billing-state-v1.db"
+const DefaultStateFile = "plugins/cpa-team-manager-state-v1.db"
 
 type Config struct {
 	Enabled              bool   `yaml:"enabled"`

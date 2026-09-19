@@ -16,9 +16,9 @@ const (
 // Plugin identity. PluginID doubles as the dynamic library file name, the
 // `plugins.configs` key, and the Management/resource route segment.
 const (
-	PluginID   = "cpa-key-billing"
+	PluginID   = "cpa-team-manager"
 	PluginName = "API Key 团队管理"
-	Version    = "0.0.7"
+	Version    = "0.0.8"
 
 	MenuLabel       = "API Key 团队管理"
 	MenuDescription = "API Key team management: groups, routing, billing, subscription quotas, and Codex Turn State"

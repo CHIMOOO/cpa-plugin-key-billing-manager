@@ -49,8 +49,8 @@ esac
 
 script_dir="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
 repo_dir="$(CDPATH= cd -- "$script_dir/.." && pwd)"
-cache_dir="${CPA_E2E_CACHE_DIR:-${TMPDIR:-/tmp}/cpa-key-billing-e2e-cache}"
-run_dir="$(mktemp -d "${TMPDIR:-/tmp}/cpa-key-billing-e2e.XXXXXX")"
+cache_dir="${CPA_E2E_CACHE_DIR:-${TMPDIR:-/tmp}/cpa-team-manager-e2e-cache}"
+run_dir="$(mktemp -d "${TMPDIR:-/tmp}/cpa-team-manager-e2e.XXXXXX")"
 active_pid=""
 upstream_pid=""
 upstream_port=""
@@ -89,7 +89,7 @@ log_ok() {
 }
 
 mkdir -p "$cache_dir" "$run_dir/plugin"
-plugin_path="$run_dir/plugin/cpa-key-billing.$plugin_extension"
+plugin_path="$run_dir/plugin/cpa-team-manager.$plugin_extension"
 log_stage "构建计费插件"
 (
   cd "$repo_dir"
@@ -97,13 +97,13 @@ log_stage "构建计费插件"
     go build -buildvcs=false -tags cshared -buildmode=c-shared \
     -o "$plugin_path" ./cmd/cpa-key-billing
 )
-rm -f "$run_dir/plugin/cpa-key-billing.h"
+rm -f "$run_dir/plugin/cpa-team-manager.h"
 
 github_json() {
   curl -fsSL \
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
-    -H "User-Agent: cpa-key-billing-e2e" \
+    -H "User-Agent: cpa-team-manager-e2e" \
     "$1"
 }
 
@@ -438,7 +438,7 @@ wait_for_event_count() {
   local attempt=0 actual_count=0
 
   while (( attempt < 50 )); do
-    if ! management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$request_events_file"; then
+    if ! management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$request_events_file"; then
       echo "读取请求事件失败。" >&2
       return 1
     fi
@@ -548,11 +548,11 @@ assert_route_model_policy() {
 
   # Synchronize the Key list the way the panel does, so this holds whether or
   # not traffic has already created the record.
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/keys/sync" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/keys/sync" \
     -H "Content-Type: application/json" \
     --data '{"keys":["e2e-downstream-key"]}' \
     >/dev/null
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/access.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$runtime_dir/access.json"
   scope="$(jq -er 'first(.keys[] | select(.in_config) | .scope)' "$runtime_dir/access.json")"
   if ! jq -e --arg scope "$scope" 'first(.keys[] | select(.scope == $scope)) | all(.route_bindings[]; length == 0)' \
     "$runtime_dir/access.json" >/dev/null; then
@@ -560,12 +560,12 @@ assert_route_model_policy() {
     return 1
   fi
 
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data '{"name":"e2e-限定路由","rule":{"models":["codex/gpt-5.6-sol"],"credential_ids":[],"credential_providers":[]}}' \
 	>"$runtime_dir/route.json"
   route="$(jq -er '.route.id' "$runtime_dir/route.json")"
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope: $scope, bindings: {route_ids:[$route],models:[],credential_ids:[],credential_providers:[{source:"ai-providers",provider:"openai-compatible-dummy-chat-e2e"}]}}')" \
     >/dev/null
@@ -592,12 +592,12 @@ assert_route_model_policy() {
     fi
   done
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$request_events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$request_events_file"
   if [[ "$(jq -er '.entries | length' "$request_events_file")" != "$expected_count" ]]; then
     echo "被拦截的请求进入了请求事件。" >&2
     return 1
   fi
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs?level=debug" >"$plugin_logs_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/plugin-logs?level=debug" >"$plugin_logs_file"
   if ! jq -e --arg model "gpt-5.6-sol" '
       [.entries[]
         | select(.level == "debug" and (.message | startswith("route ")))
@@ -611,7 +611,7 @@ assert_route_model_policy() {
   # Explicitly allow the dummy providers after removing the model restriction.
   # Saving an empty policy now means deny all credentials.
   allow_all_test_credentials "$port" "$scope"
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/routes?id=$route" >/dev/null
 
   body="$(request_body chat "gpt-5.6-sol" false "Reply with exactly OK.")"
   api_call "$port" "模型拦截解除后：OpenAI Chat → OpenAI Chat 非流式" \
@@ -623,7 +623,7 @@ assert_route_model_policy() {
 
 allow_all_test_credentials() {
   local port="$1" scope="$2"
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{credential_providers:[
       "openai-compatible-dummy-chat-e2e","codex","claude","gemini",
@@ -638,16 +638,16 @@ assert_route_blacklist_policy() {
   local scope route denied_ref body http_status requested
   local events_file="$runtime_dir/blacklist-events.json"
   local response_file="$runtime_dir/responses/blacklist-blocked.json"
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/blacklist-keys.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$runtime_dir/blacklist-keys.json"
   scope="$(jq -er 'first(.keys[] | select(.in_config)).scope' "$runtime_dir/blacklist-keys.json")"
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/credentials" >"$runtime_dir/blacklist-credentials.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/credentials" >"$runtime_dir/blacklist-credentials.json"
   denied_ref="$(jq -er 'first(.credentials[] | select(.provider == "openai-compatible-route-denied-e2e")).ref' "$runtime_dir/blacklist-credentials.json")"
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{name:"e2e-黑名单",scopes:[$scope],rule:{denied_credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-denied-e2e"}]}}')" \
     >"$runtime_dir/blacklist-route.json"
   route="$(jq -er '.route.id' "$runtime_dir/blacklist-route.json")"
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/routes" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope:$scope,bindings:{route_ids:[$route]}}')" >/dev/null
   body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
@@ -655,7 +655,7 @@ assert_route_blacklist_policy() {
     echo "未配置允许凭证的路由没有拒绝请求。" >&2
     return 1
   fi
-  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call PATCH "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route" '{id:$id,rule:{credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-allowed-e2e"}],denied_credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-denied-e2e"}]}}')" >/dev/null
   api_call "$port" "类别黑名单：从显式允许的凭证中排除 blocked 类别" "/v1/chat/completions" "$body" chat "$runtime_dir/responses/blacklist-provider.json"
@@ -665,10 +665,10 @@ assert_route_blacklist_policy() {
     return 1
   fi
 
-  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call PATCH "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route" --arg ref "$denied_ref" '{id:$id,rule:{credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-allowed-e2e"},{source:"ai-providers",provider:"openai-compatible-route-denied-e2e"}],denied_credential_ids:[$ref]}}')" >/dev/null
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg route "$route" --arg ref "$denied_ref" '{scope:$scope,bindings:{route_ids:[$route],credential_ids:[$ref]}}')" >/dev/null
   api_call "$port" "整类白名单：指定凭证黑名单优先于 Key 直接白名单" "/v1/chat/completions" "$body" chat "$runtime_dir/responses/blacklist-exact.json"
@@ -678,7 +678,7 @@ assert_route_blacklist_policy() {
     return 1
   fi
 
-  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call PATCH "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route" '{id:$id,rule:{denied_credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-allowed-e2e"},{source:"ai-providers",provider:"openai-compatible-route-denied-e2e"}]}}')" >/dev/null
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
@@ -687,10 +687,10 @@ assert_route_blacklist_policy() {
     return 1
   fi
 
-  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call PATCH "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route" '{id:$id,rule:{denied_models:["gpt-5.6-sol"]}}')" >/dev/null
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope:$scope,bindings:{route_ids:[$route],models:["gpt-5.6-sol"],credential_providers:[{source:"ai-providers",provider:"openai-compatible-dummy-chat-e2e"}]}}')" >/dev/null
   for requested in "gpt-5.6-sol" "gpt-5.6-sol(high)" "gpt-5.6-sol(max)"; do
@@ -700,18 +700,18 @@ assert_route_blacklist_policy() {
       return 1
     fi
   done
-  account_call "$port" "/v0/resource/plugins/cpa-key-billing/routing" >"$runtime_dir/blacklist-account.json"
+  account_call "$port" "/v0/resource/plugins/cpa-team-manager/routing" >"$runtime_dir/blacklist-account.json"
   if ! jq -e '.models == ["gpt-5.6-sol"] and .denied_models == ["gpt-5.6-sol"] and .routing_valid == true' "$runtime_dir/blacklist-account.json" >/dev/null; then
     echo "账户权限没有保留黑白名单冲突语义。" >&2
     return 1
   fi
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$events_file"
   if [[ "$(jq -er '.entries | length' "$events_file")" != "$((expected_count + 2))" ]]; then
     echo "黑名单拦截进入了计费用量。" >&2
     return 1
   fi
   allow_all_test_credentials "$port" "$scope"
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/routes?id=$route" >/dev/null
 }
 
 # Verify that a source-qualified Provider rule and an exact-Credential rule both
@@ -727,16 +727,16 @@ assert_route_credential_policy() {
   events_file="$runtime_dir/credential-route-events.json"
   plugin_logs_file="$runtime_dir/credential-route-plugin-logs.json"
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$access_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$access_file"
   scope="$(jq -er 'first(.keys[] | select(.in_config) | .scope)' "$access_file")"
   # The requested model is granted directly on the key and deliberately absent
   # from the route. Provider and exact-credential limits must still apply.
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{name:"e2e-凭证路由",rule:{models:["e2e-other-route-model"],credential_ids:[],credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-allowed-e2e"}]},scopes:[$scope]}')" \
     >"$runtime_dir/credential-route.json"
   route="$(jq -er '.route.id' "$runtime_dir/credential-route.json")"
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope:$scope,bindings:{route_ids:[$route],models:["e2e-credential-route"],credential_ids:[],credential_providers:[]}}')" \
     >/dev/null
@@ -757,7 +757,7 @@ assert_route_credential_policy() {
 
   # scheduler.pick has now observed both config-backed candidates, so the safe
   # inventory contains the opaque reference needed to test an exact binding.
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/credentials" >"$access_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/credentials" >"$access_file"
   if ! jq -e '
       first(.credentials[] | select(.source == "ai-providers" and .provider == "openai-compatible-route-allowed-e2e")) |
       .display_name == "e2e-r…-1111"
@@ -766,7 +766,7 @@ assert_route_credential_policy() {
     return 1
   fi
   allowed_ref="$(jq -er 'first(.credentials[] | select(.source == "ai-providers" and .provider == "openai-compatible-route-allowed-e2e")).ref' "$access_file")"
-  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call PATCH "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route" --arg ref "$allowed_ref" '{id:$id,rule:{models:["e2e-other-route-model"],credential_ids:[$ref],credential_providers:[]}}')" \
     >/dev/null
@@ -782,7 +782,7 @@ assert_route_credential_policy() {
     return 1
   fi
 
-  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" \
+  management_call PATCH "$port" "/v0/management/plugins/cpa-team-manager/routes" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route" '{id:$id,rule:{models:["e2e-other-route-model"],credential_ids:[],credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-missing-e2e"}]}}')" \
     >/dev/null
@@ -801,13 +801,13 @@ assert_route_credential_policy() {
     echo "没有合格凭证时未按预期返回 503：HTTP $http_status $(jq -c '.' "$response_file")" >&2
     return 1
   fi
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$events_file"
   if [[ "$(jq -er '.entries | length' "$events_file")" != "$((expected_count + 2))" ]]; then
     echo "凭证路由拦截进入了请求事件。" >&2
     return 1
   fi
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs?level=debug" >"$plugin_logs_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/plugin-logs?level=debug" >"$plugin_logs_file"
   if ! jq -e '
       [.entries[]
         | select(.level == "debug" and (.message | startswith("route ")))
@@ -826,7 +826,7 @@ assert_route_credential_policy() {
   fi
 
   allow_all_test_credentials "$port" "$scope"
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/routes?id=$route" >/dev/null
 }
 
 # Hold one SSE request open, verify a second request is refused, then verify the
@@ -845,18 +845,18 @@ assert_concurrency_limit() {
   request_events_file="$runtime_dir/concurrency-request-events.json"
   request_log="$runtime_dir/responses/concurrency-held.log"
 
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/keys/sync" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/keys/sync" \
     -H "Content-Type: application/json" \
     --data '{"keys":["e2e-downstream-key"]}' \
     >/dev/null
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$access_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$access_file"
   scope="$(jq -er 'first(.keys[] | select(.in_config) | .scope)' "$access_file")"
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/keys/concurrency" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/keys/concurrency" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{scope: $scope, concurrency_limit: 1}')" \
     >/dev/null
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$access_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$access_file"
   if ! jq -e --arg scope "$scope" '
       first(.keys[] | select(.scope == $scope)) |
       .concurrency_limit == 1 and .current_concurrency == 0
@@ -873,7 +873,7 @@ assert_concurrency_limit() {
 
   current=0
   for ((attempt = 0; attempt < 100; attempt++)); do
-    management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$access_file"
+    management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$access_file"
     current="$(jq -er --arg scope "$scope" 'first(.keys[] | select(.scope == $scope)).current_concurrency' "$access_file")"
     if [[ "$current" == "1" ]]; then
       break
@@ -917,7 +917,7 @@ assert_concurrency_limit() {
   fi
   current=1
   for ((attempt = 0; attempt < 100; attempt++)); do
-    management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$access_file"
+    management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$access_file"
     current="$(jq -er --arg scope "$scope" 'first(.keys[] | select(.scope == $scope)).current_concurrency' "$access_file")"
     if [[ "$current" == "0" ]]; then
       break
@@ -938,7 +938,7 @@ assert_concurrency_limit() {
     return 1
   fi
 
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/keys/concurrency" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/keys/concurrency" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{scope: $scope, concurrency_limit: 0}')" \
     >/dev/null
@@ -964,13 +964,13 @@ assert_quota_exhausted() {
   request_events_file="$runtime_dir/quota-request-events.json"
   plugin_logs_file="$runtime_dir/quota-plugin-logs.json"
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/access.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$runtime_dir/access.json"
   scope="$(jq -er 'first(.keys[] | select(.in_config) | .scope)' "$runtime_dir/access.json")"
 
   # A budget below what one request costs. Nothing has been spent when the
   # request below is admitted, which is what makes it the one that exhausts the
   # plan rather than the one that is refused.
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/plans" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/plans" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg name "$plan_name" --arg scope "$scope" --arg dimension "$dimension" \
       '{name: $name, windows: [
@@ -993,7 +993,7 @@ assert_quota_exhausted() {
     "gpt-5.6-sol" "gpt-5.6-sol" "$runtime_dir/quota-spend-request-events.json" \
     "$runtime_dir/responses/quota-spend.json" false
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/quota-access.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$runtime_dir/quota-access.json"
   if ! jq -e --arg scope "$scope" --arg dimension "$dimension" \
       --slurpfile events "$runtime_dir/quota-spend-request-events.json" '
       $events[0].entries[0].cost.total_usd as $cost |
@@ -1053,23 +1053,23 @@ assert_quota_exhausted() {
     fi
   done
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$request_events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$request_events_file"
   actual_count="$(jq -er '.entries | length' "$request_events_file")"
   if [[ "$actual_count" != "$expected_count" ]]; then
     echo "被额度拦截的请求进入了请求事件：${actual_count}，预期 ${expected_count}。" >&2
     return 1
   fi
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs" >"$plugin_logs_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/plugin-logs" >"$plugin_logs_file"
   if ! jq -e --arg plan "$plan_name" '[.entries[] | select(.level == "info" and (.message | startswith("Quota blocked: ")) and (.message | contains($plan)))] | length == 1' \
     "$plugin_logs_file" >/dev/null; then
     echo "插件日志的额度拦截记录数量不正确：$(jq -c '[.entries[] | select(.message | startswith("Quota blocked: "))]' "$plugin_logs_file")" >&2
     return 1
   fi
 
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/keys/reset" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/keys/reset" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{mode: "all", scopes: [$scope]}')" >/dev/null
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/quota-reset.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$runtime_dir/quota-reset.json"
   if ! jq -e --arg scope "$scope" --arg dimension "$dimension" --slurpfile before "$runtime_dir/quota-access.json" '
       first($before[0].keys[] | select(.scope == $scope)) as $old |
       first(.keys[] | select(.scope == $scope)) |
@@ -1088,16 +1088,16 @@ assert_quota_exhausted() {
   assert_billing_entry "$port" "$((expected_count + 1))" chat chat \
     "gpt-5.6-sol" "gpt-5.6-sol" "$runtime_dir/quota-restored-request-events.json" \
     "$runtime_dir/responses/quota-restored.json" false
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/keys/unbind" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/keys/unbind" \
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{scope: $scope}')" \
     >/dev/null
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/plans?id=$plan" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/plans?id=$plan" >/dev/null
 }
 
 assert_scoped_subscription_quotas() {
   local port="$1" runtime_dir="$2" scope plan status model
-  local base="/v0/management/plugins/cpa-key-billing"
+  local base="/v0/management/plugins/cpa-team-manager"
   # Bind the same downstream key used by client_headers, not whichever key sorts first.
   scope="$(python3 -c 'import hashlib; print(hashlib.sha256(b"cli-proxy-api:caller-scope:v1\x00e2e-downstream-key").hexdigest())')"
   management_call POST "$port" "$base/plans" -H "Content-Type: application/json" \
@@ -1193,9 +1193,9 @@ assert_reference_price_billing() {
   local prices_file="$runtime_dir/reference-prices.json"
   local events_file="$runtime_dir/reference-price-events.json"
   for model in "gpt-4o" "gpt-5.6-sol" "codex/gpt-5.6-sol"; do
-    management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/prices?model_id=$model" >/dev/null
+    management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/prices?model_id=$model" >/dev/null
   done
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$events_file"
   count="$(jq -er '.entries | length' "$events_file")"
   for model in "gpt-4o" "codex/gpt-5.6-sol"; do
     requested_model="$model"
@@ -1203,7 +1203,7 @@ assert_reference_price_billing() {
       requested_model="$model(xhigh)"
     fi
     response_name="${model//\//-}"
-    management_call GET "$port" "/v0/management/plugins/cpa-key-billing/prices?model=$requested_model&include_custom=false" >"$prices_file"
+    management_call GET "$port" "/v0/management/plugins/cpa-team-manager/prices?model=$requested_model&include_custom=false" >"$prices_file"
     if ! jq -e 'length == 1 and .[0].source == "reference"' "$prices_file" >/dev/null; then
       echo "模型 $requested_model 未匹配到 models.dev 参考价。" >&2
       return 1
@@ -1238,35 +1238,35 @@ assert_group_access_control() {
   local port="$1" runtime_dir="$2" scope allowed_ref route_a route_b group_a group_b body http_status count
   local events_file="$runtime_dir/group-events.json"
   local response_file="$runtime_dir/responses/group-access.json"
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/access-control" >"$runtime_dir/access-control-before.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/access-control" >"$runtime_dir/access-control-before.json"
   if ! jq -e '.access_control.enabled == true and .access_control.deny_ungrouped == false' "$runtime_dir/access-control-before.json" >/dev/null; then
     echo "访问控制或拒绝未分组 Key 的默认设置不正确。" >&2
     return 1
   fi
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/group-keys.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$runtime_dir/group-keys.json"
   scope="$(jq -er 'first(.keys[] | select(.in_config)).scope' "$runtime_dir/group-keys.json")"
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/routes" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/routes" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" >/dev/null
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/credentials" >"$runtime_dir/group-credentials.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/credentials" >"$runtime_dir/group-credentials.json"
   allowed_ref="$(jq -er 'first(.credentials[] | select(.provider == "openai-compatible-route-allowed-e2e")).ref' "$runtime_dir/group-credentials.json")"
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$events_file"
   count="$(jq -er '.entries | length' "$events_file")"
 
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/routes" -H "Content-Type: application/json" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/routes" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg ref "$allowed_ref" '{name:"e2e-分组指定凭证",rule:{credential_ids:[$ref]}}')" >"$runtime_dir/group-route-a.json"
   route_a="$(jq -er '.route.id' "$runtime_dir/group-route-a.json")"
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/routes" -H "Content-Type: application/json" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/routes" -H "Content-Type: application/json" \
     --data '{"name":"e2e-分组Codex","rule":{"credential_providers":[{"source":"ai-providers","provider":"codex"}]}}' >"$runtime_dir/group-route-b.json"
   route_b="$(jq -er '.route.id' "$runtime_dir/group-route-b.json")"
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/groups" -H "Content-Type: application/json" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/groups" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg route "$route_a" '{name:"e2e-分组A",route_ids:[$route]}')" >"$runtime_dir/group-a.json"
   group_a="$(jq -er '.group.id' "$runtime_dir/group-a.json")"
-  management_call POST "$port" "/v0/management/plugins/cpa-key-billing/groups" -H "Content-Type: application/json" \
+  management_call POST "$port" "/v0/management/plugins/cpa-team-manager/groups" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg route "$route_b" '{name:"e2e-分组B",route_ids:[$route]}')" >"$runtime_dir/group-b.json"
   group_b="$(jq -er '.group.id' "$runtime_dir/group-b.json")"
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/groups" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/groups" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg a "$group_a" --arg b "$group_b" '{scopes:[$scope],group_ids:[$a,$b]}')" >/dev/null
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/keys" >"$runtime_dir/group-keys.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/keys" >"$runtime_dir/group-keys.json"
   if ! jq -e --arg scope "$scope" --arg a "$group_a" --arg b "$group_b" \
       'first(.keys[] | select(.scope == $scope)) | (.group_ids | sort) == ([$a,$b] | sort)' "$runtime_dir/group-keys.json" >/dev/null; then
     echo "同一个 API Key 没有保存两个分组。" >&2
@@ -1294,9 +1294,9 @@ assert_group_access_control() {
     return 1
   fi
 
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/groups" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/groups" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg a "$group_a" '{scopes:[$scope],group_ids:[$a]}')" >/dev/null
-  management_call PATCH "$port" "/v0/management/plugins/cpa-key-billing/routes" -H "Content-Type: application/json" \
+  management_call PATCH "$port" "/v0/management/plugins/cpa-team-manager/routes" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route_a" '{id:$id,rule:{}}')" >/dev/null
   body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
@@ -1305,7 +1305,7 @@ assert_group_access_control() {
     return 1
   fi
 
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/access-control" -H "Content-Type: application/json" \
     --data '{"enabled":true,"deny_ungrouped":true}' >/dev/null
   body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-ungrouped-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
@@ -1313,9 +1313,9 @@ assert_group_access_control() {
     echo "新 Key 未分组时没有被默认拒绝。" >&2
     return 1
   fi
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/access-control" -H "Content-Type: application/json" \
     --data '{"enabled":false,"deny_ungrouped":true}' >/dev/null
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/access-control" >"$runtime_dir/access-control-disabled.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/access-control" >"$runtime_dir/access-control-disabled.json"
   if ! jq -e '.access_control.enabled == false and .access_control.deny_ungrouped == true' "$runtime_dir/access-control-disabled.json" >/dev/null; then
     echo "全局开关没有保存。" >&2
     return 1
@@ -1329,27 +1329,27 @@ assert_group_access_control() {
   body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
   api_call "$port" "关闭访问控制：空凭证分组恢复访问" "/v1/chat/completions" "$body" chat "$response_file"
   wait_for_event_count "$port" "$((count + 4))" "$events_file"
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/access-control" -H "Content-Type: application/json" \
     --data '{"enabled":true,"deny_ungrouped":true}' >/dev/null
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-ungrouped-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
   if [[ "$http_status" != "403" ]]; then
     echo "重新启用访问控制后，未分组 Key 仍可访问。" >&2
     return 1
   fi
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$events_file"
   if [[ "$(jq -er '.entries | length' "$events_file")" != "$((count + 4))" ]]; then
     echo "分组或未分组访问拦截产生了额外用量。" >&2
     return 1
   fi
 
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/access-control" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/access-control" -H "Content-Type: application/json" \
     --data "$(jq -c '.access_control' "$runtime_dir/access-control-before.json")" >/dev/null
-  management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/keys/groups" -H "Content-Type: application/json" \
+  management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/keys/groups" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{scopes:[$scope],group_ids:[]}')" >/dev/null
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/groups?id=$group_a" >/dev/null
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/groups?id=$group_b" >/dev/null
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route_a" >/dev/null
-  management_call DELETE "$port" "/v0/management/plugins/cpa-key-billing/routes?id=$route_b" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/groups?id=$group_a" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/groups?id=$group_b" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/routes?id=$route_a" >/dev/null
+  management_call DELETE "$port" "/v0/management/plugins/cpa-team-manager/routes?id=$route_b" >/dev/null
   allow_all_test_credentials "$port" "$scope"
   log_step "分组访问控制已验证：多组选中凭证、拒绝未选凭证、空允许列表、新 Key 默认拒绝和全局开关"
 }
@@ -1359,7 +1359,7 @@ assert_group_access_control() {
 # nothing refuses its members.
 assert_group_direct_credentials() {
   local port="$1" runtime_dir="$2" scope allowed_ref group body http_status count
-  local base="/v0/management/plugins/cpa-key-billing"
+  local base="/v0/management/plugins/cpa-team-manager"
   local events_file="$runtime_dir/group-direct-events.json"
   local group_file="$runtime_dir/group-direct.json"
   local response_file="$runtime_dir/responses/group-direct.json"
@@ -1422,7 +1422,7 @@ assert_group_direct_credentials() {
     echo "分组直选凭证没有限制实际使用的凭证：$(jq -c '.entries[0]' "$events_file")" >&2
     return 1
   fi
-  account_call "$port" "/v0/resource/plugins/cpa-key-billing/routing" >"$runtime_dir/group-direct-account.json"
+  account_call "$port" "/v0/resource/plugins/cpa-team-manager/routing" >"$runtime_dir/group-direct-account.json"
   if ! jq -e '.routing_valid == true and .credentials_restricted == true and
       ([.credentials[].provider] == ["openai-compatible-route-allowed-e2e"])' "$runtime_dir/group-direct-account.json" >/dev/null; then
     echo "API Key 自助查询没有显示分组直选的上游凭证：$(jq -c '.' "$runtime_dir/group-direct-account.json")" >&2
@@ -1512,7 +1512,7 @@ set_group_fallback_upstream_disabled() {
 
 assert_group_upstream_fallback() {
   local port="$1" runtime_dir="$2" scope ref_a ref_b group_a group_b body count http_status attempt
-  local base="/v0/management/plugins/cpa-key-billing"
+  local base="/v0/management/plugins/cpa-team-manager"
   local events_file="$runtime_dir/group-fallback-events.json"
   local response_file="$runtime_dir/responses/group-fallback.json"
   management_call POST "$port" "$base/keys/sync" -H "Content-Type: application/json" \
@@ -1617,7 +1617,7 @@ assert_group_upstream_fallback() {
 
 assert_turn_state_round_trip() {
   local port="$1" runtime_dir="$2" body model count
-  local base="/v0/management/plugins/cpa-key-billing"
+  local base="/v0/management/plugins/cpa-team-manager"
   local settings_file="$runtime_dir/turn-state-round-trip.json"
   local events_file="$runtime_dir/turn-state-events.json"
   local observed_file="$runtime_dir/turn-state-observed.json"
@@ -1697,7 +1697,7 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 origin = "http://127.0.0.1:" + sys.argv[1]
-base = "/v0/management/plugins/cpa-key-billing"
+base = "/v0/management/plugins/cpa-team-manager"
 evidence = {}
 
 def call(method, suffix, data=None, expected=200, token="e2e-management-key", prefix=base):
@@ -1730,7 +1730,7 @@ for endpoint in ("/turn-state/cooldowns/clear", "/turn-state/self-test"):
     for token in ("", "e2e-downstream-key"):
         call("POST", endpoint, {**scope, "confirm": True}, expected=(401, 403), token=token)
     call("POST", endpoint, {**scope, "confirm": True}, expected=404,
-        token="e2e-downstream-key", prefix="/v0/resource/plugins/cpa-key-billing")
+        token="e2e-downstream-key", prefix="/v0/resource/plugins/cpa-team-manager")
 
 call("POST", "/turn-state/cooldowns/clear", {"confirm": True, "account": account}, expected=400)
 call("POST", "/turn-state/self-test", {"confirm": True, "account": "missing-dummy", "model": "gpt-5.6-sol"}, expected=400)
@@ -1777,7 +1777,7 @@ persistence, headers = call("GET", "/persistence")
 assert persistence["can_configure"] is False and "no-store" in headers.get("Cache-Control", "")
 assert isinstance(persistence["detected"], bool) and isinstance(persistence["at_risk"], bool)
 call("GET", "/persistence", expected=(401, 403), token="e2e-downstream-key")
-call("GET", "/persistence", expected=404, prefix="/v0/resource/plugins/cpa-key-billing", token="e2e-downstream-key")
+call("GET", "/persistence", expected=404, prefix="/v0/resource/plugins/cpa-team-manager", token="e2e-downstream-key")
 evidence.update(self_test=tested, cooldown_clear=cleared["cleared"], probe_stats=after["probe_stats"], persistence=persistence)
 Path(sys.argv[3], "turn-state-controls.json").write_text(json.dumps(evidence, indent=2), encoding="utf-8")
 print("  - Turn State 操作实测通过：确切账号自检、dummy 上游确认、无模板注入或采集、冷却确认/清除/重试、统计刷新、管理鉴权及持久化诊断")
@@ -1786,7 +1786,7 @@ PY
 
 assert_turn_state_settings() {
   local port="$1" runtime_dir="$2" http_status
-  local route="/v0/management/plugins/cpa-key-billing/turn-state"
+  local route="/v0/management/plugins/cpa-team-manager/turn-state"
   local settings_file="$runtime_dir/turn-state-settings.json"
   local response_file="$runtime_dir/responses/turn-state-settings.json"
   management_call GET "$port" "$route" >"$settings_file"
@@ -1839,7 +1839,7 @@ import sys
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-base = "http://127.0.0.1:" + sys.argv[1] + "/v0/management/plugins/cpa-key-billing/turn-state"
+base = "http://127.0.0.1:" + sys.argv[1] + "/v0/management/plugins/cpa-team-manager/turn-state"
 largest_body = 0
 
 def call(method, path="", data=None, expected=200, with_headers=False, token="e2e-management-key"):
@@ -1960,7 +1960,7 @@ PY
 # follow normal routing and record the usage reported by the dummy upstream.
 assert_forwarded_for_removed() {
   local port="$1" runtime_dir="$2" method client body endpoint header_line http_status count
-  local route="/v0/management/plugins/cpa-key-billing/forwarded-for-block"
+  local route="/v0/management/plugins/cpa-team-manager/forwarded-for-block"
   local events_file="$runtime_dir/forwarded-for-events.json"
   local response_file="$runtime_dir/responses/forwarded-for.json"
   local -a headers
@@ -1973,7 +1973,7 @@ assert_forwarded_for_removed() {
       return 1
     fi
   done
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$events_file"
   count="$(jq -er '.entries | length' "$events_file")"
   for client in chat anthropic; do
     headers=(-H "X-Forwarded-For: 203.0.113.7")
@@ -2022,7 +2022,7 @@ run_target() {
     echo "CLIProxyAPI ${host_label} 缺少可执行文件：$host_binary" >&2
     return 1
   fi
-  cp "$plugin_path" "$runtime_dir/plugins/cpa-key-billing.$plugin_extension"
+  cp "$plugin_path" "$runtime_dir/plugins/cpa-team-manager.$plugin_extension"
 
   # The models and providers live in scripts/e2e_config.yaml; only runtime paths,
   # ports and the dummy credential are filled in here.
@@ -2068,7 +2068,7 @@ PY
 
   plugins_file="$runtime_dir/plugins.json"
   management_call GET "$port" "/v0/management/plugins" >"$plugins_file"
-  if ! jq -e '.plugins[] | select(.id == "cpa-key-billing" and .registered == true and .effective_enabled == true)' "$plugins_file" >/dev/null; then
+  if ! jq -e '.plugins[] | select(.id == "cpa-team-manager" and .registered == true and .effective_enabled == true)' "$plugins_file" >/dev/null; then
     echo "插件未在 CLIProxyAPI ${host_label} 中注册。" >&2
     tail -n 80 "$runtime_dir/host.log" >&2 || true
     return 1
@@ -2099,7 +2099,7 @@ PY
   jq -er '.data[].id' "$runtime_dir/models.json" >"$runtime_dir/model-ids.txt"
   while IFS= read -r model_id; do
     jq -n --arg model "$model_id" '{model_id:$model,input_per_1m:1,output_per_1m:2,cache_read_per_1m:0.1,cache_write_per_1m:1.25}' >"$runtime_dir/model-price.json"
-    management_call PUT "$port" "/v0/management/plugins/cpa-key-billing/prices" \
+    management_call PUT "$port" "/v0/management/plugins/cpa-team-manager/prices" \
       -H "Content-Type: application/json" --data-binary "@$runtime_dir/model-price.json" >"$runtime_dir/price.json"
   done <"$runtime_dir/model-ids.txt"
   log_step "所有测试模型的自定义价已配置"
@@ -2168,7 +2168,7 @@ PY
 
   request_events_file="$runtime_dir/matrix-billing.json"
   matrix_logs_ok=1
-  if ! management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$request_events_file"; then
+  if ! management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$request_events_file"; then
     matrix_logs_ok=0
   fi
 
@@ -2308,7 +2308,7 @@ PY
   done
 
   request_events_file="$runtime_dir/request-events.json"
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$request_events_file"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=100" >"$request_events_file"
   # Four client protocols against four upstream protocols in both modes, plus
   # the three routing cases and four unpriced admission cases.
   expected_requests=39
@@ -2320,11 +2320,11 @@ PY
   account_access_file="$runtime_dir/account-access.json"
   account_prices_file="$runtime_dir/account-prices.json"
   account_events_file="$runtime_dir/account-events.json"
-  account_call "$port" "/v0/resource/plugins/cpa-key-billing/profile" >"$account_access_file"
-  account_call "$port" "/v0/resource/plugins/cpa-key-billing/subscription" >"$runtime_dir/account-subscription.json"
-  account_call "$port" "/v0/resource/plugins/cpa-key-billing/routing" >"$runtime_dir/account-routing.json"
-  account_call "$port" "/v0/resource/plugins/cpa-key-billing/prices?model=gpt-5.6-sol" >"$account_prices_file"
-  account_call "$port" "/v0/resource/plugins/cpa-key-billing/events?limit=100" >"$account_events_file"
+  account_call "$port" "/v0/resource/plugins/cpa-team-manager/profile" >"$account_access_file"
+  account_call "$port" "/v0/resource/plugins/cpa-team-manager/subscription" >"$runtime_dir/account-subscription.json"
+  account_call "$port" "/v0/resource/plugins/cpa-team-manager/routing" >"$runtime_dir/account-routing.json"
+  account_call "$port" "/v0/resource/plugins/cpa-team-manager/prices?model=gpt-5.6-sol" >"$account_prices_file"
+  account_call "$port" "/v0/resource/plugins/cpa-team-manager/events?limit=100" >"$account_events_file"
   if ! jq -e '
       .tracked == true and
       has("identity") and (has("subscription") | not) and (has("credentials") | not) and
@@ -2344,7 +2344,7 @@ PY
     return 1
   fi
   log_step "API Key 自助查询已验证：仅返回当前 Key 的 39 条请求事件"
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/analysis" >"$runtime_dir/analysis.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/analysis" >"$runtime_dir/analysis.json"
   if ! jq -e '
       .usage_distribution.models as $models |
       [$models[] | select((.key | startswith("e2e-")) or (.key | startswith("codex/e2e-")))] as $matrix |
@@ -2378,7 +2378,7 @@ PY
     expected_requests=$((expected_requests + 2))
   done
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs" >"$runtime_dir/plugin-logs.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/plugin-logs" >"$runtime_dir/plugin-logs.json"
   if ! jq -e '[.entries[] | select(.level == "info" and (.message | contains("Loaded billing database")))] | length == 1' \
     "$runtime_dir/plugin-logs.json" >/dev/null; then
     echo "插件日志缺少启动记录：$(jq -c '.entries' "$runtime_dir/plugin-logs.json")" >&2
@@ -2394,7 +2394,7 @@ PY
   assert_turn_state_settings "$port" "$runtime_dir"
   assert_turn_state_round_trip "$port" "$runtime_dir"
 
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=1" >"$runtime_dir/final-events.json"
+  management_call GET "$port" "/v0/management/plugins/cpa-team-manager/events?limit=1" >"$runtime_dir/final-events.json"
   actual_requests="$(jq -er '.total' "$runtime_dir/final-events.json")"
 
   kill "$active_pid" >/dev/null 2>&1 || true

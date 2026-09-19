@@ -3,13 +3,13 @@
 set -eu
 
 repository="CHIMOOO/cpa-plugin-key-billing-manager"
-plugin_name="cpa-key-billing"
+plugin_name="cpa-team-manager"
 plugin_dir="$(pwd)/plugins"
 tmp_dir=""
 staged_file=""
 
 fail() {
-  printf 'cpa-key-billing: %s\n' "$*" >&2
+  printf 'cpa-team-manager: %s\n' "$*" >&2
   exit 1
 }
 
@@ -63,6 +63,12 @@ case "$(uname -m)" in
     fail "unsupported architecture: $(uname -m)"
     ;;
 esac
+
+for old_library in "${plugin_dir}/cpa-key-billing.so" "${plugin_dir}/cpa-key-billing.dylib" "${plugin_dir}/cpa-key-billing.dll"; do
+  if [ -f "$old_library" ]; then
+    fail "legacy cpa-key-billing library exists: stop CPA, back up data, move the old library out of plugins, and migrate plugins.configs to cpa-team-manager while preserving state_file; see README upgrade instructions"
+  fi
+done
 
 latest_release_url="$(
   curl -fsSL --retry 3 --connect-timeout 15 -o /dev/null -w '%{url_effective}' \

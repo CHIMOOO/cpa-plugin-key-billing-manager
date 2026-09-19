@@ -2,7 +2,7 @@ $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
 $repository = "CHIMOOO/cpa-plugin-key-billing-manager"
-$pluginName = "cpa-key-billing"
+$pluginName = "cpa-team-manager"
 $pluginFile = "$pluginName.dll"
 $pluginDir = Join-Path (Get-Location).Path "plugins"
 $tempDir = $null
@@ -70,6 +70,12 @@ try {
         "AMD64" { $targetArch = "amd64" }
         "ARM64" { $targetArch = "arm64" }
         default { Fail "unsupported architecture: $architecture" }
+    }
+
+    foreach ($legacyName in @("cpa-key-billing.dll", "cpa-key-billing.so", "cpa-key-billing.dylib")) {
+        if (Test-Path -LiteralPath (Join-Path $pluginDir $legacyName)) {
+            Fail "legacy cpa-key-billing library exists: stop CPA, back up data, move the old library out of plugins, and migrate plugins.configs to cpa-team-manager while preserving state_file; see README upgrade instructions"
+        }
     }
 
     $latestRelease = Get-LatestRelease

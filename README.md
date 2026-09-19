@@ -21,6 +21,9 @@
 - 支持在独立的「API Key 分组」页中管理分组；API Key 可加入多个分组，按组绑定路由规则或直接选择上游凭证、模型，批量设置成员与凭证白名单
 - 支持全局访问控制开关，以及可选的未分组 Key 默认拒绝策略
 - 支持分组独立启停，禁用后保留成员与规则
+- 独立「账号接入」页支持 OpenCode Go / Zen、CommandCode、Cline Pass，查询可用订阅额度并发布到 CPA 上游配置
+- 独立「账号管理」页展示逐账号用量与当前并发，支持逐账号设置并发上限；分组内账号标签展示实际返回的 5 小时、周额度
+- 「风控中心」支持本地关键词、模型范围、观察与请求前拦截，以及命中内容的哈希记忆
 - 集成 Codex turn-state 模板采集与注入，支持在独立的「Codex Turn State」页中切换 `replace-only` / `always` 和配置探测代理
 - 可从 [models.dev](https://models.dev/) 获取模型参考价
 - 支持简体中文与英文；独立页面可切换并记住语言，嵌入管理中心时跟随宿主语言
@@ -80,12 +83,21 @@ irm https://raw.githubusercontent.com/CHIMOOO/cpa-plugin-key-billing-manager/mai
 也可以从 [Releases](../../releases/latest) 下载对应平台的发布包，解压后将动态库放入 CLIProxyAPI 的 `plugins/` 目录：
 
 ```text
-plugins/cpa-key-billing.so       # Linux
-plugins/cpa-key-billing.dylib    # macOS
-plugins/cpa-key-billing.dll      # Windows
+plugins/cpa-team-manager.so       # Linux
+plugins/cpa-team-manager.dylib    # macOS
+plugins/cpa-team-manager.dll      # Windows
 ```
 
-插件商店显示名称为「API Key 团队管理」，可搜索 `api-key`、`团队`、`分组`、`额度`、`订阅`、`计费`、`路由`、`codex`、`turn-state` 等词。插件 ID、配置键、动态库文件名及访问地址保持 `cpa-key-billing`，已有安装可直接升级。
+插件商店显示名称为「API Key 团队管理」，可搜索 `api-key`、`团队`、`分组`、`额度`、`订阅`、`计费`、`路由`、`codex`、`turn-state` 等词。从 v0.0.8 起，插件 ID、配置键、动态库文件名及访问地址改为独立的 `cpa-team-manager`，避免与原项目冲突。
+
+### 从 v0.0.7 及更早的本项目版本升级
+
+1. 停止 CPA，备份配置、原 `state_file` 数据库及其旁边的 `.turn-state.json` 文件。
+2. 将本项目旧的 `cpa-key-billing.so` / `.dylib` / `.dll` 移出插件加载目录；不要同时启用两份计费与调度插件。
+3. 在 `plugins.configs` 中将本项目的配置键改为 `cpa-team-manager`，**保留原 `state_file` 的完整路径**，例如 `plugins/cpa-key-billing-state-v1.db`。新 ID 默认使用新的数据库路径，省略此项不会自动接管旧数据。
+4. 安装新版动态库，启动 CPA，打开下文的新地址并核对原分组、订阅和桶。账号指纹保持兼容，已有绑定无需重选。
+
+新安装使用下方配置。原项目与本项目必须使用不同的数据文件；不要让两个插件同时打开同一数据库。回退时停止 CPA、恢复备份与旧插件配置。
 
 ## 配置
 
@@ -96,11 +108,11 @@ plugins:
   enabled: true
   dir: "plugins"
   configs:
-    cpa-key-billing:
+    cpa-team-manager:
       enabled: true
       debug: false # 是否记录 debug 日志，例如路由日志、匹配参考价日志
       codex_fast_mode_billing: false # 开启后，Codex 的 priority 请求按 2.5 倍计费
-      state_file: "plugins/cpa-key-billing-state-v1.db"
+      state_file: "plugins/cpa-team-manager-state-v1.db"
 ```
 
 `codex_fast_mode_billing` 开启后，请求 Codex 上游时在请求中指定 `service_tier=priority`，按普通费用的 **2.5 倍**结算。
@@ -119,18 +131,18 @@ plugins:
 管理员可以从 CLIProxyAPI 管理中心的「API Key 团队管理」菜单进入，也可以直接打开：
 
 ```text
-http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing/ui
+http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-team-manager/ui
 ```
 
 普通用户使用自己的 API Key 查询订阅额度和用量时，直接打开：
 
 ```text
-http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-key-billing/ui#account
+http(s)://<CLIProxyAPI 地址>/v0/resource/plugins/cpa-team-manager/ui#account
 ```
 
 ### 持久化提示
 
-管理页会检查可识别的 Linux 容器部署中，插件库、计费数据库和 Turn State 文件所在的挂载位置。检测到容器可写层、内存文件系统或已加载但磁盘缺失的插件库时，顶部会持续提示风险及需处理的路径。容器重建可能丢失可写层文件；这与普通 CPA 进程重启不同。插件库或数据丢失后，分组与额度限制可能不再生效。
+「设置」页会检查可识别的 Linux 容器部署中，插件库、计费数据库和插件数据文件所在的挂载位置。仅检测到容器可写层、内存文件系统或已加载但磁盘缺失的插件库等风险时显示提示及需处理的路径；已检测到正常外部挂载的状态不展示，其他页面不展示此模块。容器重建可能丢失可写层文件；这与普通 CPA 进程重启不同。插件库或数据丢失后，分组与额度限制可能不再生效。
 
 请备份数据，为插件和数据目录配置持久挂载，并在部署配置中保留插件加载项。CPA 没有向插件开放安全修改容器挂载的能力，因此这里提供具体提示，不提供无法保证生效的“一键设置”。检测到外部挂载只证明当前路径的挂载状态，不保证自动加载、未来部署或备份正确；无法检测的部署不显示推断结论。
 
@@ -189,11 +201,44 @@ flowchart TB
     P -- 无可用凭证 --> S[返回 HTTP 503]
 ```
 
+## 账号接入、用量与并发
+
+「账号接入」支持 OpenCode Go / Zen、CommandCode API Key 和 Cline Pass。Cline 可通过设备授权登录，或填写已有凭证；登录与刷新由当前页面发起。凭证保存在 CPA 的认证文件中，插件数据库不保存这些明文凭证。请同时持久化并备份 CPA 的 `auth-dir` 和上游配置。
+
+保存账号后，将选中的模型发布到 CPA 上游。OpenCode 按已验证的模型协议自动生成 Chat Completions、Responses 和 Anthropic 通道；原生通道的客户端模型名带独立前缀，页面可复制。当前宿主无法配置 OpenCode Google 模型所需的接口路径，目录中未确认协议的模型也不发布；界面会列出原因。发布和删除只更新该账号所属通道，失败时保留重试入口；多类通道分别写入，部分成功会明确显示。
+
+替换密钥或手动刷新 Cline 凭证时，先迁移准确的分组、路由和 Key 凭证引用，并让新旧凭证共用并发上限，再发布上游配置。全部通道确认更新后移除旧引用。操作中断时使用「连接 / 修复通道」继续，重试不会再次轮换凭证；待迁移记录保存在 CPA 认证目录中。取消设备登录会停止后续通道写入；若账号已保存，页面会明确告知，可在账号卡片中删除。
+
+若上游已轮换凭证而 CPA 认证目录写入失败，新凭证只暂存在进程内存中；应先恢复存储并修复通道。此时若进程退出，可能需要重新登录。
+
+| 接入类型 | 额度来源与显示 |
+| --- | --- |
+| OpenCode Go | 通过工作区 ID 和控制台 auth cookie 读取服务端订阅用量窗口 |
+| OpenCode Zen | 可接入和发布模型；当前不查询预付费余额 |
+| CommandCode | 官方 CLI 使用的组织订阅额度与余额接口 |
+| Cline Pass | 官方订阅用量接口；仅发布该订阅可用的模型 |
+
+额度按需刷新，只显示上游实际返回的窗口、比例或余额。未返回的 5 小时/周额度不补造，查询失败不显示为满额。分组中的账号标签通过精确凭证引用关联额度，不按名称或相似模型猜测；未确认的关联不展示订阅额度。上游订阅额度和本插件的下游订阅限额分别计算。
+
+「账号管理」按宿主明确提供的账号索引汇总最近 365 天的 `usage.handle` 记录，展示请求数、成功/失败、可归类 Token、费用和并发。旧记录缺失的 Token 分类不能补回，会标记不完整记录。部分 CPA 版本不在认证清单中列出配置型 API Key：这些账号仍可预先设置并发，但用量需要首次请求确认准确身份；重启后可能需再次确认，不会将未知用量显示为零。
+
+逐账号并发上限为 0–1000，0 表示不限。它与下游 API Key 并发同时生效：流式请求持续占位，结束、断开或切换重试账号时释放原账号槽位。设置保存在 `<state_file>.account-runtime.json`，备份时一并保留。
+
+## 风控中心
+
+风控默认关闭，支持按模型范围检查本地关键词。观察模式只记录命中；请求前拦截模式在调用上游前拒绝命中内容。拦截模式下无法检查的请求正文也会拒绝，包括缺失、格式不支持或超过检查上限的正文；当前检查最多 1 MiB JSON 和 64 KiB 可识别文本，不分析图片、音频或外部链接内容。
+
+可记住命中内容的哈希，之后相同规范化文本也按策略处理。事件只保存时间、模型、规则与调用方引用，不保存请求正文、摘录或凭证。事件默认保留 30 天、最多 500 条，计数反映当前保留的事件；哈希记忆可单独清除。配置、事件和哈希保存在 `<state_file>.risk-control.json`。该功能是本地规则检查，不提供外部 AI 内容审核或对上游账号封禁风险的保证。
+
 ## Codex Turn State
 
 在独立的「Codex Turn State」页中配置。该模块源自 [arden-aaai/cpa-plugin-codex-turn-state](https://github.com/arden-aaai/cpa-plugin-codex-turn-state)（MIT License，Copyright © 2026 boooot），在其账号/模型模板算法、注入模式和代理重试规则基础上适配本插件的同步调用与独立状态存储。原项目出处、参考版本及完整许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。默认关闭；启用后设置即时生效，修改模式不需要重启 CPA。替换插件动态库仍需重启。
 
 HTTP/SSE 业务注入要求 CPA `7.3.4` 或具有相同修复的版本。旧版 `7.2.143` 的 Codex 执行器不转发该请求头；设置开关和插件注入计数不能检测这个宿主限制。升级宿主后再验证实际请求行为。
+
+**加入采集列表的账号默认启用业务保护**：只允许使用该账号、实际模型对应的有效模板。桶缺失或过期、注入关闭、观察模式以及 `replace-only` 无法替换当前请求时，均拒绝业务流量；其他账号仍按自身规则调度。该保护独立于采集开关，在页面顶部单独保存。切换为 `always` 可处理不携带模板的客户端请求，但仍需先有有效桶。旧宿主或缺少所选账号信息时会保守拒绝；插件 schema 6 是最低兼容标记，不能证明任意分支包含请求头转发修复。
+
+受保护账号仅支持 HTTP/SSE。WebSocket 复用连接无法保证逐次注入新模板，因此这类请求会被拒绝；请将客户端切换到 HTTP/SSE。关闭保护会允许账号按普通规则发起请求，页面会要求确认。
 
 | 设置 | 行为 |
 | --- | --- |
@@ -210,6 +255,8 @@ HTTP/SSE 业务注入要求 CPA `7.3.4` 或具有相同修复的版本。旧版 
 选择探测账号、填写模型后，可开始探测并保持页面打开以连续采集。**已停用的 Codex OAuth 账号也可以选中并采集**，列表会标注停用状态；采集不会启用账号，日常业务仍遵守 CPA 的停用设置。账号需要有效的 OAuth 凭证；过期凭证需重新登录或由 CPA 刷新。已删除或不再是 Codex OAuth 的账号不参与探测，已保存的失效选择可在页面中移除。静态代理一行对应一个固定出口，同一账号/模型失败后冷却 55 分钟；轮换代理同一 URL 最多连续尝试 10 次，然后冷却 10 分钟。成功后按模板实际签发时间和有效期安排续采。提前续采可设置为 10、20 等整数分钟，必须小于模板有效期；`renew_before_minutes=0` 保留自动策略：提前 5 分钟，短有效期则提前有效期的四分之一。调整该设置会重新安排成功出口的续采，不重置失败出口的冷却。升级前保存的旧冷却没有成功标记，会先按原期限结束一次。
 
 采集表格按「账号 × 模型」展示，单元格显示剩余有效分钟数，包含未采集的桶及范围外仍有效的模板。采集账号与代理默认展开，已保存代理会完整加载到文本框。支持带账号密码的 HTTP、HTTPS、SOCKS5、SOCKS5H URL；只提交有修改的池，把已加载的文本框内容删空并保存会清空对应池。状态接口仍只返回代理数量；完整代理通过管理员专用接口分页读取，并禁止缓存。
+
+账号、模型、代理、注入和续采策略统一显示未保存状态，各区块和页面顶部均提供「保存所有设置」，失败时保留草稿。桶就绪度直接展示采集代理的 IP/主机及端口，认证信息仍隐藏；轮换代理网关地址不等于当次真实出口 IP。
 
 总览分别展示探测结果、桶就绪度和业务决策计数，包括替换、补入、直通、跳过、观察模式及错误。计数从本次插件加载起计算，页面刷新不会清零。每个桶可定向采集、通过 CPA 发起自测、清除模板或清除冷却。自测固定该账号和模型，发送一条不携带模板的最小请求，用于检查 CPA 调用路径；不会采集模板，也不证明注入效果或回答质量。
 
@@ -238,24 +285,24 @@ HTTP/SSE 业务注入要求 CPA `7.3.4` 或具有相同修复的版本。旧版 
 
 ## 在 CPA 中调试本地修改
 
-仓库根目录的 `registry.json` 使用 CPA 插件商店 schema v1，插件 ID 保持 `cpa-key-billing`，仓库指向本项目。将文件提交到 GitHub 后，可把对应分支的 Raw URL 添加到 CPA 的插件商店源。商店安装依赖该仓库的 GitHub Release 构建产物；`registry.json` 本身不会编译或加载本地代码。
+仓库根目录的 `registry.json` 使用 CPA 插件商店 schema v1，插件 ID 为 `cpa-team-manager`，仓库指向本项目。可把对应分支的 Raw URL 添加到 CPA 的插件商店源。商店安装依赖该仓库的 GitHub Release 构建产物；`registry.json` 本身不会编译或加载本地代码。
 
 调试尚未发布的修改时，安装 Go 1.24+ 和 C 编译器，在本仓库根目录编译动态库。Windows PowerShell（需要 MinGW-w64 GCC）示例：
 
 ```powershell
 $env:CGO_ENABLED = "1"
 New-Item -ItemType Directory -Force dist | Out-Null
-go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-key-billing.dll ./cmd/cpa-key-billing
+go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-team-manager.dll ./cmd/cpa-key-billing
 ```
 
 Linux 使用：
 
 ```sh
 mkdir -p dist
-CGO_ENABLED=1 go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-key-billing.so ./cmd/cpa-key-billing
+CGO_ENABLED=1 go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-team-manager.so ./cmd/cpa-key-billing
 ```
 
-停止 CPA，将对应平台的动态库复制到其 `plugins/` 目录，按上文配置启用插件后重启。避免在根目录和平台子目录同时保留相同 ID 的旧版插件。打开 `/v0/resource/plugins/cpa-key-billing/ui` 即可调试；UI 嵌入动态库，每次修改后都需要重新编译并重启 CPA。测试时建议使用独立的 CPA 配置、数据库和虚拟 Key。
+停止 CPA，将对应平台的动态库复制到其 `plugins/` 目录，按上文配置启用插件后重启。避免在根目录和平台子目录同时保留相同 ID 的旧版插件。打开 `/v0/resource/plugins/cpa-team-manager/ui` 即可调试；UI 嵌入动态库，每次修改后都需要重新编译并重启 CPA。测试时建议使用独立的 CPA 配置、数据库和虚拟 Key。
 
 ## 致谢
 

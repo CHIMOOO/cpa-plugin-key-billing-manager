@@ -18,6 +18,9 @@
 - Routing rules and direct model/credential permissions.
 - A dedicated **API Key Groups** tab, multiple groups per key, per-group enable switches, and bulk membership editing.
 - Optional rejection of all ungrouped API keys.
+- Account integrations for OpenCode Go / Zen, CommandCode, and Cline Pass, with supported subscription quota queries and publishing into CPA providers.
+- Per-account usage and concurrency controls, plus exact credential-linked quota chips in groups.
+- Local content risk rules with observe/pre-block modes, model filters, and hash memory.
 - A dedicated **Codex Turn State** tab with template collection, configurable injection modes, and static/rotating proxy pools.
 - Reference prices from [models.dev](https://models.dev/) and custom overrides.
 - English and Simplified Chinese. Standalone pages remember the selected language; embedded pages follow the management host.
@@ -53,14 +56,23 @@ irm https://raw.githubusercontent.com/CHIMOOO/cpa-plugin-key-billing-manager/mai
 These scripts install this fork's release into `plugins/`. Restart CLIProxyAPI after installation or an upgrade. Alternatively, download this fork's [release archive](https://github.com/CHIMOOO/cpa-plugin-key-billing-manager/releases/latest), or add its `registry.json` to the CPA plugin store.
 
 ```text
-plugins/cpa-key-billing.so       # Linux
-plugins/cpa-key-billing.dylib    # macOS
-plugins/cpa-key-billing.dll      # Windows
+plugins/cpa-team-manager.so       # Linux
+plugins/cpa-team-manager.dylib    # macOS
+plugins/cpa-team-manager.dll      # Windows
 ```
 
 Unreleased workspace changes require a local build; the registry installs published release assets.
 
-The store display name is **API Key 团队管理** (API Key Team Manager). Search terms include `api-key`, `team`, `billing`, `quota`, `subscription`, `routing`, `codex`, and `turn-state`. The plugin ID, configuration key, library filename, and routes remain `cpa-key-billing` for existing installations.
+The store display name is **API Key 团队管理** (API Key Team Manager). Search terms include `api-key`, `team`, `billing`, `quota`, `subscription`, `routing`, `codex`, and `turn-state`. Starting with v0.0.8, the plugin ID, configuration key, library filename, and routes use the independent ID `cpa-team-manager` to avoid colliding with the original project.
+
+### Upgrading this project's v0.0.7 or earlier
+
+1. Stop CPA. Back up its configuration, the existing `state_file` database, and the adjacent `.turn-state.json` file.
+2. Move this project's old `cpa-key-billing.so`, `.dylib`, or `.dll` out of the plugin loading directory. Do not enable both copies of the billing and scheduling hooks.
+3. Rename this project's key under `plugins.configs` to `cpa-team-manager` and **keep the full original `state_file` path**, for example `plugins/cpa-key-billing-state-v1.db`. The new ID defaults to a new database and does not automatically take over old data.
+4. Install the new library, start CPA, and check the existing groups, subscriptions, and buckets at the new URL below. Credential fingerprints remain compatible, preserving existing bindings.
+
+New installations can use the configuration below. This project and the original plugin must use separate data files; never point two active plugins at the same database. To roll back, stop CPA and restore the backup and old plugin configuration.
 
 ## Configuration
 
@@ -69,11 +81,11 @@ plugins:
   enabled: true
   dir: "plugins"
   configs:
-    cpa-key-billing:
+    cpa-team-manager:
       enabled: true
       debug: false
       codex_fast_mode_billing: false # Charge 2.5 times for Codex priority requests
-      state_file: "plugins/cpa-key-billing-state-v1.db"
+      state_file: "plugins/cpa-team-manager-state-v1.db"
 ```
 
 When `codex_fast_mode_billing` is enabled, Codex upstream requests with `service_tier=priority` are billed at **2.5 times** the standard cost.
@@ -85,18 +97,18 @@ Back up the database before upgrading, together with the adjacent `<state_file>.
 Open the plugin in the management panel or visit:
 
 ```text
-http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-key-billing/ui
+http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-team-manager/ui
 ```
 
 API key holders can view their own subscription and usage at:
 
 ```text
-http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-key-billing/ui#account
+http(s)://<CLIProxyAPI address>/v0/resource/plugins/cpa-team-manager/ui#account
 ```
 
 ### Persistence diagnostics
 
-On detectable Linux container deployments, the management page checks the loaded library, billing database, and Turn State sidecar against their filesystem mounts. Container writable layers, memory filesystems, and missing loaded libraries produce a persistent warning with affected paths. Recreating a container may lose its writable layer; an ordinary CPA process restart is different. Losing the plugin or its data may disable group and quota enforcement.
+On detectable Linux container deployments, **Settings** checks the loaded library, billing database, and plugin data files against their filesystem mounts. Only risks such as container writable layers, memory filesystems, and missing loaded libraries are displayed, with affected paths. Healthy external mounts are hidden, and no other page displays this module. Recreating a container may lose its writable layer; an ordinary CPA process restart is different. Losing the plugin or its data may disable group and quota enforcement.
 
 Back up the files, mount plugin/data directories persistently, and retain plugin loading settings in deployment configuration. CPA provides no safe callback to change container mounts, so the plugin explains the required action instead of offering an unreliable automatic fix. An observed external mount does not prove autoload, future deployments, or backups are correct. Undetectable deployments show no inferred conclusion.
 
@@ -131,11 +143,44 @@ The plugin also validates the final credential chosen by CPA. Host priority sett
 
 The former X-Forwarded-For interception feature and management endpoints have been removed. Historical database settings remain for compatibility and no longer affect requests.
 
+## Account integrations and concurrency
+
+**Account Integrations** supports OpenCode Go / Zen, CommandCode API keys, and Cline Pass. Cline supports device authorization and existing credentials; the page drives login and refresh. Secrets are stored in CPA-managed auth files, not the plugin database. Persist and back up CPA's `auth-dir` and provider configuration.
+
+Publish selected models into the account's CPA channels. OpenCode models are split by verified protocol into Chat Completions, Responses, and Anthropic providers. Native providers use unique client model prefixes, which the page can copy. OpenCode Google endpoints cannot currently be expressed through the host's provider configuration; those models and unknown protocols are visibly excluded. Publishing/deleting preserves unrelated channels. Resources update separately, with partial failures reported for retry.
+
+Key replacement and manual Cline refresh first prepare exact group, route, and key credential references and merge old/new credentials into one concurrency pool. Old references retire only after all channels are updated and confirmed. Use **Connect / Repair channels** after an interruption; retrying resumes the pending migration without rotating again. Pending records live in CPA's auth directory. Cancelling device login stops subsequent channel writes; if the account was already saved, the page reports that outcome and lets you delete it.
+
+If the upstream rotates a token but CPA auth storage cannot save it, the new token is retained only in process memory. Restore storage and repair the channel before restarting; a process exit in this state may require signing in again.
+
+| Integration | Quota support |
+| --- | --- |
+| OpenCode Go | Upstream subscription windows using the workspace ID and dashboard auth cookie |
+| OpenCode Zen | Model access; prepaid balance is currently unavailable |
+| CommandCode | Organization subscription limits and credits from the official CLI endpoints |
+| Cline Pass | Official subscription usage limits; only subscription-eligible models are published |
+
+Refresh quotas on demand. Only returned windows, percentages, or balances are displayed; missing 5-hour/weekly limits are omitted, and failures never imply a full balance. Group chips associate quotas through exact credential references, never name/model heuristics. Unverified associations show no quota. Upstream subscription allowances are separate from this plugin's downstream quota plans.
+
+**Accounts** aggregates the last 365 days of `usage.handle` records by the host's exact account index, including requests, failures, classified tokens, cost, and current concurrency. Missing historical token classifications remain marked incomplete. Some CPA versions omit configured API keys from auth-file inventory: limits can still be set before use, but usage identity requires the first real request, potentially again after restart. Unknown usage is not displayed as zero.
+
+Per-account concurrency limits range from 0–1000; 0 is unlimited. Both upstream-account and downstream-key limits apply. Streaming requests hold their slot until completion, disconnection, or a retry switches accounts. Back up `<state_file>.account-runtime.json` with the database.
+
+## Risk center
+
+Local keyword checks are disabled by default and can be scoped to models. Observe mode records matches; pre-block mode refuses matches before upstream execution. Pre-block also refuses uninspectable payloads, including missing, unsupported, or oversized input. Inspection accepts up to 1 MiB JSON and 64 KiB recognized text; it does not inspect image/audio content or fetch external links.
+
+Optional hash memory recognizes the same normalized text after an earlier match. Events store timestamps, models, rule references, and caller references, never prompts, excerpts, or credentials. Defaults retain 30 days and up to 500 events; counters describe retained events. Hash memory can be cleared separately. Back up `<state_file>.risk-control.json`. This is local rule enforcement, without external AI moderation or a guarantee against upstream account restrictions.
+
 ## Codex Turn State
 
 Configure the module in its own **Codex Turn State** tab. It is adapted from [arden-aaai/cpa-plugin-codex-turn-state](https://github.com/arden-aaai/cpa-plugin-codex-turn-state), MIT License, Copyright © 2026 boooot. The account/model template algorithm, injection modes, and proxy retry policy are adapted to this plugin's synchronous execution and separate state store. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the reference revision and full license.
 
 The module is disabled by default. Saved settings apply immediately; replacing the plugin library still requires a CPA restart.
+
+**Enrolling an account for collection enables business protection by default.** Business requests require a valid template for the selected account and actual upstream model. Missing/expired buckets, disabled injection, dry-run, and headers that `replace-only` cannot replace cause rejection. Other accounts follow their own rules. Protection is a separate immediately saved switch; disabling it requires confirmation. `always` supports clients without a template header but still requires a valid bucket.
+
+Protected accounts require a verified CPA 7.3.4-compatible host with header forwarding. Plugin schema 6 is a minimum marker, not proof that every fork contains the fix. Unknown selected-account metadata or an older host fails closed. Protected WebSocket traffic is refused because reused sessions cannot reliably inject per-turn updates; use HTTP/SSE.
 
 | Setting | Behavior |
 | --- | --- |
@@ -154,6 +199,8 @@ Select accounts and models, save, then start probing with this page open. **Disa
 Each static proxy URL represents one exit and cools down for 55 minutes after failure. A rotating URL can be tried up to 10 times before a 10-minute cooldown. Successful collection schedules renewal from the token's actual issuance time and TTL. Set the renewal lead to an integer such as 10 or 20 minutes, strictly shorter than the TTL. The default `renew_before_minutes=0` preserves the automatic lead: 5 minutes, or one quarter of a shorter TTL. Changing it reschedules successful exits without resetting failure cooldowns. Existing cooldowns from older versions lack a success marker and retain their original deadline once after upgrading.
 
 The account × model matrix displays remaining validity in minutes, missing selected buckets, and still-valid templates outside the selected scope. Account and proxy controls are expanded by default. Saved HTTP, HTTPS, SOCKS5, and SOCKS5H URLs, including credentials, load into editable textareas. Only changed pools are submitted; emptying a loaded textarea and saving clears that pool. Status responses still contain counts only. A separate management-only endpoint reads complete proxy URLs in bounded pages with caching disabled.
+
+Account/model selections, proxies, injection, and renewal settings share dirty-state feedback and **Save all settings** controls at the top and in each section. Failed saves preserve drafts. Bucket readiness displays proxy IP/host and port plainly while hiding authentication; a rotating gateway address is not proof of the actual egress IP.
 
 The dashboard separates probe results, bucket readiness, and business decisions: replacement, insertion, pass-through, skip, observation, and errors. Counters begin when the plugin loads and survive page reloads. Each bucket offers targeted collection, a CPA self-test, template clearing, and cooldown clearing. The self-test pins the account/model and sends a minimal request without a template to check CPA's request path; it never harvests a template or proves injection effectiveness or answer quality.
 
@@ -189,14 +236,14 @@ Use Go 1.24+ and a C compiler. On Windows, use MinGW-w64 GCC:
 ```powershell
 $env:CGO_ENABLED = "1"
 New-Item -ItemType Directory -Force dist | Out-Null
-go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-key-billing.dll ./cmd/cpa-key-billing
+go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-team-manager.dll ./cmd/cpa-key-billing
 ```
 
 On Linux:
 
 ```sh
 mkdir -p dist
-CGO_ENABLED=1 go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-key-billing.so ./cmd/cpa-key-billing
+CGO_ENABLED=1 go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist/cpa-team-manager.so ./cmd/cpa-key-billing
 ```
 
 Stop CPA, replace the library in its `plugins/` directory, and restart. Do not keep duplicate libraries with the same plugin ID. The UI is embedded in the library, so UI edits also require a rebuild and restart. Use an isolated configuration, database, and dummy credentials for testing. See [AGENTS.md](AGENTS.md) for repository checks.

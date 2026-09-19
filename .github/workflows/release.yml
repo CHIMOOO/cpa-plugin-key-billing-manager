@@ -182,8 +182,8 @@ jobs:
           mkdir -p dist
           CGO_ENABLED=1 GOOS=darwin GOARCH="$TARGET_ARCH" \
             go build -buildvcs=false -tags cshared -buildmode=c-shared \
-            -o dist/cpa-key-billing.dylib ./cmd/cpa-key-billing
-          rm -f dist/cpa-key-billing.h
+            -o dist/cpa-team-manager.dylib ./cmd/cpa-key-billing
+          rm -f dist/cpa-team-manager.h
 
       - name: Build Linux plugin with manylinux2014
         if: matrix.os == 'linux'
@@ -208,9 +208,9 @@ jobs:
               CGO_ENABLED=1 GOOS=linux GOARCH="$TARGET_ARCH" \
                 go build -buildvcs=false -trimpath -ldflags="-s -w -buildid=" \
                 -tags cshared -buildmode=c-shared \
-                -o dist/cpa-key-billing.so ./cmd/cpa-key-billing
+                -o dist/cpa-team-manager.so ./cmd/cpa-key-billing
             '
-          rm -f dist/cpa-key-billing.h
+          rm -f dist/cpa-team-manager.h
 
       - name: Build Windows plugin
         if: matrix.os == 'windows'
@@ -236,11 +236,11 @@ jobs:
           $env:CC = $env:TARGET_CC
           go build -buildvcs=false -trimpath -ldflags="-s -w -buildid=" `
             -tags cshared -buildmode=c-shared `
-            -o dist/cpa-key-billing.dll ./cmd/cpa-key-billing
+            -o dist/cpa-team-manager.dll ./cmd/cpa-key-billing
           if ($LASTEXITCODE -ne 0) {
             throw "Windows plugin build failed"
           }
-          Remove-Item dist/cpa-key-billing.h -Force -ErrorAction SilentlyContinue
+          Remove-Item dist/cpa-team-manager.h -Force -ErrorAction SilentlyContinue
 
       - name: Save Windows Go build cache
         if: matrix.os == 'windows' && steps.windows-go-build-cache.outputs.cache-hit != 'true'
@@ -256,18 +256,18 @@ jobs:
           TARGET_ARCH: ${{ matrix.arch }}
           EXTENSION: ${{ matrix.extension }}
         run: |
-          binary="dist/cpa-key-billing.${EXTENSION}"
+          binary="dist/cpa-team-manager.${EXTENSION}"
           test -s "$binary"
           file "$binary"
           version="${RELEASE_TAG#v}"
           cp LICENSE THIRD_PARTY_NOTICES.md dist/
 
-          release_archive="cpa-key-billing_${version}_${TARGET_OS}_${TARGET_ARCH}.tar.gz"
-          tar -czf "$release_archive" -C dist "cpa-key-billing.${EXTENSION}" LICENSE THIRD_PARTY_NOTICES.md
+          release_archive="cpa-team-manager_${version}_${TARGET_OS}_${TARGET_ARCH}.tar.gz"
+          tar -czf "$release_archive" -C dist "cpa-team-manager.${EXTENSION}" LICENSE THIRD_PARTY_NOTICES.md
 
-          store_archive="cpa-key-billing_${version}_${TARGET_OS}_${TARGET_ARCH}.zip"
+          store_archive="cpa-team-manager_${version}_${TARGET_OS}_${TARGET_ARCH}.zip"
           zip -j "$store_archive" "$binary" LICENSE THIRD_PARTY_NOTICES.md
-          diff -u <(printf '%s\n' "cpa-key-billing.${EXTENSION}" LICENSE THIRD_PARTY_NOTICES.md | sort) <(unzip -Z1 "$store_archive" | sort)
+          diff -u <(printf '%s\n' "cpa-team-manager.${EXTENSION}" LICENSE THIRD_PARTY_NOTICES.md | sort) <(unzip -Z1 "$store_archive" | sort)
 
       - name: Verify and package Windows plugin
         if: matrix.os == 'windows'
@@ -278,7 +278,7 @@ jobs:
           EXTENSION: ${{ matrix.extension }}
           TARGET_OBJDUMP: ${{ matrix.objdump }}
         run: |
-          $binary = "dist/cpa-key-billing.$($env:EXTENSION)"
+          $binary = "dist/cpa-team-manager.$($env:EXTENSION)"
           if (-not (Test-Path $binary) -or (Get-Item $binary).Length -eq 0) {
             throw "Missing or empty plugin binary: $binary"
           }
@@ -293,13 +293,13 @@ jobs:
           }
           $version = $env:RELEASE_TAG -replace '^v', ''
 
-          $storeArchive = "cpa-key-billing_$($version)_$($env:TARGET_OS)_$($env:TARGET_ARCH).zip"
+          $storeArchive = "cpa-team-manager_$($version)_$($env:TARGET_OS)_$($env:TARGET_ARCH).zip"
           Compress-Archive -Path $binary, LICENSE, THIRD_PARTY_NOTICES.md -DestinationPath $storeArchive -Force
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [IO.Compression.ZipFile]::OpenRead($storeArchive)
           try {
             $entries = @($archive.Entries | ForEach-Object FullName)
-            $expectedEntries = @("cpa-key-billing.$($env:EXTENSION)", "LICENSE", "THIRD_PARTY_NOTICES.md")
+            $expectedEntries = @("cpa-team-manager.$($env:EXTENSION)", "LICENSE", "THIRD_PARTY_NOTICES.md")
             if ($entries.Count -ne 3 -or (Compare-Object ($expectedEntries | Sort-Object) ($entries | Sort-Object))) {
               throw "Unexpected archive contents: $($entries -join ', ')"
             }
@@ -312,8 +312,8 @@ jobs:
         with:
           name: package-${{ matrix.target }}
           path: |
-            cpa-key-billing_*_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
-            cpa-key-billing_*_${{ matrix.os }}_${{ matrix.arch }}.zip
+            cpa-team-manager_*_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
+            cpa-team-manager_*_${{ matrix.os }}_${{ matrix.arch }}.zip
           if-no-files-found: error
           retention-days: 1
 
@@ -343,7 +343,7 @@ jobs:
       - name: Generate checksums
         working-directory: release-assets
         run: |
-          sha256sum cpa-key-billing_*.tar.gz cpa-key-billing_*.zip | sort > checksums.txt
+          sha256sum cpa-team-manager_*.tar.gz cpa-team-manager_*.zip | sort > checksums.txt
 
       - name: Extract release notes
         run: |

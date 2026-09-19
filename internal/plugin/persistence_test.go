@@ -13,7 +13,7 @@ func TestPersistenceUsesExactMountBoundariesAndKeepsUnknown(t *testing.T) {
 12 10 0:2 / /run rw - tmpfs tmpfs rw
 13 11 0:3 / /app/plugins/temporary rw - tmpfs tmpfs rw
 14 10 8:1 /docker/volumes/a /space\040dir rw - xfs /dev/sda rw`
-	paths := []persistencePath{{Kind: "billing_database", Path: "/app/plugins/state.db"}, {Kind: "plugin_library", Path: "/app/plugins-other/cpa-key-billing.so"}, {Kind: "turn_state", Path: "/app/plugins/temporary/state.json"}, {Kind: "other", Path: "/space dir/state.db"}, {Kind: "unknown", Path: "relative"}}
+	paths := []persistencePath{{Kind: "billing_database", Path: "/app/plugins/state.db"}, {Kind: "plugin_library", Path: "/app/plugins-other/cpa-team-manager.so"}, {Kind: "turn_state", Path: "/app/plugins/temporary/state.json"}, {Kind: "other", Path: "/space dir/state.db"}, {Kind: "unknown", Path: "relative"}}
 	status := inspectPersistence(mounts, paths)
 	if !status.Detected || !status.AtRisk || !status.Container || status.CanConfigure {
 		t.Fatalf("diagnostic claims=%+v", status)
@@ -49,19 +49,19 @@ func TestPersistenceResolvesDatabaseAndSidecarIndependently(t *testing.T) {
 	if paths[0].Path != database || paths[1].Path != target {
 		t.Fatalf("sidecar symlink changed DB diagnostic: %+v", paths)
 	}
-	status := inspectPersistence("", []persistencePath{{Kind: "plugin_library", Path: "/gone/cpa-key-billing.so", State: "missing"}})
+	status := inspectPersistence("", []persistencePath{{Kind: "plugin_library", Path: "/gone/cpa-team-manager.so", State: "missing"}})
 	if !status.Detected || !status.AtRisk || status.Paths[0].State != "missing" {
 		t.Fatal("known missing mapped library incorrectly safe")
 	}
 }
 
 func TestPersistenceOnlyReturnsThisPluginLibrary(t *testing.T) {
-	maps := `aaa-bbb r-xp 0000 08:01 111 /app/plugins/cpa-key-billing.so
-bbb-ccc rw-p 0001 08:01 111 /app/plugins/cpa-key-billing.so
+	maps := `aaa-bbb r-xp 0000 08:01 111 /app/plugins/cpa-team-manager.so
+bbb-ccc rw-p 0001 08:01 111 /app/plugins/cpa-team-manager.so
 ccc-ddd r-xp 0000 08:01 112 /unrelated/secret.so
-ddd-eee r-xp 0000 08:01 113 /space dir/cpa-key-billing.so (deleted)
+ddd-eee r-xp 0000 08:01 113 /space dir/cpa-team-manager.so (deleted)
 fff-ggg rw-p 0000 00:00 0 [heap]`
-	want := []string{"/app/plugins/cpa-key-billing.so", "/space dir/cpa-key-billing.so"}
+	want := []string{"/app/plugins/cpa-team-manager.so", "/space dir/cpa-team-manager.so"}
 	if got := loadedPluginPaths(maps); !reflect.DeepEqual(got, want) {
 		t.Fatalf("plugin maps=%v", got)
 	}
