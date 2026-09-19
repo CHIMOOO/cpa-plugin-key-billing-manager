@@ -18,7 +18,7 @@ const (
 const (
 	PluginID   = "cpa-key-billing"
 	PluginName = "API Key 团队管理"
-	Version    = "0.0.6"
+	Version    = "0.0.7"
 
 	MenuLabel       = "API Key 团队管理"
 	MenuDescription = "API Key team management: groups, routing, billing, subscription quotas, and Codex Turn State"
