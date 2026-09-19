@@ -38,6 +38,8 @@ const (
 	routeTurnState              = "/turn-state"
 	routeTurnStateTemplates     = "/turn-state/templates"
 	routeTurnStateProbe         = "/turn-state/probe"
+	routeTurnStateUpload        = "/turn-state/config-upload"
+	routeTurnStateUploadCommit  = "/turn-state/config-upload/commit"
 	routeKeysRoutes             = "/keys/routes"
 	routeKeysBind               = "/keys/bind"
 	routeKeysUnbind             = "/keys/unbind"
@@ -73,6 +75,10 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodPut, routeAccessControl, "Save access control settings", (*App).setAccessControl},
 	{http.MethodGet, routeTurnState, "View Codex turn-state settings and template status", (*App).getTurnState},
 	{http.MethodPut, routeTurnState, "Save Codex turn-state settings", (*App).setTurnState},
+	{http.MethodPost, routeTurnStateUpload, "Begin a staged Codex turn-state settings upload", (*App).beginTurnStateUpload},
+	{http.MethodPatch, routeTurnStateUpload, "Stage a Codex turn-state settings chunk", (*App).appendTurnStateUpload},
+	{http.MethodDelete, routeTurnStateUpload, "Cancel a staged Codex turn-state settings upload", (*App).cancelTurnStateUpload},
+	{http.MethodPost, routeTurnStateUploadCommit, "Apply complete staged Codex turn-state settings", (*App).commitTurnStateUpload},
 	{http.MethodDelete, routeTurnStateTemplates, "Clear Codex turn-state templates", (*App).clearTurnState},
 	{http.MethodPost, routeTurnStateProbe, "Run one Codex turn-state probe", (*App).probeTurnState},
 	{http.MethodPost, routeGroups, "Create API key group", (*App).createGroup},

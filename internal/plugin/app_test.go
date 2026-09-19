@@ -103,6 +103,7 @@ func TestManagementRegistrationExposesOnlyCurrentEndpoints(t *testing.T) {
 		"GET /groups", "POST /groups", "PATCH /groups", "DELETE /groups", "PUT /keys/groups",
 		"GET /access-control", "PUT /access-control",
 		"GET /turn-state", "PUT /turn-state", "DELETE /turn-state/templates", "POST /turn-state/probe",
+		"POST /turn-state/config-upload", "PATCH /turn-state/config-upload", "DELETE /turn-state/config-upload", "POST /turn-state/config-upload/commit",
 		"POST /keys/bind", "POST /keys/unbind", "POST /keys/reset",
 		"POST /keys/label", "POST /keys/concurrency", "POST /keys/sync",
 		"POST /credentials/sync",

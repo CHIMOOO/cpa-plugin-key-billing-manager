@@ -8,8 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -20,6 +18,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"cpa-key-billing/internal/messages"
 )
 
 const Header = "X-Codex-Turn-State"
@@ -40,7 +40,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{InjectMode: "replace-only", LearnResponses: true, TemplateLength: 292,
-		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{}, ProbeAccounts: []string{},
+		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt6", "gpt-5.6-sol"}, ProbeAccounts: []string{},
 		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}}
 }
 
@@ -60,11 +60,12 @@ type TemplateView struct {
 }
 
 type Decision struct {
-	Action  string    `json:"action"`
-	Reason  string    `json:"reason"`
-	Account string    `json:"account,omitempty"`
-	Model   string    `json:"model,omitempty"`
-	At      time.Time `json:"at"`
+	Action        string           `json:"action"`
+	Reason        string           `json:"reason"`
+	ReasonMessage messages.Message `json:"reason_message,omitzero"`
+	Account       string           `json:"account,omitempty"`
+	Model         string           `json:"model,omitempty"`
+	At            time.Time        `json:"at"`
 }
 
 type Counters struct {
@@ -102,15 +103,17 @@ type diskState struct {
 // Manager never starts goroutines or timers. Expiry and cooldown pruning run
 // synchronously inside host callbacks. Raw state is never returned by Status.
 type Manager struct {
-	mu       sync.Mutex
-	probeMu  sync.Mutex
-	path     string
-	state    diskState
-	pending  map[string]pending
-	counters Counters
-	last     Decision
-	now      func() time.Time
-	runProbe func(Credential, string, string) (ProbeResponse, error)
+	mu             sync.Mutex
+	probeMu        sync.Mutex
+	path           string
+	state          diskState
+	pending        map[string]pending
+	counters       Counters
+	last           Decision
+	uploads        map[string]*configUpload
+	configRevision uint64
+	now            func() time.Time
+	runProbe       func(Credential, string, string) (ProbeResponse, error)
 }
 
 func New() *Manager {
@@ -143,19 +146,19 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 	raw, err := os.ReadFile(path)
 	if err == nil {
 		if err := json.Unmarshal(raw, &state); err != nil {
-			return errors.New("turn-state 状态文件无效")
+			return messages.Errorf("Invalid turn-state state file")
 		}
 		if state.Version != 1 {
-			return errors.New("turn-state 状态文件版本不受支持")
+			return messages.Errorf("Unsupported turn-state state file version")
 		}
 		if err := validateConfig(&state.Config); err != nil {
-			return fmt.Errorf("turn-state 状态配置无效：%w", err)
+			return messages.Errorf("Invalid turn-state state configuration: %w", err)
 		}
 		if err := os.Chmod(path, 0o600); err != nil {
-			return errors.New("无法限制 turn-state 状态文件权限")
+			return messages.Errorf("Cannot restrict turn-state state file permissions")
 		}
 	} else if !os.IsNotExist(err) {
-		return errors.New("无法读取 turn-state 状态文件")
+		return messages.Errorf("Cannot read the turn-state state file")
 	}
 	if state.Templates == nil {
 		state.Templates = map[string]Template{}
@@ -169,6 +172,8 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 		}
 	}
 	m.path, m.state = path, state
+	m.uploads = nil
+	m.configRevision++
 	m.pending = map[string]pending{}
 	m.counters, m.last = Counters{}, Decision{}
 	m.pruneLocked(m.now())
@@ -177,13 +182,13 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 
 func validateConfig(cfg *Config) error {
 	if cfg.InjectMode != "always" && cfg.InjectMode != "replace-only" {
-		return errors.New("inject_mode 只能是 replace-only 或 always")
+		return messages.Errorf("inject_mode must be replace-only or always")
 	}
 	if cfg.TemplateLength < 100 || cfg.TemplateLength > 8192 || cfg.ReplaceLength < 100 || cfg.ReplaceLength > 8192 || cfg.TemplateLength == cfg.ReplaceLength {
-		return errors.New("模板和替换长度须为 100–8192 且不能相同")
+		return messages.Errorf("Template and replacement lengths must be different and between 100 and 8192")
 	}
 	if cfg.TTLSeconds < 60 || cfg.TTLSeconds > 3600 {
-		return errors.New("模板有效期须为 60–3600 秒，不能超过上游令牌有效期")
+		return messages.Errorf("Template lifetime must be 60–3600 seconds and must not exceed the upstream token lifetime")
 	}
 	var err error
 	if cfg.Models, err = cleanList(cfg.Models, 100); err != nil {
@@ -197,7 +202,7 @@ func validateConfig(cfg *Config) error {
 		return err
 	}
 	for _, pool := range []*[]string{&cfg.ProbeProxies, &cfg.ProbeProxiesRotating} {
-		if *pool, err = cleanList(*pool, 2000); err != nil {
+		if *pool, err = cleanList(*pool, MaxProxyPoolEntries); err != nil {
 			return err
 		}
 		for _, proxy := range *pool {
@@ -206,12 +211,16 @@ func validateConfig(cfg *Config) error {
 			}
 		}
 	}
+	raw, err := json.Marshal(cfg)
+	if err != nil || len(raw) > MaxConfigBytes {
+		return messages.Errorf("Turn-state settings must not exceed 16 MiB")
+	}
 	return nil
 }
 
 func cleanList(values []string, limit int) ([]string, error) {
 	if len(values) > limit {
-		return nil, fmt.Errorf("配置列表最多允许 %d 项", limit)
+		return nil, messages.Errorf("A configuration list may contain at most %d items", limit)
 	}
 	result := []string{}
 	seen := map[string]bool{}
@@ -221,7 +230,7 @@ func cleanList(values []string, limit int) ([]string, error) {
 			continue
 		}
 		if len(value) > 4096 || strings.ContainsAny(value, "\r\n\x00") {
-			return nil, errors.New("配置项过长或包含控制字符")
+			return nil, messages.Errorf("A configuration item is too long or contains control characters")
 		}
 		if !seen[value] {
 			result = append(result, value)
@@ -234,19 +243,19 @@ func cleanList(values []string, limit int) ([]string, error) {
 func validateProxy(value string) error {
 	u, err := url.Parse(value)
 	if err != nil || u == nil || u.Hostname() == "" || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return errors.New("代理必须是完整 URL：协议://用户名:密码@主机:端口")
+		return messages.Errorf("A proxy must be a complete URL: scheme://username:password@host:port")
 	}
 	if u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5" && u.Scheme != "socks5h" {
-		return errors.New("代理协议仅支持 http、https、socks5、socks5h")
+		return messages.Errorf("Proxy schemes are limited to http, https, socks5, and socks5h")
 	}
 	if u.Port() != "" {
 		port, err := strconv.Atoi(u.Port())
 		if err != nil || port < 1 || port > 65535 {
-			return errors.New("代理端口必须为 1–65535")
+			return messages.Errorf("The proxy port must be between 1 and 65535")
 		}
 	}
 	if strings.ContainsAny(value, "\r\n\x00") {
-		return errors.New("代理包含控制字符")
+		return messages.Errorf("The proxy contains control characters")
 	}
 	return nil
 }
@@ -255,19 +264,26 @@ func validateProxy(value string) error {
 // credentials; [] explicitly clears a pool. Masked status URLs cannot be saved.
 func (m *Manager) Update(raw []byte) error {
 	// Do not let a completed probe commit a result under a newer configuration.
-	// Probe holds this same gate for the whole bounded curl call.
+	// Probe holds this same gate for the whole bounded upstream call.
 	m.probeMu.Lock()
 	defer m.probeMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.updateLocked(raw)
+}
+
+func (m *Manager) updateLocked(raw []byte) error {
+	if len(raw) > MaxConfigBytes {
+		return messages.Errorf("Turn-state settings must not exceed 16 MiB")
+	}
 	cfg := cloneConfig(m.state.Config)
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&cfg); err != nil {
-		return errors.New("turn-state 配置格式无效")
+		return messages.Errorf("Invalid turn-state configuration format")
 	}
 	if decoder.Decode(&struct{}{}) != io.EOF {
-		return errors.New("turn-state 配置只能包含一个 JSON 对象")
+		return messages.Errorf("Turn-state configuration must contain exactly one JSON object")
 	}
 	if err := validateConfig(&cfg); err != nil {
 		return err
@@ -275,12 +291,17 @@ func (m *Manager) Update(raw []byte) error {
 	for _, pool := range [][]string{cfg.ProbeProxies, cfg.ProbeProxiesRotating} {
 		for _, proxy := range pool {
 			if strings.Contains(proxy, "***") {
-				return errors.New("请填写完整代理，保留原值时应省略代理字段")
+				return messages.Errorf("Enter the complete proxy URL; omit the proxy field to preserve its current value")
 			}
 		}
 	}
 	old := m.state.Config
 	oldTemplates := m.state.Templates
+	oldCooldowns := m.state.Cooldowns
+	m.state.Cooldowns = make(map[string]cooldown, len(oldCooldowns))
+	for k, v := range oldCooldowns {
+		m.state.Cooldowns[k] = v
+	}
 	m.state.Templates = make(map[string]Template, len(oldTemplates))
 	for k, v := range oldTemplates {
 		m.state.Templates[k] = v
@@ -290,8 +311,10 @@ func (m *Manager) Update(raw []byte) error {
 	if err := m.persistLocked(); err != nil {
 		m.state.Config = old
 		m.state.Templates = oldTemplates
+		m.state.Cooldowns = oldCooldowns
 		return err
 	}
+	m.configRevision++
 	return nil
 }
 
@@ -314,13 +337,13 @@ func (m *Manager) Status() Status {
 	defer m.mu.Unlock()
 	now := m.now()
 	m.pruneLocked(now)
-	cfg := cloneConfig(m.state.Config)
+	cfg := m.state.Config
+	cfg.Models = append([]string{}, cfg.Models...)
+	cfg.ProbeAccounts = append([]string{}, cfg.ProbeAccounts...)
 	counts := map[string]int{"static": len(cfg.ProbeProxies), "rotating": len(cfg.ProbeProxiesRotating)}
-	for _, pool := range [][]string{cfg.ProbeProxies, cfg.ProbeProxiesRotating} {
-		for i, proxy := range pool {
-			pool[i] = maskProxy(proxy)
-		}
-	}
+	// Counts are sufficient for the editor, which never reloads saved secrets.
+	// Returning large masked pools makes every status refresh unnecessarily big.
+	cfg.ProbeProxies, cfg.ProbeProxiesRotating = []string{}, []string{}
 	rows := []TemplateView{}
 	for _, t := range m.state.Templates {
 		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt,
@@ -393,6 +416,7 @@ func (m *Manager) usableLocked(t Template, now time.Time) bool {
 }
 
 func (m *Manager) pruneLocked(now time.Time) {
+	m.pruneConfigUploadsLocked()
 	for k, t := range m.state.Templates {
 		if k != key(t.Account, t.Model) || !m.usableLocked(t, now) {
 			delete(m.state.Templates, k)
@@ -422,7 +446,7 @@ func (m *Manager) Before(requestID, account, model string, headers http.Header) 
 	model = ModelName(model)
 	m.pruneLocked(now)
 	if !validBucket(account, model) {
-		m.recordLocked("pass", "无法确认所选账号和上游模型", account, model, now)
+		m.recordLocked("pass", "Cannot verify the selected account and upstream model", account, model, now)
 		return nil, nil
 	}
 	if requestID != "" && len(m.pending) < 4096 {
@@ -431,22 +455,22 @@ func (m *Manager) Before(requestID, account, model string, headers http.Header) 
 	value := headerValue(headers)
 	t, ok := m.state.Templates[key(account, model)]
 	if !ok {
-		m.recordLocked("pass", "该账号和模型没有有效模板", account, model, now)
+		m.recordLocked("pass", "There is no valid template for this account and model", account, model, now)
 		return nil, nil
 	}
 	if value == t.Value {
-		m.recordLocked("pass", "请求已携带当前模板", account, model, now)
+		m.recordLocked("pass", "The request already carries the current template", account, model, now)
 		return nil, nil
 	}
 	if m.state.Config.InjectMode == "replace-only" && len(value) != m.state.Config.ReplaceLength {
-		m.recordLocked("pass", "replace-only 仅替换指定长度的请求头", account, model, now)
+		m.recordLocked("pass", "replace-only replaces only request headers of the configured length", account, model, now)
 		return nil, nil
 	}
 	if m.state.Config.DryRun {
-		m.recordLocked("dry_run", "模板可用；观察模式未修改请求", account, model, now)
+		m.recordLocked("dry_run", "A template is available; observe mode left the request unchanged", account, model, now)
 		return nil, nil
 	}
-	m.recordLocked("inject", "已注入同一账号和模型的有效模板", account, model, now)
+	m.recordLocked("inject", "A valid template for the same account and model was injected", account, model, now)
 	return http.Header{Header: []string{t.Value}}, []string{Header}
 }
 
@@ -464,12 +488,12 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 	delete(m.pending, requestID)
 	if !remembered {
 		if headerValue(headers) != "" {
-			m.recordLocked("skip", "没有可验证的 Codex 请求归属", account, model, now)
+			m.recordLocked("skip", "The Codex request has no verifiable account attribution", account, model, now)
 		}
 		return nil
 	} else {
 		if account != "" && account != p.Account {
-			m.recordLocked("skip", "响应账号与请求归属不一致", account, model, now)
+			m.recordLocked("skip", "The response account does not match the request attribution", account, model, now)
 			return nil
 		}
 		account, model = p.Account, p.Model
@@ -483,16 +507,16 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 
 func (m *Manager) learnLocked(account, model, value string, now time.Time) error {
 	if !validBucket(account, model) {
-		m.recordLocked("skip", "无法确认响应账号和上游模型", account, model, now)
+		m.recordLocked("skip", "Cannot verify the response account and upstream model", account, model, now)
 		return nil
 	}
 	if len(value) != m.state.Config.TemplateLength {
-		m.recordLocked("skip", "响应头长度不符合模板长度", account, model, now)
+		m.recordLocked("skip", "The response header length does not match the template length", account, model, now)
 		return nil
 	}
 	timestamp, ok := issuedAt(value)
 	if !ok || timestamp.After(now) || now.Sub(timestamp) >= time.Duration(m.state.Config.TTLSeconds)*time.Second {
-		m.recordLocked("skip", "模板时间戳无效、超前或已过期", account, model, now)
+		m.recordLocked("skip", "The template timestamp is invalid, in the future, or expired", account, model, now)
 		return nil
 	}
 	k := key(account, model)
@@ -507,10 +531,10 @@ func (m *Manager) learnLocked(account, model, value string, now time.Time) error
 		} else {
 			delete(m.state.Templates, k)
 		}
-		m.recordLocked("error", "无法保存模板", account, model, now)
+		m.recordLocked("error", "Cannot save the template", account, model, now)
 		return err
 	}
-	m.recordLocked("harvest", "已保存有效模板", account, model, now)
+	m.recordLocked("harvest", "A valid template was saved", account, model, now)
 	return nil
 }
 
@@ -527,7 +551,7 @@ func (m *Manager) Clear(account, model string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if (account == "") != (model == "") {
-		return errors.New("清理单个模板须同时填写账号和模型")
+		return messages.Errorf("Both account and model are required to clear a single template")
 	}
 	old := m.state.Templates
 	m.state.Templates = map[string]Template{}
@@ -544,7 +568,7 @@ func (m *Manager) Clear(account, model string) error {
 }
 
 func (m *Manager) recordLocked(action, reason, account, model string, now time.Time) {
-	m.last = Decision{Action: action, Reason: reason, Account: account, Model: model, At: now}
+	m.last = Decision{Action: action, Reason: reason, ReasonMessage: messages.Literal(reason), Account: account, Model: model, At: now}
 	switch action {
 	case "inject":
 		m.counters.Injected++
@@ -566,18 +590,18 @@ func headerValue(headers http.Header) string {
 
 func (m *Manager) persistLocked() error {
 	if m.path == "" {
-		return errors.New("turn-state 尚未配置状态文件")
+		return messages.Errorf("The turn-state state file has not been configured")
 	}
 	if err := os.MkdirAll(filepath.Dir(m.path), 0o700); err != nil {
-		return errors.New("无法创建 turn-state 状态目录")
+		return messages.Errorf("Cannot create the turn-state state directory")
 	}
 	raw, err := json.Marshal(m.state)
 	if err != nil {
-		return errors.New("无法编码 turn-state 状态")
+		return messages.Errorf("Cannot encode the turn-state state")
 	}
 	f, err := os.CreateTemp(filepath.Dir(m.path), ".turn-state-*")
 	if err != nil {
-		return errors.New("无法创建 turn-state 临时文件")
+		return messages.Errorf("Cannot create a temporary turn-state file")
 	}
 	defer os.Remove(f.Name())
 	if _, err = f.Write(raw); err == nil {
@@ -585,10 +609,10 @@ func (m *Manager) persistLocked() error {
 	}
 	closeErr := f.Close()
 	if err != nil || closeErr != nil {
-		return errors.New("无法写入 turn-state 状态")
+		return messages.Errorf("Cannot write the turn-state state")
 	}
 	if err := os.Rename(f.Name(), m.path); err != nil {
-		return errors.New("无法替换 turn-state 状态文件")
+		return messages.Errorf("Cannot replace the turn-state state file")
 	}
 	return nil
 }

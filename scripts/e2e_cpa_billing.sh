@@ -651,7 +651,7 @@ assert_route_blacklist_policy() {
     --data "$(jq -nc --arg scope "$scope" --arg route "$route" '{scope:$scope,bindings:{route_ids:[$route]}}')" >/dev/null
   body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("当前没有符合路由规则且可用的上游凭证"))' "$response_file" >/dev/null; then
+  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("No available upstream credentials match the routing rules"))' "$response_file" >/dev/null; then
     echo "未配置允许凭证的路由没有拒绝请求。" >&2
     return 1
   fi
@@ -682,7 +682,7 @@ assert_route_blacklist_policy() {
     -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$route" '{id:$id,rule:{denied_credential_providers:[{source:"ai-providers",provider:"openai-compatible-route-allowed-e2e"},{source:"ai-providers",provider:"openai-compatible-route-denied-e2e"}]}}')" >/dev/null
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("当前没有符合路由规则且可用的上游凭证"))' "$response_file" >/dev/null; then
+  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("No available upstream credentials match the routing rules"))' "$response_file" >/dev/null; then
     echo "全部候选被黑名单排除后未返回 503。" >&2
     return 1
   fi
@@ -796,7 +796,7 @@ assert_route_credential_policy() {
     "http://127.0.0.1:$port/v1/chat/completions")"
   if [[ "$http_status" != "503" ]] || ! jq -e '
       .error.type == "server_error" and .error.code == "internal_server_error" and
-      (.error.message | contains("当前没有符合路由规则且可用的上游凭证"))
+      (.error.message | contains("No available upstream credentials match the routing rules"))
     ' "$response_file" >/dev/null; then
     echo "没有合格凭证时未按预期返回 503：HTTP $http_status $(jq -c '.' "$response_file")" >&2
     return 1
@@ -819,7 +819,7 @@ assert_route_credential_policy() {
       all($rows[] | select(.status == 200);
         .model_result == "allow" and .credential_policy == "restricted" and .credential_result == "selected" and
         ((.selected_credential // "") | length) > 0 and
-        ((.selected_credential // "") | contains("上游凭证") | not))
+        ((.selected_credential // "") | contains("upstream credential") | not))
     ' "$plugin_logs_file" >/dev/null; then
     echo "插件日志缺少凭证路由选择结果：$(jq -c '.entries' "$plugin_logs_file")" >&2
     return 1
@@ -1060,9 +1060,9 @@ assert_quota_exhausted() {
     return 1
   fi
   management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs" >"$plugin_logs_file"
-  if ! jq -e --arg plan "$plan_name" '[.entries[] | select(.level == "info" and (.message | startswith("额度拦截：")) and (.message | contains($plan)))] | length == 1' \
+  if ! jq -e --arg plan "$plan_name" '[.entries[] | select(.level == "info" and (.message | startswith("Quota blocked: ")) and (.message | contains($plan)))] | length == 1' \
     "$plugin_logs_file" >/dev/null; then
-    echo "插件日志的额度拦截记录数量不正确：$(jq -c '[.entries[] | select(.message | startswith("额度拦截："))]' "$plugin_logs_file")" >&2
+    echo "插件日志的额度拦截记录数量不正确：$(jq -c '[.entries[] | select(.message | startswith("Quota blocked: "))]' "$plugin_logs_file")" >&2
     return 1
   fi
 
@@ -1230,7 +1230,7 @@ assert_group_access_control() {
   fi
   body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("当前没有符合路由规则且可用的上游凭证"))' "$response_file" >/dev/null; then
+  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("No available upstream credentials match the routing rules"))' "$response_file" >/dev/null; then
     echo "分组外的上游凭证没有被拒绝。" >&2
     return 1
   fi
@@ -1327,7 +1327,7 @@ assert_group_direct_credentials() {
   fi
   body="$(request_body chat "e2e-credential-route" false "Reply with exactly OK.")"
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "403" ]] || ! jq -e '.error.code == "access_denied" and (.error.message | contains("尚未绑定路由规则或上游凭证"))' "$response_file" >/dev/null; then
+  if [[ "$http_status" != "403" ]] || ! jq -e '.error.code == "access_denied" and (.error.message | contains("have no routing rules or upstream credentials configured"))' "$response_file" >/dev/null; then
     echo "既无路由也无直接选择的分组没有拒绝请求：HTTP ${http_status} $(jq -c '.' "$response_file")" >&2
     return 1
   fi
@@ -1335,7 +1335,7 @@ assert_group_direct_credentials() {
   http_status="$(curl -sS --max-time 30 -X PATCH -H "Authorization: Bearer e2e-management-key" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg id "$group" --arg ref "$missing_ref" '{id:$id,rule:{credential_ids:[$ref]}}')" \
     --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port$base/groups")"
-  if [[ "$http_status" != "400" ]] || ! jq -e '.error.message | contains("上游凭证已不存在")' "$response_file" >/dev/null; then
+  if [[ "$http_status" != "400" ]] || ! jq -e '.error.code == "invalid" and .error.message_key == "backend.credential_missing" and (.error.message | contains("Upstream credential no longer exists"))' "$response_file" >/dev/null; then
     echo "分组直接选择不存在的上游凭证时没有返回 400：HTTP ${http_status}" >&2
     return 1
   fi
@@ -1371,7 +1371,7 @@ assert_group_direct_credentials() {
   fi
   body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("当前没有符合路由规则且可用的上游凭证"))' "$response_file" >/dev/null; then
+  if [[ "$http_status" != "503" ]] || ! jq -e '(.error.message | contains("No available upstream credentials match the routing rules"))' "$response_file" >/dev/null; then
     echo "分组直选范围外的上游凭证没有被拒绝：HTTP ${http_status}" >&2
     return 1
   fi
@@ -1409,7 +1409,7 @@ assert_group_direct_credentials() {
   management_call PUT "$port" "$base/keys/routes" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" --arg ref "$allowed_ref" '{scope:$scope,bindings:{credential_ids:[$ref]}}')" >/dev/null
   http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "403" ]] || ! jq -e '.error.code == "access_denied" and (.error.message | contains("所属分组均已禁用"))' "$response_file" >/dev/null; then
+  if [[ "$http_status" != "403" ]] || ! jq -e '.error.code == "access_denied" and (.error.message | contains("All groups assigned to this API key are disabled"))' "$response_file" >/dev/null; then
     echo "停用分组没有即时拒绝请求，或被 Key 的直接选择绕过：HTTP ${http_status}" >&2
     return 1
   fi
@@ -1629,6 +1629,7 @@ assert_turn_state_settings() {
   local response_file="$runtime_dir/responses/turn-state-settings.json"
   management_call GET "$port" "$route" >"$settings_file"
   if ! jq -e '.config.enabled == false and .config.inject_mode == "replace-only" and
+      .config.models == ["gpt6", "gpt-5.6-sol"] and
       .config.template_length == 292 and .config.replace_length == 312 and .templates == []' "$settings_file" >/dev/null; then
     echo "Codex turn-state 默认设置不正确。" >&2
     return 1
@@ -1638,6 +1639,7 @@ assert_turn_state_settings() {
     --data '{"enabled":true,"inject_mode":"always"}' >/dev/null
   management_call GET "$port" "$route" >"$settings_file"
   if ! jq -e '.config.enabled == true and .config.inject_mode == "always" and
+      .config.models == ["gpt6", "gpt-5.6-sol"] and
       .config.template_length == 292 and .config.replace_length == 312 and .templates == []' "$settings_file" >/dev/null; then
     echo "Codex turn-state 注入模式未保存或改变了未提交的配置。" >&2
     return 1
@@ -1654,6 +1656,7 @@ assert_turn_state_settings() {
     echo "Codex turn-state 非法配置改变了此前保存的设置。" >&2
     return 1
   fi
+  assert_turn_state_bulk_settings "$port"
   management_call PUT "$port" "$route" -H "Content-Type: application/json" \
     --data '{"enabled":false,"inject_mode":"replace-only"}' >/dev/null
   management_call GET "$port" "$route" >"$settings_file"
@@ -1662,6 +1665,71 @@ assert_turn_state_settings() {
     return 1
   fi
   log_step "Codex turn-state 配置已验证：默认关闭、always 保存读取、非法模式拒绝且保留原设置、恢复默认"
+}
+
+assert_turn_state_bulk_settings() {
+  local port="$1"
+  python3 - "$port" <<'PY'
+import base64
+import json
+import sys
+from urllib.error import HTTPError
+from urllib.request import Request, urlopen
+
+base = "http://127.0.0.1:" + sys.argv[1] + "/v0/management/plugins/cpa-key-billing/turn-state"
+largest_body = 0
+
+def call(method, path="", data=None, expected=200):
+    global largest_body
+    body = None if data is None else json.dumps(data, separators=(",", ":")).encode()
+    if body is not None:
+        largest_body = max(largest_body, len(body))
+        assert len(body) < 20 * 1024, "bulk settings escaped chunk sizing"
+    request = Request(base + path, data=body, method=method, headers={
+        "Authorization": "Bearer e2e-management-key", "Content-Type": "application/json"})
+    try:
+        response = urlopen(request, timeout=45)
+    except HTTPError as error:
+        response = error
+    with response:
+        assert response.code == expected, "unexpected management HTTP status: " + str(response.code)
+        raw = response.read()
+    return json.loads(raw)
+
+before = call("GET")
+dummy_password = "dummy-proxy-password-" + "p" * 96
+payload = json.dumps({
+    "probe_proxies": [f"http://dummy:{dummy_password}@static-{i}.invalid:8080" for i in range(6000)],
+    "probe_proxies_rotating": [f"socks5h://dummy:{dummy_password}@rotating-{i}.invalid:1080" for i in range(6000)]
+}, separators=(",", ":")).encode()
+assert len(payload) > 1024 * 1024, "fixture must exceed a typical ingress limit"
+
+# Partial data must never replace the active pools or settings.
+stage = call("POST", "/config-upload", {"size": len(payload)})
+chunk_size = stage["chunk_bytes"]
+call("PATCH", "/config-upload", {"id": stage["id"], "offset": 0,
+    "data": base64.b64encode(payload[:chunk_size]).decode()})
+call("POST", "/config-upload/commit", {"id": stage["id"]}, expected=400)
+partial = call("GET")
+assert partial["config"] == before["config"] and partial["proxy_counts"] == before["proxy_counts"]
+call("DELETE", "/config-upload", {"id": stage["id"]})
+
+stage = call("POST", "/config-upload", {"size": len(payload)})
+for offset in range(0, len(payload), stage["chunk_bytes"]):
+    chunk = payload[offset:offset + stage["chunk_bytes"]]
+    status = call("PATCH", "/config-upload", {"id": stage["id"], "offset": offset,
+        "data": base64.b64encode(chunk).decode()})
+    assert status["received"] == offset + len(chunk)
+call("POST", "/config-upload/commit", {"id": stage["id"]})
+saved = call("GET")
+assert saved["proxy_counts"] == {"static": 6000, "rotating": 6000}
+assert saved["config"]["inject_mode"] == before["config"]["inject_mode"]
+assert saved["config"]["probe_proxies"] == [] and saved["config"]["probe_proxies_rotating"] == []
+assert dummy_password not in json.dumps(saved), "status exposed proxy credentials"
+assert len(json.dumps(saved)) < 64 * 1024, "status response grew with the proxy pool"
+call("PUT", data={"probe_proxies": [], "probe_proxies_rotating": []})
+print(f"  - 批量代理保存已验证：12,000 条代理，{len(payload):,} 字节配置，单次请求最多 {largest_body:,} 字节；未完成上传不改变配置")
+PY
 }
 
 # Removing the feature also removes its management API. Forwarded requests
@@ -2072,7 +2140,7 @@ run_target() {
   done
 
   management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs" >"$runtime_dir/plugin-logs.json"
-  if ! jq -e '[.entries[] | select(.level == "info" and (.message | contains("已加载计费数据库")))] | length == 1' \
+  if ! jq -e '[.entries[] | select(.level == "info" and (.message | contains("Loaded billing database")))] | length == 1' \
     "$runtime_dir/plugin-logs.json" >/dev/null; then
     echo "插件日志缺少启动记录：$(jq -c '.entries' "$runtime_dir/plugin-logs.json")" >&2
     return 1

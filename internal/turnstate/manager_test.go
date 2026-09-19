@@ -66,7 +66,7 @@ func TestModesIsolationAndResponseAttribution(t *testing.T) {
 	if headers, _ := m.Before("always", "account-a", "model-a", nil); headers.Get(Header) != token {
 		t.Fatal("always did not inject")
 	}
-	if headers, _ := m.Before("same", "account-a", "model-a", http.Header{Header: {token}}); len(headers) != 0 || m.Status().LastDecision.Reason != "请求已携带当前模板" {
+	if headers, _ := m.Before("same", "account-a", "model-a", http.Header{Header: {token}}); len(headers) != 0 || m.Status().LastDecision.ReasonMessage.Key != "backend.turn_state_already_current" {
 		t.Fatal("current template should pass unchanged")
 	}
 	if err := m.Update([]byte(`{"dry_run":true}`)); err != nil {
