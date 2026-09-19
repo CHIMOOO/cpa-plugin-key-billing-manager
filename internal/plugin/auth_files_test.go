@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"cpa-key-billing/internal/billing"
+	"cpa-key-billing/internal/messages"
 )
 
 func TestAuthFilesExposeOnlyDisplayFieldsInCategoryOrder(t *testing.T) {
@@ -50,8 +51,11 @@ func TestAuthFilesExposeOnlyDisplayFieldsInCategoryOrder(t *testing.T) {
 	if payload.Files[2].Email != "user@example.com" {
 		t.Fatalf("email = %q, want CPA email", payload.Files[2].Email)
 	}
-	if payload.Files[4].QuotaSupported || payload.Files[4].QuotaReason != "认证文件已停用" {
+	if payload.Files[4].QuotaSupported || payload.Files[4].QuotaReason != "Auth file is disabled" {
 		t.Fatalf("disabled quota availability = %+v", payload.Files[4])
+	}
+	if payload.Files[4].QuotaReasonMessage.Key == "" {
+		t.Fatal("missing translated quota availability")
 	}
 	for _, forbidden := range []string{"disk-only", "openai-api-key", "sk-upstream-secret", "/secret/zeta.json", "id_token", "secret", `"account"`, `"path"`} {
 		if strings.Contains(encoded, forbidden) {
@@ -287,22 +291,32 @@ func TestPhysicalAPIKeyCredentialCannotReachUpstream(t *testing.T) {
 		return json.RawMessage(`{"auth_index":"xai-1","json":{"api_key":"dummy-paid-key"}}`), nil
 	})
 	_, errFetch := app.fetchAuthQuota("", hostAuthFile{AuthIndex: "xai-1"}, "xai")
-	if errFetch == nil || errFetch.Error() != "API Key 凭证不支持此限额查询" {
+	if errFetch == nil || errFetch.Error() != "API key credentials do not support this quota query" {
 		t.Fatalf("error = %v", errFetch)
 	}
 }
 
 func TestUpstreamErrorsRedactPhysicalCredential(t *testing.T) {
 	app := newConfiguredApp(t)
-	app.SetHostCaller(func(string, any) (json.RawMessage, error) {
-		return mustJSONRaw(t, hostHTTPResponse{
-			StatusCode: http.StatusBadRequest,
-			Body:       []byte(`{"error":{"message":"rejected dummy-secret-token"}}`),
-		}), nil
-	})
-	_, errCall := app.upstream("", http.MethodGet, "https://example.invalid/quota", "dummy-secret-token", nil, nil)
-	if errCall == nil || strings.Contains(errCall.Error(), "dummy-secret-token") || !strings.Contains(errCall.Error(), "[REDACTED]") {
-		t.Fatalf("error = %v", errCall)
+	for _, tc := range []struct {
+		status    int
+		body, key string
+	}{
+		{http.StatusBadRequest, `{"error":{"message":"rejected dummy-secret-token"}}`, "backend.upstream_returned_http_value_value"},
+		{http.StatusUnauthorized, `{"error":{"message":"rejected dummy-secret-token"}}`, "backend.upstream_credentials_invalid_detail"},
+		{http.StatusUnauthorized, `{}`, "backend.upstream_credentials_invalid"},
+	} {
+		app.SetHostCaller(func(string, any) (json.RawMessage, error) {
+			return mustJSONRaw(t, hostHTTPResponse{StatusCode: tc.status, Body: []byte(tc.body)}), nil
+		})
+		_, errCall := app.upstream("", http.MethodGet, "https://example.invalid/quota", "dummy-secret-token", nil, nil)
+		detail := messages.FromError(errCall)
+		if errCall == nil || detail.Key != tc.key || strings.Contains(detail.Text, "dummy-secret-token") {
+			t.Fatalf("error = %v, detail = %+v", errCall, detail)
+		}
+		if tc.body != `{}` && (!strings.Contains(detail.Text, "[REDACTED]") || detail.Params["v1"] != "rejected [REDACTED]") {
+			t.Fatalf("credential was not redacted in both representations: %+v", detail)
+		}
 	}
 }
 
@@ -345,7 +359,7 @@ func TestCodexQuotaPreservesAdditionalDynamicWindows(t *testing.T) {
 	if result.Quota[0].RemainingPercent == nil || *result.Quota[0].RemainingPercent != 62 {
 		t.Fatalf("remaining percent = %+v", result.Quota[0].RemainingPercent)
 	}
-	wantLabels := []string{"周限额", "GPT-5.3-Codex-Spark 5 小时限额", "GPT-5.3-Codex-Spark 周限额"}
+	wantLabels := []string{"Weekly limit", "GPT-5.3-Codex-Spark 5-hour limit", "GPT-5.3-Codex-Spark Weekly limit"}
 	for index, want := range wantLabels {
 		if result.Quota[index].Label != want {
 			t.Fatalf("quota[%d].Label = %q, want %q", index, result.Quota[index].Label, want)
@@ -364,7 +378,7 @@ func TestCodexQuotaOrdersAndLabelsWindows(t *testing.T) {
 			"limit_window_seconds": float64(5 * 60 * 60),
 		},
 	})
-	if len(result.Quota) != 2 || result.Quota[0].Label != "5 小时限额" || result.Quota[1].Label != "月限额" || result.Quota[0].RemainingPercent == nil || *result.Quota[0].RemainingPercent != 0 {
+	if len(result.Quota) != 2 || result.Quota[0].Label != "5-hour limit" || result.Quota[1].Label != "Monthly limit" || result.Quota[0].RemainingPercent == nil || *result.Quota[0].RemainingPercent != 0 {
 		t.Fatalf("rows = %+v", result.Quota)
 	}
 }
@@ -386,7 +400,7 @@ func TestClaudeQuotaUsesFableLimitAndCanonicalTeamPlan(t *testing.T) {
 	if errFetch := app.fetchClaudeQuota("", "token", &result); errFetch != nil {
 		t.Fatal(errFetch)
 	}
-	if len(result.Quota) != 3 || result.Quota[0].Label != "5 小时限额" || result.Quota[1].Label != "Sonnet 周限额" || result.Quota[2].Label != "Fable 周限额" {
+	if len(result.Quota) != 3 || result.Quota[0].Label != "5-hour limit" || result.Quota[1].Label != "Sonnet weekly limit" || result.Quota[2].Label != "Fable weekly limit" {
 		t.Fatalf("quota = %+v", result.Quota)
 	}
 	if result.Plan != "Team" {
@@ -444,7 +458,7 @@ func TestAntigravityQuotaReadsNestedCredentialFields(t *testing.T) {
 	if errFetch != nil {
 		t.Fatal(errFetch)
 	}
-	if requestProject != "nested-project" || len(result.Quota) != 2 || result.Quota[0].Label != "5 小时限额" || result.Quota[1].Label != "周限额" || result.Plan != "Google AI Pro" {
+	if requestProject != "nested-project" || len(result.Quota) != 2 || result.Quota[0].Label != "5-hour limit" || result.Quota[1].Label != "Weekly limit" || result.Plan != "Google AI Pro" {
 		t.Fatalf("project = %q, quota = %+v", requestProject, result.Quota)
 	}
 }
@@ -466,6 +480,9 @@ func TestKimiQuotaReadsNestedLimitShape(t *testing.T) {
 	if row.Label != "Coding 5 小时限额" || row.RemainingPercent == nil || *row.RemainingPercent != 80 || row.ResetAt != fetchedAt.Add(time.Hour).Format(time.RFC3339) {
 		t.Fatalf("quota = %+v", result.Quota)
 	}
+	if row.LabelMessage.Key != "" {
+		t.Fatal("upstream label must not be interpreted as plugin text")
+	}
 }
 
 func TestXAIQuotaDeduplicatesProductLimits(t *testing.T) {
@@ -482,7 +499,7 @@ func TestXAIQuotaDeduplicatesProductLimits(t *testing.T) {
 	if errFetch := app.fetchXAIQuota("", "token", "user", &result); errFetch != nil {
 		t.Fatal(errFetch)
 	}
-	if len(result.Quota) != 2 || result.Quota[0].Label != "grok code 用量" || result.Quota[0].RemainingPercent == nil || *result.Quota[0].RemainingPercent != 55 || result.Quota[1].Label != "Grok Vision 用量" {
+	if len(result.Quota) != 2 || result.Quota[0].Label != "grok code usage" || result.Quota[0].RemainingPercent == nil || *result.Quota[0].RemainingPercent != 55 || result.Quota[1].Label != "Grok Vision usage" {
 		t.Fatalf("quota = %+v", result.Quota)
 	}
 }
@@ -496,7 +513,7 @@ func TestCredentialProxyFailsInsteadOfSendingDirectRequest(t *testing.T) {
 		return json.RawMessage(`{"auth_index":"codex-1","json":{"access_token":"dummy-token","proxy_url":"socks5://proxy.example:1080"}}`), nil
 	})
 	_, errFetch := app.fetchAuthQuota("", hostAuthFile{AuthIndex: "codex-1"}, "codex")
-	if errFetch == nil || !strings.Contains(errFetch.Error(), "独立代理") {
+	if errFetch == nil || !strings.Contains(errFetch.Error(), "separate proxy") {
 		t.Fatalf("error = %v", errFetch)
 	}
 }
@@ -519,7 +536,7 @@ func TestXAIQuotaCombinesWeeklyMonthlyAndOnDemand(t *testing.T) {
 	if errFetch := app.fetchXAIQuota("", "token", "user", &result); errFetch != nil {
 		t.Fatal(errFetch)
 	}
-	want := []string{"周限额", "月度额度", "按量付费额度"}
+	want := []string{"Weekly limit", "Monthly allowance", "Pay-as-you-go allowance"}
 	if len(result.Quota) != len(want) {
 		t.Fatalf("quota = %+v", result.Quota)
 	}

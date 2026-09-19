@@ -194,7 +194,7 @@ func TestOpenRejectsExistingSchemas(t *testing.T) {
 			if reopened, err := Open(path); err == nil {
 				_ = reopened.Close()
 				t.Fatal("Open accepted an existing schema")
-			} else if !strings.Contains(err.Error(), "文件格式不受支持") {
+			} else if !strings.Contains(err.Error(), "unsupported format") {
 				t.Fatalf("error = %v", err)
 			}
 		})

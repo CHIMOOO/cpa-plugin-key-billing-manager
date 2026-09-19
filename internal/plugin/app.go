@@ -58,7 +58,7 @@ func (a *App) HandleMethod(method string, request []byte) (response []byte, err 
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			response = nil
-			err = fmt.Errorf("插件调用 %s 异常：%v", method, recovered)
+			err = fmt.Errorf("Plugin call %s panicked: %v", method, recovered)
 			if a != nil && a.store != nil {
 				a.store.AddPluginLog(billing.PluginLogError, "%v", err)
 			}
@@ -71,7 +71,7 @@ func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 	switch method {
 	case MethodPluginRegister, MethodPluginReconfigure:
 		if errConfigure := a.configure(request); errConfigure != nil {
-			a.store.AddPluginLog(billing.PluginLogError, "应用插件配置失败：%v", errConfigure)
+			a.store.AddPluginLog(billing.PluginLogError, "Failed to apply plugin configuration: %v", errConfigure)
 			return nil, errConfigure
 		}
 		return OKEnvelope(registration())
@@ -94,7 +94,7 @@ func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 	case MethodManagementHandle:
 		return a.handleManagement(request)
 	default:
-		return ErrorEnvelope("unknown_method", "不支持的插件方法："+method, http.StatusNotFound), nil
+		return ErrorEnvelope("unknown_method", "Unsupported plugin method: "+method, http.StatusNotFound), nil
 	}
 }
 
@@ -109,7 +109,7 @@ func (a *App) configure(raw []byte) error {
 	var req LifecycleRequest
 	if len(raw) > 0 {
 		if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-			return fmt.Errorf("解析插件生命周期请求：%w", errUnmarshal)
+			return fmt.Errorf("Parse plugin lifecycle request: %w", errUnmarshal)
 		}
 	}
 	cfg, errDecode := billing.DecodeConfig(req.ConfigYAML)
@@ -147,17 +147,17 @@ func registration() Registration {
 				{
 					Name:        "debug",
 					Type:        "boolean",
-					Description: "记录 debug 日志，包括路由日志和参考价匹配日志",
+					Description: "Record debug logs, including routing and reference price matching",
 				},
 				{
 					Name:        "codex_fast_mode_billing",
 					Type:        "boolean",
-					Description: "请求 Codex 上游时指定 priority 档位，按 2.5 倍计费",
+					Description: "Bill Codex priority requests at 2.5 times the standard cost",
 				},
 				{
 					Name:        "state_file",
 					Type:        "string",
-					Description: "计费数据库文件路径",
+					Description: "Billing database file path",
 				},
 			},
 		},

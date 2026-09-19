@@ -37,10 +37,10 @@ func DecodeConfig(raw []byte) (Config, error) {
 		decoder := yaml.NewDecoder(bytes.NewReader(raw))
 		decoder.KnownFields(true)
 		if errDecode := decoder.Decode(&document); errDecode != nil {
-			return Config{}, fmt.Errorf("解析插件配置：%w", errDecode)
+			return Config{}, fmt.Errorf("Parse plugin configuration: %w", errDecode)
 		}
 		if errTrailing := decoder.Decode(&struct{}{}); errTrailing != io.EOF {
-			return Config{}, fmt.Errorf("解析插件配置：只能包含一个 YAML 文档")
+			return Config{}, fmt.Errorf("Plugin configuration must contain exactly one YAML document")
 		}
 		cfg = document.Config
 	}
@@ -49,9 +49,9 @@ func DecodeConfig(raw []byte) (Config, error) {
 
 func (c Config) describe() string {
 	if c.Enabled {
-		return "已启用"
+		return "enabled"
 	}
-	return "已停用"
+	return "disabled"
 }
 
 func (c Config) normalized() Config {

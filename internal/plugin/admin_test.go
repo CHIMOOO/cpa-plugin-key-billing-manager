@@ -673,8 +673,8 @@ func TestPluginLogReportsStartupAndFailures(t *testing.T) {
 	}
 	callOK(t, app, http.MethodGet, routePluginLogs, nil, nil, http.StatusOK, &loaded)
 	if len(loaded.Entries) != 3 || loaded.Entries[0].Level != billing.PluginLogInfo ||
-		!strings.Contains(loaded.Entries[0].Message, "参考价已更新") ||
-		!strings.Contains(loaded.Entries[2].Message, "已加载计费数据库") {
+		!strings.Contains(loaded.Entries[0].Message, "Updated models.dev reference prices") ||
+		!strings.Contains(loaded.Entries[2].Message, "Loaded billing database") {
 		t.Fatalf("plugin logs = %+v, want the loaded database reported", loaded.Entries)
 	}
 
@@ -685,7 +685,7 @@ func TestPluginLogReportsStartupAndFailures(t *testing.T) {
 	}
 	callOK(t, app, http.MethodGet, routePluginLogs, nil, nil, http.StatusOK, &loaded)
 	if len(loaded.Entries) != 4 || loaded.Entries[0].Level != billing.PluginLogError ||
-		!strings.Contains(loaded.Entries[0].Message, "应用插件配置失败") {
+		!strings.Contains(loaded.Entries[0].Message, "Failed to apply plugin configuration") {
 		t.Fatalf("plugin logs = %+v, want the rejected config reported first", loaded.Entries)
 	}
 }

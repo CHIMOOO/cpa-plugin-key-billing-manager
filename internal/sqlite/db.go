@@ -25,7 +25,7 @@ type DB struct {
 func Open(path string) (*DB, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("创建计费数据库目录 %s：%w", dir, err)
+		return nil, fmt.Errorf("Create billing database directory %s: %w", dir, err)
 	}
 	if err := secureFiles(path); err != nil {
 		return nil, err
@@ -34,7 +34,7 @@ func Open(path string) (*DB, error) {
 		"?_busy_timeout=5000&_foreign_keys=on&_journal_mode=WAL&_synchronous=NORMAL&_txlock=immediate"
 	handle, err := sql.Open("sqlite3", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("打开计费数据库 %s：%w", path, err)
+		return nil, fmt.Errorf("Open billing database %s: %w", path, err)
 	}
 	handle.SetMaxOpenConns(1)
 	handle.SetMaxIdleConns(1)
@@ -46,7 +46,7 @@ func Open(path string) (*DB, error) {
 		}
 		for _, table := range slices.Sorted(maps.Keys(indexes)) {
 			if err := syncTableIndexes(tx, table, indexes[table]); err != nil {
-				return fmt.Errorf("同步 %s 索引：%w", table, err)
+				return fmt.Errorf("Sync %s index: %w", table, err)
 			}
 		}
 		return nil
@@ -60,7 +60,7 @@ func Open(path string) (*DB, error) {
 func (d *DB) initSchema(tx *sql.Tx) error {
 	var version int
 	if err := tx.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return fmt.Errorf("读取计费数据库 %s：%w", d.path, err)
+		return fmt.Errorf("Read billing database %s: %w", d.path, err)
 	}
 	switch version {
 	case 10, 11, 12, 13:
@@ -93,19 +93,19 @@ func (d *DB) initSchema(tx *sql.Tx) error {
 		var existingTables int
 		if err := tx.QueryRow(`SELECT count(*) FROM sqlite_master
 			WHERE type = 'table' AND name NOT LIKE 'sqlite_%'`).Scan(&existingTables); err != nil {
-			return fmt.Errorf("检查计费数据库 %s：%w", d.path, err)
+			return fmt.Errorf("Check billing database %s: %w", d.path, err)
 		}
 		if existingTables != 0 {
-			return fmt.Errorf("计费数据库 %s 的文件格式不受支持，请通过 state_file 配置使用其他数据文件", d.path)
+			return fmt.Errorf("Billing database %s uses an unsupported format; select another data file with state_file", d.path)
 		}
 		if _, err := tx.Exec(schema); err != nil {
-			return fmt.Errorf("初始化计费数据库 %s：%w", d.path, err)
+			return fmt.Errorf("Initialize billing database %s: %w", d.path, err)
 		}
 	default:
-		return fmt.Errorf("计费数据库 %s 的文件格式不受支持，请通过 state_file 配置使用其他数据文件", d.path)
+		return fmt.Errorf("Billing database %s uses an unsupported format; select another data file with state_file", d.path)
 	}
 	if _, err := tx.Exec(fmt.Sprintf("PRAGMA user_version = %d", schemaVersion)); err != nil {
-		return fmt.Errorf("标记计费数据库 %s 的格式版本：%w", d.path, err)
+		return fmt.Errorf("Set billing database %s format version: %w", d.path, err)
 	}
 	return nil
 }
@@ -159,14 +159,14 @@ func syncTableIndexes(tx *sql.Tx, table string, definitions []index) error {
 func secureFiles(path string) error {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
-		return fmt.Errorf("创建计费数据库 %s：%w", path, err)
+		return fmt.Errorf("Create billing database %s: %w", path, err)
 	}
 	if err := file.Close(); err != nil {
-		return fmt.Errorf("创建计费数据库 %s：%w", path, err)
+		return fmt.Errorf("Create billing database %s: %w", path, err)
 	}
 	for _, name := range []string{path, path + "-wal", path + "-shm"} {
 		if err := os.Chmod(name, 0o600); err != nil && !os.IsNotExist(err) {
-			return fmt.Errorf("设置计费数据库 %s 权限：%w", name, err)
+			return fmt.Errorf("Set billing database %s permissions: %w", name, err)
 		}
 	}
 	return nil
@@ -179,14 +179,14 @@ type execer func(string, ...any) (sql.Result, error)
 func (d *DB) transact(fn func(*sql.Tx) error) error {
 	tx, err := d.db.Begin()
 	if err != nil {
-		return fmt.Errorf("开始计费数据库事务：%w", err)
+		return fmt.Errorf("Begin billing database transaction: %w", err)
 	}
 	if err := fn(tx); err != nil {
 		_ = tx.Rollback()
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("提交计费数据库事务：%w", err)
+		return fmt.Errorf("Commit billing database transaction: %w", err)
 	}
 	return nil
 }

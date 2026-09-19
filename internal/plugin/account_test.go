@@ -16,6 +16,17 @@ const (
 	accountTestKeyB = "sk-account-test-key-0002"
 )
 
+func TestAccountMissingProviderWarningsHaveTranslationMetadata(t *testing.T) {
+	for _, source := range []string{billing.CredentialSourceAuthFiles, billing.CredentialSourceAIProviders} {
+		provider := "custom-provider"
+		credentials, warnings := accountRoutingCredentials(nil, nil,
+			[]billing.CredentialProviderSelector{{Source: source, Provider: provider}}, billing.RoutingDecision{})
+		if len(credentials) != 1 || len(warnings) != 1 || warnings[0].Key == "" || warnings[0].Params["v0"] != `"custom-provider"` {
+			t.Fatalf("source=%s, credentials=%+v, warnings=%+v", source, credentials, warnings)
+		}
+	}
+}
+
 func callAccount(t *testing.T, app *App, path, apiKey string, query url.Values) ManagementResponse {
 	t.Helper()
 	headers := http.Header{}

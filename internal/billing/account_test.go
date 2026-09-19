@@ -168,7 +168,7 @@ func TestUsageRequestTimesPreserveWindowAttribution(t *testing.T) {
 	}
 	found := false
 	for _, entry := range mustPluginLogs(t, store) {
-		found = found || strings.Contains(entry.Message, "请求时间")
+		found = found || strings.Contains(entry.Message, "request time")
 	}
 	if !found {
 		t.Fatal("missing time was not diagnosed")
@@ -255,7 +255,7 @@ func TestReferenceUsageLogsAppliedTierRatesAndBillingModel(t *testing.T) {
 	if len(logs) != 1 || logs[0].Level != PluginLogDebug {
 		t.Fatalf("reference usage logs = %+v", logs)
 	}
-	for _, want := range []string{`billing_model="codex/gpt-5.6-sol"`, "输入=$10", "输出=$45", "费用=$3.00450000"} {
+	for _, want := range []string{`billing_model="codex/gpt-5.6-sol"`, "input=$10", "output=$45", "cost=$3.00450000"} {
 		if !strings.Contains(logs[0].Message, want) {
 			t.Fatalf("reference usage log missing %q: %s", want, logs[0].Message)
 		}

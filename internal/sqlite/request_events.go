@@ -42,11 +42,11 @@ func appendRequestEvent(tx *sql.Tx, entry billing.RequestEvent) (int64, error) {
 		entry.Cost.AppliedInputPer1M, entry.Cost.AppliedOutputPer1M,
 		entry.Cost.AppliedCacheReadPer1M, entry.Cost.AppliedCacheWritePer1M)
 	if errInsert != nil {
-		return 0, fmt.Errorf("写入请求事件：%w", errInsert)
+		return 0, fmt.Errorf("Write request event: %w", errInsert)
 	}
 	id, errID := result.LastInsertId()
 	if errID != nil {
-		return 0, fmt.Errorf("读取请求事件编号：%w", errID)
+		return 0, fmt.Errorf("Read request event ID: %w", errID)
 	}
 	return id, nil
 }
@@ -54,7 +54,7 @@ func appendRequestEvent(tx *sql.Tx, entry billing.RequestEvent) (int64, error) {
 func (d *DB) requestEventCount() (int, error) {
 	var count int
 	if err := d.db.QueryRow("SELECT count(*) FROM request_events").Scan(&count); err != nil {
-		return 0, fmt.Errorf("读取请求事件条数：%w", err)
+		return 0, fmt.Errorf("Read request event count: %w", err)
 	}
 	return count, nil
 }
@@ -64,7 +64,7 @@ func pruneRequestEvents(exec execer, cutoff time.Time) error {
 		return nil
 	}
 	if _, errPrune := exec("DELETE FROM request_events WHERE at < ?", nanos(cutoff)); errPrune != nil {
-		return fmt.Errorf("清理请求事件：%w", errPrune)
+		return fmt.Errorf("Clean up request events: %w", errPrune)
 	}
 	return nil
 }
@@ -106,7 +106,7 @@ func (d *DB) RequestEvents(query billing.RequestEventQuery, since time.Time) (bi
 		SELECT count(*),
 			coalesce(sum(r.failed != 0), 0)`+where, args...)
 	if errCount := counts.Scan(&view.Statuses.All, &view.Statuses.Failed); errCount != nil {
-		return billing.RequestEventView{}, fmt.Errorf("统计请求事件：%w", errCount)
+		return billing.RequestEventView{}, fmt.Errorf("Count request events: %w", errCount)
 	}
 	view.Statuses.Normal = view.Statuses.All - view.Statuses.Failed
 	view.Total = view.Statuses.All
@@ -144,7 +144,7 @@ func (d *DB) RequestEvents(query billing.RequestEventQuery, since time.Time) (bi
 		LEFT JOIN api_keys k ON k.scope = r.scope
 		ORDER BY r.at DESC, r.id DESC`, pageArgs...)
 	if errQuery != nil {
-		return billing.RequestEventView{}, fmt.Errorf("读取请求事件：%w", errQuery)
+		return billing.RequestEventView{}, fmt.Errorf("Read request events: %w", errQuery)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -155,7 +155,7 @@ func (d *DB) RequestEvents(query billing.RequestEventQuery, since time.Time) (bi
 		view.Entries = append(view.Entries, row)
 	}
 	if errRows := rows.Err(); errRows != nil {
-		return billing.RequestEventView{}, fmt.Errorf("读取请求事件：%w", errRows)
+		return billing.RequestEventView{}, fmt.Errorf("Read request events: %w", errRows)
 	}
 	return view, nil
 }
@@ -190,7 +190,7 @@ func (d *DB) requestEventSnapshot(snapshot *int64) (int64, error) {
 	}
 	var id int64
 	if err := d.db.QueryRow("SELECT coalesce(max(id), 0) FROM request_events").Scan(&id); err != nil {
-		return 0, fmt.Errorf("读取请求事件快照：%w", err)
+		return 0, fmt.Errorf("Read request event snapshot: %w", err)
 	}
 	return id, nil
 }
@@ -215,7 +215,7 @@ func (d *DB) requestEventFilterValues(query billing.RequestEventQuery, since tim
 	rows, errQuery := d.db.Query(`SELECT DISTINCT `+eventModelSQL+`,
 		`+requestEventSourceName+`, r.executor_type, r.provider`+where, args...)
 	if errQuery != nil {
-		return nil, fmt.Errorf("读取请求事件筛选项：%w", errQuery)
+		return nil, fmt.Errorf("Read request event filters: %w", errQuery)
 	}
 	defer rows.Close()
 
@@ -223,7 +223,7 @@ func (d *DB) requestEventFilterValues(query billing.RequestEventQuery, since tim
 	for rows.Next() {
 		var model, source, executor, provider string
 		if errScan := rows.Scan(&model, &source, &executor, &provider); errScan != nil {
-			return nil, fmt.Errorf("读取请求事件筛选项：%w", errScan)
+			return nil, fmt.Errorf("Read request event filters: %w", errScan)
 		}
 		models.add(model)
 		sources.add(source)
@@ -231,7 +231,7 @@ func (d *DB) requestEventFilterValues(query billing.RequestEventQuery, since tim
 		providers.add(provider)
 	}
 	if errRows := rows.Err(); errRows != nil {
-		return nil, fmt.Errorf("读取请求事件筛选项：%w", errRows)
+		return nil, fmt.Errorf("Read request event filters: %w", errRows)
 	}
 	return &billing.RequestEventFilterValues{
 		Models: models.sorted(), Sources: sources.sorted(),
@@ -258,7 +258,7 @@ func scanRequestEventRow(rows *sql.Rows) (billing.RequestEventRow, error) {
 		&row.Cost.AppliedInputPer1M, &row.Cost.AppliedOutputPer1M,
 		&row.Cost.AppliedCacheReadPer1M, &row.Cost.AppliedCacheWritePer1M,
 		&row.Preview, &row.Label, &row.Source); errScan != nil {
-		return billing.RequestEventRow{}, fmt.Errorf("读取请求事件：%w", errScan)
+		return billing.RequestEventRow{}, fmt.Errorf("Read request events: %w", errScan)
 	}
 	row.At = timeAt(at)
 	row.Failed = failed != 0
@@ -288,7 +288,7 @@ func (d *DB) EventKeys(from, to, since time.Time) ([]billing.EventKey, error) {
         ORDER BY coalesce(NULLIF(k.label, ''), k.preview, '') COLLATE NOCASE, scopes.scope`,
 		append([]any{billing.UnknownKeyPreview}, args...)...)
 	if err != nil {
-		return nil, fmt.Errorf("读取事件 API Key 筛选项：%w", err)
+		return nil, fmt.Errorf("Read event API key filters: %w", err)
 	}
 	defer rows.Close()
 	keys := []billing.EventKey{}
@@ -296,13 +296,13 @@ func (d *DB) EventKeys(from, to, since time.Time) ([]billing.EventKey, error) {
 		var key billing.EventKey
 		var deletedAt int64
 		if err := rows.Scan(&key.Scope, &key.Preview, &key.Label, &deletedAt); err != nil {
-			return nil, fmt.Errorf("读取事件 API Key 筛选项：%w", err)
+			return nil, fmt.Errorf("Read event API key filters: %w", err)
 		}
 		key.DeletedAt = timeAt(deletedAt)
 		keys = append(keys, key)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("读取事件 API Key 筛选项：%w", err)
+		return nil, fmt.Errorf("Read event API key filters: %w", err)
 	}
 	return keys, nil
 }

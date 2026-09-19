@@ -34,45 +34,45 @@ const maxQuotaCount = int64(1<<53 - 1)
 
 func (p Plan) Validate() error {
 	if strings.TrimSpace(p.ID) == "" {
-		return invalidf("订阅计划 ID 不能为空")
+		return invalidf("Subscription plan ID is required")
 	}
 	if len(p.Windows) == 0 {
-		return invalidf("订阅计划至少需要一个额度窗口")
+		return invalidf("A subscription plan requires at least one quota window")
 	}
 	ids := make(map[string]bool)
 	names := make(map[string]bool)
 	periods := make(map[int64]bool)
 	for _, window := range p.Windows {
 		if window.ID == "" || ids[window.ID] {
-			return invalidf("额度窗口 ID 无效或重复")
+			return invalidf("Invalid or duplicate quota window ID")
 		}
 		name := strings.TrimSpace(window.Name)
 		if name == "" || len(name) > maxRouteNameBytes {
-			return invalidf("窗口名称不能为空且不能超过 %d 字节", maxRouteNameBytes)
+			return invalidf("Window name is required and must not exceed %d bytes", maxRouteNameBytes)
 		}
 		if names[strings.ToLower(name)] {
-			return invalidf("窗口名称 %q 重复", name)
+			return invalidf("Duplicate window name %q", name)
 		}
 		if window.AmountUSD < 0 || math.IsNaN(window.AmountUSD) || math.IsInf(window.AmountUSD, 0) {
-			return invalidf("窗口 %q：金额额度必须为有限非负数", name)
+			return invalidf("Window %q: amount quota must be a finite non-negative number", name)
 		}
 		if window.TokenLimit < 0 || window.TokenLimit > maxQuotaCount || window.RequestLimit < 0 || window.RequestLimit > maxQuotaCount {
-			return invalidf("窗口 %q：Token 和请求限额必须为 0 到 %d 的整数", name, maxQuotaCount)
+			return invalidf("Window %q: token and request limits must be integers from 0 to %d", name, maxQuotaCount)
 		}
 		if window.AmountUSD == 0 && window.TokenLimit == 0 && window.RequestLimit == 0 {
-			return invalidf("窗口 %q：至少设置一种额度", name)
+			return invalidf("Window %q: set at least one quota", name)
 		}
 		if window.PeriodSeconds <= 0 || window.PeriodSeconds > maxPeriodSeconds {
-			return invalidf("窗口 %q：周期必须为 1 到 %d 秒", name, maxPeriodSeconds)
+			return invalidf("Window %q: period must be between 1 and %d seconds", name, maxPeriodSeconds)
 		}
 		if periods[window.PeriodSeconds] {
-			return invalidf("窗口 %q 的周期与其他窗口重复", name)
+			return invalidf("Window %q has the same period as another window", name)
 		}
 		if window.CycleAnchorAt.IsZero() != p.Windows[0].CycleAnchorAt.IsZero() {
-			return invalidf("同一订阅计划的额度窗口必须使用相同周期模式")
+			return invalidf("All windows in a subscription plan must use the same cycle mode")
 		}
 		if !window.CycleAnchorAt.IsZero() && (window.CycleAnchorAt.Year() < 1970 || window.CycleAnchorAt.Year() > 9999 || window.CycleAnchorAt.Nanosecond() != 0) {
-			return invalidf("窗口 %q：周期开始时间必须为 1970 到 9999 年之间、精确到秒的时间", name)
+			return invalidf("Window %q: cycle start must be between years 1970 and 9999 with second precision", name)
 		}
 		ids[window.ID], names[strings.ToLower(name)], periods[window.PeriodSeconds] = true, true, true
 	}
@@ -92,7 +92,7 @@ func prepareWindows(windows, existing []QuotaWindow, now time.Time) ([]QuotaWind
 			}
 			window.ID = hex.EncodeToString(id[:])
 		} else if oldIndex < 0 {
-			return nil, invalidf("额度窗口 %q 已不存在，请刷新后重试", window.Name)
+			return nil, invalidf("Quota window %q no longer exists; refresh and try again", window.Name)
 		}
 		if !window.CycleAnchorAt.IsZero() {
 			window.CycleAnchorAt = window.CycleAnchorAt.UTC()
@@ -100,7 +100,7 @@ func prepareWindows(windows, existing []QuotaWindow, now time.Time) ([]QuotaWind
 				window.CycleAnchorAt = existing[oldIndex].CycleAnchorAt
 			} else if window.PeriodSeconds <= 0 || window.PeriodSeconds > maxPeriodSeconds ||
 				!window.CycleAnchorAt.After(now) || window.CycleAnchorAt.After(now.Add(time.Duration(window.PeriodSeconds)*time.Second)) {
-				return nil, invalidf("窗口 %q：下个周期开始时间必须晚于当前时间，且不超过一个周期", window.Name)
+				return nil, invalidf("Window %q: the next cycle must start after now and within one period", window.Name)
 			}
 		}
 	}
@@ -166,7 +166,7 @@ func (s *Store) CreatePlanWithBindings(plan Plan, scopes []string) (Plan, error)
 			return Plan{}, Changes{}, errValidate
 		}
 		if _, exists := state.FindPlan(plan.ID); exists {
-			return Plan{}, Changes{}, conflictf("订阅计划 %q 已存在", plan.ID)
+			return Plan{}, Changes{}, conflictf("Subscription plan %q already exists", plan.ID)
 		}
 		if plan.Name == "" {
 			plan.Name = plan.ID
@@ -174,10 +174,10 @@ func (s *Store) CreatePlanWithBindings(plan Plan, scopes []string) (Plan, error)
 		for _, scope := range scopes {
 			key := state.liveKey(scope)
 			if key == nil {
-				return Plan{}, Changes{}, notFoundf("API Key %q 不存在", scope)
+				return Plan{}, Changes{}, notFoundf("API key %q does not exist", scope)
 			}
 			if key.PlanID != "" {
-				return Plan{}, Changes{}, conflictf("API Key %q 已绑定其他订阅计划", scope)
+				return Plan{}, Changes{}, conflictf("API key %q is already bound to another subscription plan", scope)
 			}
 		}
 		state.Plans = append(state.Plans, plan)
@@ -201,7 +201,7 @@ type PlanPatch struct {
 func (s *Store) UpdatePlanWithBindings(patch PlanPatch, scopes *[]string) (Plan, error) {
 	patch.ID = strings.TrimSpace(patch.ID)
 	if patch.ID == "" {
-		return Plan{}, invalidf("订阅计划 ID 不能为空")
+		return Plan{}, invalidf("Subscription plan ID is required")
 	}
 
 	return editConfiguration(s, func(state *State) (Plan, Changes, error) {
@@ -230,10 +230,10 @@ func (s *Store) UpdatePlanWithBindings(patch PlanPatch, scopes *[]string) (Plan,
 				for _, scope := range normalized {
 					key := state.Keys[scope]
 					if key == nil || !key.DeletedAt.IsZero() && key.PlanID != patch.ID {
-						return Plan{}, Changes{}, notFoundf("API Key %q 不存在", scope)
+						return Plan{}, Changes{}, notFoundf("API key %q does not exist", scope)
 					}
 					if key.PlanID != "" && key.PlanID != patch.ID {
-						return Plan{}, Changes{}, conflictf("API Key %q 已绑定其他订阅计划", scope)
+						return Plan{}, Changes{}, conflictf("API key %q is already bound to another subscription plan", scope)
 					}
 					selected[scope] = struct{}{}
 				}
@@ -275,20 +275,20 @@ func (s *Store) UpdatePlanWithBindings(patch PlanPatch, scopes *[]string) (Plan,
 			state.Plans[i] = updated
 			return clonePlan(updated), Changes{Plans: true, AllKeys: true}, nil
 		}
-		return Plan{}, Changes{}, notFoundf("订阅计划 %q 不存在", patch.ID)
+		return Plan{}, Changes{}, notFoundf("Subscription plan %q does not exist", patch.ID)
 	})
 }
 
 func (s *Store) DeletePlan(id string) (int, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return 0, invalidf("订阅计划 ID 不能为空")
+		return 0, invalidf("Subscription plan ID is required")
 	}
 
 	return editConfiguration(s, func(state *State) (int, Changes, error) {
 		index := slices.IndexFunc(state.Plans, func(plan Plan) bool { return plan.ID == id })
 		if index < 0 {
-			return 0, Changes{}, notFoundf("订阅计划 %q 不存在", id)
+			return 0, Changes{}, notFoundf("Subscription plan %q does not exist", id)
 		}
 		state.Plans = slices.Delete(state.Plans, index, index+1)
 

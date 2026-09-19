@@ -26,7 +26,7 @@ func (d *DB) Analysis(query billing.RequestEventQuery, since time.Time) (billing
 	statement, args := analysisSQL(query, since, boundaries)
 	rows, err := d.db.Query(statement, args...)
 	if err != nil {
-		return billing.AnalysisView{}, fmt.Errorf("聚合分析数据：%w", err)
+		return billing.AnalysisView{}, fmt.Errorf("Aggregate analysis data: %w", err)
 	}
 	defer rows.Close()
 	keys, models, sources := analysisGroups{}, analysisGroups{}, analysisGroups{}
@@ -40,7 +40,7 @@ func (d *DB) Analysis(query billing.RequestEventQuery, since time.Time) (billing
 			&part.Requests, &part.Failed, &part.InputTokens, &part.OutputTokens,
 			&part.CacheReadTokens, &part.CacheWriteTokens, &part.Cost.TotalUSD,
 			&part.Cost.InputUSD, &part.Cost.CacheReadUSD, &part.Cost.CacheWriteUSD, &part.Cost.OutputUSD); err != nil {
-			return billing.AnalysisView{}, fmt.Errorf("读取分析数据：%w", err)
+			return billing.AnalysisView{}, fmt.Errorf("Read analysis data: %w", err)
 		}
 		trends.Requests[index].Value += float64(part.Requests)
 		trends.UncachedInputTokens[index].Value += float64(part.InputTokens - part.CacheReadTokens - part.CacheWriteTokens)
@@ -69,10 +69,10 @@ func (d *DB) Analysis(query billing.RequestEventQuery, since time.Time) (billing
 		sources.add(source, part)
 	}
 	if err := rows.Err(); err != nil {
-		return billing.AnalysisView{}, fmt.Errorf("读取分析数据：%w", err)
+		return billing.AnalysisView{}, fmt.Errorf("Read analysis data: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return billing.AnalysisView{}, fmt.Errorf("读取分析数据：%w", err)
+		return billing.AnalysisView{}, fmt.Errorf("Read analysis data: %w", err)
 	}
 	summary.Succeeded = summary.Requests - summary.Failed
 	if summary.Requests > 0 {
@@ -93,6 +93,16 @@ func (d *DB) Analysis(query billing.RequestEventQuery, since time.Time) (billing
 	view.UsageDistribution.APIKeys = keys.finish()
 	view.UsageDistribution.Models = models.finish()
 	view.UsageDistribution.Sources = sources.finish()
+	for i := range view.UsageDistribution.Models {
+		if view.UsageDistribution.Models[i].Key == "" {
+			view.UsageDistribution.Models[i].Label = "Unknown model"
+		}
+	}
+	for i := range view.UsageDistribution.Sources {
+		if view.UsageDistribution.Sources[i].Key == "" {
+			view.UsageDistribution.Sources[i].Label = "Unknown source"
+		}
+	}
 	return view, nil
 }
 
@@ -168,8 +178,8 @@ func (groups analysisGroups) finish() []billing.AnalysisComposition {
 
 func analysisSQL(query billing.RequestEventQuery, since time.Time, boundaries []billing.AnalysisTrendPoint) (string, []any) {
 	where, args := eventFilter(requestEventSource, query, since)
-	modelSQL := "coalesce(NULLIF(" + eventModelSQL + ", ''), '未知模型')"
-	sourceSQL := "coalesce(NULLIF(" + requestEventSourceName + ", ''), '未知来源')"
+	modelSQL := "coalesce(NULLIF(" + eventModelSQL + ", ''), '')"
+	sourceSQL := "coalesce(NULLIF(" + requestEventSourceName + ", ''), '')"
 	var statement strings.Builder
 	queryArgs := make([]any, 0, len(boundaries)*(len(args)+2))
 	for index, boundary := range boundaries {
@@ -199,17 +209,17 @@ func (d *DB) labelAnalysisKeys(keys analysisGroups) error {
 		return nil
 	}
 	if key := keys[""]; key != nil {
-		key.Label = "未归属"
+		key.Label = "Unassigned"
 	}
 	metadata, err := d.db.Query("SELECT scope, preview, label FROM api_keys")
 	if err != nil {
-		return fmt.Errorf("读取分析 Key 信息：%w", err)
+		return fmt.Errorf("Read analysis key metadata: %w", err)
 	}
 	defer metadata.Close()
 	for metadata.Next() {
 		var scope, preview, label string
 		if err := metadata.Scan(&scope, &preview, &label); err != nil {
-			return fmt.Errorf("读取分析 Key 信息：%w", err)
+			return fmt.Errorf("Read analysis key metadata: %w", err)
 		}
 		if key := keys[scope]; key != nil {
 			key.Preview = preview
@@ -221,7 +231,7 @@ func (d *DB) labelAnalysisKeys(keys analysisGroups) error {
 		}
 	}
 	if err := metadata.Err(); err != nil {
-		return fmt.Errorf("读取分析 Key 信息：%w", err)
+		return fmt.Errorf("Read analysis key metadata: %w", err)
 	}
 	return nil
 }

@@ -73,7 +73,7 @@ func (s *Store) Configure(cfg Config) error {
 	normalized := cfg.normalized()
 	path, err := filepath.Abs(normalized.StateFile)
 	if err != nil {
-		return fmt.Errorf("解析计费数据库路径 %q：%w", normalized.StateFile, err)
+		return fmt.Errorf("Resolve billing database path %q: %w", normalized.StateFile, err)
 	}
 
 	s.cfgMu.Lock()
@@ -89,7 +89,7 @@ func (s *Store) Configure(cfg Config) error {
 		s.cfg = normalized
 		s.mu.Unlock()
 		if changed {
-			s.AddPluginLog(PluginLogInfo, "配置已更新：%s", normalized.describe())
+			s.AddPluginLog(PluginLogInfo, "Configuration updated: %s", normalized.describe())
 		}
 		return nil
 	}
@@ -124,7 +124,7 @@ func (s *Store) Configure(cfg Config) error {
 		s.closeRepository(previous)
 	}
 
-	s.AddPluginLog(PluginLogInfo, "已加载计费数据库：%s，%d 个 API Key、%d 个订阅计划、%d 条请求事件，%s",
+	s.AddPluginLog(PluginLogInfo, "Loaded billing database: %s, %d API keys, %d subscription plans, %d request events, %s",
 		path, len(snapshot.State.Keys), len(snapshot.State.Plans), snapshot.RequestEventCount, normalized.describe())
 	return nil
 }
@@ -150,7 +150,7 @@ func (s *Store) Close() {
 
 func (s *Store) closeRepository(repo Repository) {
 	if errClose := repo.Close(); errClose != nil {
-		s.AddPluginLog(PluginLogError, "关闭计费数据库失败：%v", errClose)
+		s.AddPluginLog(PluginLogError, "Failed to close billing database: %v", errClose)
 	}
 }
 
@@ -251,7 +251,7 @@ func editConfiguration[T any](s *Store, fn func(*State) (T, Changes, error)) (T,
 		if written {
 			errSave = s.repo.Save(&next, changes)
 			if errSave != nil {
-				return fmt.Errorf("保存配置失败：%w", errSave)
+				return fmt.Errorf("Save configuration: %w", errSave)
 			}
 			s.dirty = Changes{}
 		}
@@ -280,7 +280,7 @@ func (s *Store) recordWriteSuccess() {
 	s.lastError = ""
 	s.errMu.Unlock()
 	if recovered {
-		s.AddPluginLog(PluginLogInfo, "计费数据库写入已恢复")
+		s.AddPluginLog(PluginLogInfo, "Billing database writes have recovered")
 	}
 }
 
@@ -293,7 +293,7 @@ func (s *Store) recordWriteError(err error) {
 	// that follows. Report the onset and then stay quiet until a write succeeds,
 	// so the log still shows what happened before the failure.
 	if first {
-		s.AddPluginLog(PluginLogError, "保存计费数据失败：%v", err)
+		s.AddPluginLog(PluginLogError, "Failed to save billing data: %v", err)
 	}
 }
 

@@ -178,7 +178,30 @@ func TestAnalysisFullRetentionKeepsZeroUsageAndEmptyScopes(t *testing.T) {
 	if len(keys) != 2 || keys[0].Percent != 50 || keys[1].Percent != 50 {
 		t.Fatalf("zero-usage key distribution=%+v", keys)
 	}
-	if view.UsageDistribution.Models[0].Label != "未知模型" || view.UsageDistribution.Sources[0].Label != "未知来源" {
+	if view.UsageDistribution.Models[0].Label != "Unknown model" || view.UsageDistribution.Sources[0].Label != "Unknown source" {
 		t.Fatalf("fallback labels=%+v", view.UsageDistribution)
+	}
+}
+
+func TestAnalysisFallbackLabelsDoNotMergeUserDefinedModels(t *testing.T) {
+	d := openTestDB(t)
+	from := time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC)
+	events := []billing.RequestEvent{}
+	for _, model := range []string{"", "Unknown model", "未知模型"} {
+		events = append(events, billing.RequestEvent{At: from, BillingModel: model})
+	}
+	mustSave(t, d, billing.NewState(), billing.Changes{NormalRequestEvents: events})
+	view, err := d.Analysis(billing.RequestEventQuery{From: from, To: from.Add(time.Hour)}, from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	models := view.UsageDistribution.Models
+	if len(models) != 3 {
+		t.Fatalf("missing and user-defined models must remain separate: %+v", models)
+	}
+	for _, model := range models {
+		if model.Requests != 1 || (model.Key != "" && model.Label != model.Key) {
+			t.Fatalf("user-defined model was changed: %+v", model)
+		}
 	}
 }

@@ -12,7 +12,7 @@ import (
 
 func replacePlans(tx *sql.Tx, state *billing.State) error {
 	if _, errClear := tx.Exec("DELETE FROM plans"); errClear != nil {
-		return fmt.Errorf("保存订阅计划：%w", errClear)
+		return fmt.Errorf("Save subscription plans: %w", errClear)
 	}
 	for position, plan := range state.Plans {
 		if err := plan.Validate(); err != nil {
@@ -27,7 +27,7 @@ func replacePlans(tx *sql.Tx, state *billing.State) error {
 			VALUES (?, ?, ?, ?)`,
 			position, plan.ID, plan.Name, string(raw))
 		if errPlan != nil {
-			return fmt.Errorf("保存订阅计划 %s：%w", plan.ID, errPlan)
+			return fmt.Errorf("Save subscription plan %s: %w", plan.ID, errPlan)
 		}
 	}
 	return nil
@@ -37,17 +37,17 @@ func (d *DB) loadPlans(state *billing.State) error {
 	rows, errQuery := d.db.Query(`
 		SELECT id, name, windows_json FROM plans ORDER BY position`)
 	if errQuery != nil {
-		return fmt.Errorf("读取订阅计划：%w", errQuery)
+		return fmt.Errorf("Read subscription plans: %w", errQuery)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var plan billing.Plan
 		var raw string
 		if errScan := rows.Scan(&plan.ID, &plan.Name, &raw); errScan != nil {
-			return fmt.Errorf("读取订阅计划：%w", errScan)
+			return fmt.Errorf("Read subscription plans: %w", errScan)
 		}
 		if err := json.Unmarshal([]byte(raw), &plan.Windows); err != nil {
-			return fmt.Errorf("读取订阅计划 %s：%w", plan.ID, err)
+			return fmt.Errorf("Read subscription plan %s: %w", plan.ID, err)
 		}
 		if err := plan.Validate(); err != nil {
 			return err
@@ -58,7 +58,7 @@ func (d *DB) loadPlans(state *billing.State) error {
 		state.Plans = append(state.Plans, plan)
 	}
 	if errRows := rows.Err(); errRows != nil {
-		return fmt.Errorf("读取订阅计划：%w", errRows)
+		return fmt.Errorf("Read subscription plans: %w", errRows)
 	}
 	return nil
 }

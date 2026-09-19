@@ -26,7 +26,7 @@ type ReferencePrice struct {
 
 func (price ReferencePrice) Validate() error {
 	if strings.TrimSpace(price.ProviderID) == "" || strings.TrimSpace(price.ModelID) == "" {
-		return invalidf("参考价的 provider ID 和模型 ID 不能为空")
+		return invalidf("Reference price provider ID and model ID are required")
 	}
 	if price.PriceRates == nil {
 		return nil
@@ -183,7 +183,7 @@ func (references *referencePriceManager) lookup(ctx context.Context, upstream, m
 	references.storageMu.RLock()
 	defer references.storageMu.RUnlock()
 	if references.closed {
-		return referencePriceMatch{}, fmt.Errorf("参考价数据库已切换")
+		return referencePriceMatch{}, fmt.Errorf("The reference price database changed")
 	}
 	references.mu.Lock()
 	metadata, refreshSequence := references.metadata, references.refreshSequence
@@ -227,7 +227,7 @@ func referencePricesNeedRefresh(metadata ReferencePriceMetadata, found bool, now
 // observed refreshSequence prevents waiters from issuing a second download after it.
 func (references *referencePriceManager) refresh(ctx context.Context, now func() time.Time, force bool, observed uint64, found bool) (ReferencePriceMetadata, error) {
 	if references == nil {
-		return ReferencePriceMetadata{}, fmt.Errorf("参考价数据库尚未就绪")
+		return ReferencePriceMetadata{}, fmt.Errorf("The reference price database is not ready")
 	}
 	references.mu.Lock()
 	if refreshDone := references.refreshDone; refreshDone != nil {
@@ -256,7 +256,7 @@ func (references *referencePriceManager) refresh(ctx context.Context, now func()
 	previous := references.metadata
 	references.mu.Unlock()
 
-	references.log(PluginLogInfo, "正在从 models.dev 同步参考价")
+	references.log(PluginLogInfo, "Syncing reference prices from models.dev")
 	next, err := references.downloadAndCommit(ctx, now)
 	if err != nil {
 		next = previous
@@ -285,11 +285,11 @@ func (references *referencePriceManager) refresh(ctx context.Context, now func()
 	references.mu.Unlock()
 	switch {
 	case err != nil:
-		references.log(PluginLogError, "同步 models.dev 参考价失败：%v", err)
+		references.log(PluginLogError, "Failed to sync models.dev reference prices: %v", err)
 	case next.Version == previous.Version:
-		references.log(PluginLogInfo, "models.dev 参考价内容未变，已更新获取时间，共 %d 个模型", next.ModelCount)
+		references.log(PluginLogInfo, "models.dev reference prices are unchanged; refreshed fetch time for %d models", next.ModelCount)
 	default:
-		references.log(PluginLogInfo, "models.dev 参考价已更新，共 %d 个模型", next.ModelCount)
+		references.log(PluginLogInfo, "Updated models.dev reference prices for %d models", next.ModelCount)
 	}
 	return next, err
 }
@@ -303,7 +303,7 @@ func (references *referencePriceManager) downloadAndCommit(ctx context.Context, 
 	references.storageMu.RLock()
 	if references.closed {
 		references.storageMu.RUnlock()
-		return ReferencePriceMetadata{}, fmt.Errorf("参考价数据库已切换")
+		return ReferencePriceMetadata{}, fmt.Errorf("The reference price database changed")
 	}
 	current, err := references.repository.LoadReferencePriceMetadata(ctx)
 	references.storageMu.RUnlock()
@@ -335,7 +335,7 @@ func (references *referencePriceManager) downloadAndCommit(ctx context.Context, 
 	references.storageMu.Lock()
 	defer references.storageMu.Unlock()
 	if references.closed {
-		return ReferencePriceMetadata{}, fmt.Errorf("参考价数据库已切换")
+		return ReferencePriceMetadata{}, fmt.Errorf("The reference price database changed")
 	}
 	if err = references.repository.SaveReferencePrices(ctx, next, prices); err != nil {
 		return ReferencePriceMetadata{}, &referencePriceStorageError{err}
@@ -382,7 +382,7 @@ func (s *Store) SearchReferencePrices(query string, limit int) ([]ReferencePrice
 	references.storageMu.RLock()
 	defer references.storageMu.RUnlock()
 	if references.closed {
-		return nil, fmt.Errorf("参考价数据库已切换")
+		return nil, fmt.Errorf("The reference price database changed")
 	}
 	return references.repository.SearchReferencePrices(ctx, query, min(max(limit, 1), 50))
 }
@@ -397,7 +397,7 @@ func (references *referencePriceManager) lookupModels(ctx context.Context, model
 	references.storageMu.RLock()
 	defer references.storageMu.RUnlock()
 	if references.closed {
-		return nil, fmt.Errorf("参考价数据库已切换")
+		return nil, fmt.Errorf("The reference price database changed")
 	}
 	metadata, _ := references.status()
 	if !metadata.Usable {

@@ -3,7 +3,6 @@ package plugin
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"cpa-key-billing/internal/billing"
+	"cpa-key-billing/internal/messages"
 )
 
 type keyRow struct {
@@ -200,11 +200,11 @@ func (a *App) validateNewCredentialRefs(refs, existing []string) *ManagementResp
 		return nil
 	}
 	if err := a.refreshCredentialInventory(); err != nil {
-		response := JSONError(http.StatusBadGateway, "host_unavailable", "加载上游凭证失败："+err.Error())
+		response := jsonMessageError(http.StatusBadGateway, "host_unavailable", messages.New("Failed to load upstream credentials: %s", err.Error()))
 		return &response
 	}
 	if missing := a.missingCredentialRef(newRefs); missing != "" {
-		response := JSONError(http.StatusBadRequest, "invalid", "上游凭证已不存在："+missing)
+		response := jsonMessageError(http.StatusBadRequest, "invalid", messages.New("Upstream credential no longer exists: %s", missing))
 		return &response
 	}
 	return nil
@@ -215,21 +215,21 @@ func (a *App) listPluginLogs(req ManagementRequest) ManagementResponse {
 	if raw := strings.TrimSpace(req.Query.Get("limit")); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 1 || value > 500 {
-			return JSONError(http.StatusBadRequest, "invalid", "查询条数必须为 1 到 500 的整数")
+			return JSONError(http.StatusBadRequest, "invalid", "Limit must be an integer from 1 to 500")
 		}
 		query.Limit = value
 	}
 	if raw := strings.TrimSpace(req.Query.Get("before_id")); raw != "" {
 		value, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || value < 1 {
-			return JSONError(http.StatusBadRequest, "invalid", "分页游标无效")
+			return JSONError(http.StatusBadRequest, "invalid", "Invalid pagination cursor")
 		}
 		query.BeforeID = value
 	}
 	if raw := strings.TrimSpace(req.Query.Get("since")); raw != "" {
 		value, err := time.Parse(time.RFC3339, raw)
 		if err != nil {
-			return JSONError(http.StatusBadRequest, "invalid", "起始时间必须为 RFC3339 格式")
+			return JSONError(http.StatusBadRequest, "invalid", "Start time must use RFC3339 format")
 		}
 		query.Since = value
 	}
@@ -238,7 +238,7 @@ func (a *App) listPluginLogs(req ManagementRequest) ManagementResponse {
 		for _, raw := range strings.Split(levels, ",") {
 			level := billing.PluginLogLevel(strings.TrimSpace(raw))
 			if level != billing.PluginLogDebug && level != billing.PluginLogInfo && level != billing.PluginLogError {
-				return JSONError(http.StatusBadRequest, "invalid", "日志级别无效")
+				return JSONError(http.StatusBadRequest, "invalid", "Invalid log level")
 			}
 			query.Levels = append(query.Levels, level)
 		}
@@ -348,7 +348,7 @@ func (a *App) syncKeys(req ManagementRequest) ManagementResponse {
 		return errorResponse(errSync)
 	}
 	if result.Added > 0 || result.Deleted > 0 {
-		a.store.AddPluginLog(billing.PluginLogInfo, "CLIProxyAPI API Key 已同步：新增 %d 个，删除 %d 个",
+		a.store.AddPluginLog(billing.PluginLogInfo, "CLIProxyAPI API keys synced: %d added, %d deleted",
 			result.Added, result.Deleted)
 	}
 	live := make(map[string]struct{})
@@ -365,10 +365,11 @@ func decodeStrict(body []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(bytes.TrimSpace(body)))
 	decoder.DisallowUnknownFields()
 	if errDecode := decoder.Decode(target); errDecode != nil {
-		return &billing.Error{Kind: billing.KindInvalid, Msg: fmt.Sprintf("请求内容无效：%v", errDecode)}
+		detail := messages.New("Invalid request body: %v", errDecode)
+		return &billing.Error{Kind: billing.KindInvalid, Msg: detail.Text, Detail: detail}
 	}
 	if errTrailing := decoder.Decode(&struct{}{}); errTrailing != io.EOF {
-		return &billing.Error{Kind: billing.KindInvalid, Msg: "请求内容只能包含一个 JSON 值"}
+		return &billing.Error{Kind: billing.KindInvalid, Msg: "The request body must contain exactly one JSON value"}
 	}
 	return nil
 }

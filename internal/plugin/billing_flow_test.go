@@ -225,7 +225,7 @@ func TestUsageHandleRecordsUnscopedUsageWithoutCreatingKey(t *testing.T) {
 	}
 	analysis, err := app.store.Analysis(billing.RequestEventQuery{From: now.Add(-time.Hour), To: now})
 	if err != nil || analysis.Summary.Requests != 1 || len(analysis.UsageDistribution.APIKeys) != 1 ||
-		analysis.UsageDistribution.APIKeys[0].Label != "未归属" {
+		analysis.UsageDistribution.APIKeys[0].Label != "Unassigned" {
 		t.Fatalf("analysis = %+v, err = %v", analysis, err)
 	}
 	assertCostClose(t, analysis.Summary.Cost.TotalUSD, 0.001)

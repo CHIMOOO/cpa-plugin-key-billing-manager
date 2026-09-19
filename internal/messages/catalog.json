@@ -1,0 +1,952 @@
+{
+  "The analysis range is outside the retained request history": {
+    "key": "backend.the_analysis_range_is_outside_the_retained_request_history",
+    "formats": []
+  },
+  "API key identifier is required": {
+    "key": "backend.api_key_identifier_is_required",
+    "formats": []
+  },
+  "Concurrency limit must be an integer from 0 to %d": {
+    "key": "backend.concurrency_limit_must_be_an_integer_from_0_to_value",
+    "formats": [
+      "%d"
+    ]
+  },
+  "API key %q does not exist": {
+    "key": "backend.api_key_value_does_not_exist",
+    "formats": [
+      "%q"
+    ]
+  },
+  "disabled": {
+    "key": "backend.disabled",
+    "formats": []
+  },
+  "API key identifier and subscription plan ID are required": {
+    "key": "backend.api_key_identifier_and_subscription_plan_id_are_required",
+    "formats": []
+  },
+  "Subscription plan %q does not exist": {
+    "key": "backend.subscription_plan_value_does_not_exist",
+    "formats": [
+      "%q"
+    ]
+  },
+  "A reset of all quotas cannot specify individual keys": {
+    "key": "backend.a_reset_of_all_quotas_cannot_specify_individual_keys",
+    "formats": []
+  },
+  "Select the API keys to reset": {
+    "key": "backend.select_the_api_keys_to_reset",
+    "formats": []
+  },
+  "Invalid quota reset mode": {
+    "key": "backend.invalid_quota_reset_mode",
+    "formats": []
+  },
+  "The API key does not exist or has no subscription plan": {
+    "key": "backend.the_api_key_does_not_exist_or_has_no_subscription_plan",
+    "formats": []
+  },
+  "The API key list is empty; pass allow_empty to clear it": {
+    "key": "backend.the_api_key_list_is_empty_pass_allow_empty_to_clear_it",
+    "formats": []
+  },
+  "Subscription plan ID is required": {
+    "key": "backend.subscription_plan_id_is_required",
+    "formats": []
+  },
+  "A subscription plan requires at least one quota window": {
+    "key": "backend.a_subscription_plan_requires_at_least_one_quota_window",
+    "formats": []
+  },
+  "Invalid or duplicate quota window ID": {
+    "key": "backend.invalid_or_duplicate_quota_window_id",
+    "formats": []
+  },
+  "Window name is required and must not exceed %d bytes": {
+    "key": "backend.window_name_is_required_and_must_not_exceed_value_bytes",
+    "formats": [
+      "%d"
+    ]
+  },
+  "Duplicate window name %q": {
+    "key": "backend.duplicate_window_name_value",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Window %q: amount quota must be a finite non-negative number": {
+    "key": "backend.window_value_amount_quota_must_be_a_finite_non_negative_number",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Window %q: token and request limits must be integers from 0 to %d": {
+    "key": "backend.window_value_token_and_request_limits_must_be_integers_from_0_to_value",
+    "formats": [
+      "%q",
+      "%d"
+    ]
+  },
+  "Window %q: set at least one quota": {
+    "key": "backend.window_value_set_at_least_one_quota",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Window %q: period must be between 1 and %d seconds": {
+    "key": "backend.window_value_period_must_be_between_1_and_value_seconds",
+    "formats": [
+      "%q",
+      "%d"
+    ]
+  },
+  "Window %q has the same period as another window": {
+    "key": "backend.window_value_has_the_same_period_as_another_window",
+    "formats": [
+      "%q"
+    ]
+  },
+  "All windows in a subscription plan must use the same cycle mode": {
+    "key": "backend.all_windows_in_a_subscription_plan_must_use_the_same_cycle_mode",
+    "formats": []
+  },
+  "Window %q: cycle start must be between years 1970 and 9999 with second precision": {
+    "key": "backend.window_value_cycle_start_must_be_between_years_1970_and_9999_with_second_precision",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Quota window %q no longer exists; refresh and try again": {
+    "key": "backend.quota_window_value_no_longer_exists_refresh_and_try_again",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Window %q: the next cycle must start after now and within one period": {
+    "key": "backend.window_value_the_next_cycle_must_start_after_now_and_within_one_period",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Subscription plan %q already exists": {
+    "key": "backend.subscription_plan_value_already_exists",
+    "formats": [
+      "%q"
+    ]
+  },
+  "API key %q is already bound to another subscription plan": {
+    "key": "backend.api_key_value_is_already_bound_to_another_subscription_plan",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Model ID is too long": {
+    "key": "backend.model_id_is_too_long",
+    "formats": []
+  },
+  "Model ID is required": {
+    "key": "backend.model_id_is_required",
+    "formats": []
+  },
+  "Custom price does not exist": {
+    "key": "backend.custom_price_does_not_exist",
+    "formats": []
+  },
+  "Model %q: token rates must be finite non-negative numbers": {
+    "key": "backend.model_value_token_rates_must_be_finite_non_negative_numbers",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Model %q: cache read rate must be a finite non-negative number": {
+    "key": "backend.model_value_cache_read_rate_must_be_a_finite_non_negative_number",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Model %q: cache write rate must be a finite non-negative number": {
+    "key": "backend.model_value_cache_write_rate_must_be_a_finite_non_negative_number",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Model %q: long-context threshold must be greater than zero": {
+    "key": "backend.model_value_long_context_threshold_must_be_greater_than_zero",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Model %q: long-context token rates must be finite non-negative numbers": {
+    "key": "backend.model_value_long_context_token_rates_must_be_finite_non_negative_numbers",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Model %q: long-context cache read rate must be a finite non-negative number": {
+    "key": "backend.model_value_long_context_cache_read_rate_must_be_a_finite_non_negative_number",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Model %q: long-context cache write rate must be a finite non-negative number": {
+    "key": "backend.model_value_long_context_cache_write_rate_must_be_a_finite_non_negative_number",
+    "formats": [
+      "%q"
+    ]
+  },
+  "The subscription plan bound to this API key does not exist": {
+    "key": "backend.the_subscription_plan_bound_to_this_api_key_does_not_exist",
+    "formats": []
+  },
+  "Invalid quota cycle data for this API key": {
+    "key": "backend.invalid_quota_cycle_data_for_this_api_key",
+    "formats": []
+  },
+  "Reference price provider ID and model ID are required": {
+    "key": "backend.reference_price_provider_id_and_model_id_are_required",
+    "formats": []
+  },
+  "Upstream credential source must be auth-files or ai-providers": {
+    "key": "backend.upstream_credential_source_must_be_auth_files_or_ai_providers",
+    "formats": []
+  },
+  "Invalid provider identifier": {
+    "key": "backend.invalid_provider_identifier",
+    "formats": []
+  },
+  "model": {
+    "key": "backend.model",
+    "formats": []
+  },
+  "credential": {
+    "key": "backend.credential",
+    "formats": []
+  },
+  "Invalid routing option": {
+    "key": "backend.invalid_routing_option",
+    "formats": []
+  },
+  "Invalid upstream credential reference": {
+    "key": "backend.invalid_upstream_credential_reference",
+    "formats": []
+  },
+  "Routing rule ID is required": {
+    "key": "backend.routing_rule_id_is_required",
+    "formats": []
+  },
+  "Routing rule name is required": {
+    "key": "backend.routing_rule_name_is_required",
+    "formats": []
+  },
+  "Routing rule name must not exceed %d bytes": {
+    "key": "backend.routing_rule_name_must_not_exceed_value_bytes",
+    "formats": [
+      "%d"
+    ]
+  },
+  "Routing rule %q already exists": {
+    "key": "backend.routing_rule_value_already_exists",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Routing rule %q does not exist": {
+    "key": "backend.routing_rule_value_does_not_exist",
+    "formats": [
+      "%q"
+    ]
+  },
+  "The routing rule no longer exists; contact your administrator": {
+    "key": "backend.the_routing_rule_no_longer_exists_contact_your_administrator",
+    "formats": []
+  },
+  "Failed to load upstream credentials": {
+    "key": "backend.failed_to_load_upstream_credentials",
+    "formats": []
+  },
+  "The selected upstream credential is unavailable": {
+    "key": "backend.the_selected_upstream_credential_is_unavailable",
+    "formats": []
+  },
+  "Invalid API key": {
+    "key": "backend.invalid_api_key",
+    "formats": []
+  },
+  "Limit must be an integer from 1 to 500": {
+    "key": "backend.limit_must_be_an_integer_from_1_to_500",
+    "formats": []
+  },
+  "Invalid pagination cursor": {
+    "key": "backend.invalid_pagination_cursor",
+    "formats": []
+  },
+  "Start time must use RFC3339 format": {
+    "key": "backend.start_time_must_use_rfc3339_format",
+    "formats": []
+  },
+  "Invalid log level": {
+    "key": "backend.invalid_log_level",
+    "formats": []
+  },
+  "Invalid request body: %v": {
+    "key": "backend.invalid_request_body_value",
+    "formats": [
+      "%v"
+    ]
+  },
+  "The request body must contain exactly one JSON value": {
+    "key": "backend.the_request_body_must_contain_exactly_one_json_value",
+    "formats": []
+  },
+  "Invalid auth file identifier": {
+    "key": "backend.invalid_auth_file_identifier",
+    "formats": []
+  },
+  "Auth file does not exist": {
+    "key": "backend.auth_file_does_not_exist",
+    "formats": []
+  },
+  "Auth file is disabled": {
+    "key": "backend.auth_file_is_disabled",
+    "formats": []
+  },
+  "Quota queries are not supported for this auth file type": {
+    "key": "backend.quota_queries_are_not_supported_for_this_auth_file_type",
+    "formats": []
+  },
+  "Runtime-only auth files have no readable credentials": {
+    "key": "backend.runtime_only_auth_files_have_no_readable_credentials",
+    "formats": []
+  },
+  "This CLIProxyAPI version does not support reading auth files": {
+    "key": "backend.this_cliproxyapi_version_does_not_support_reading_auth_files",
+    "formats": []
+  },
+  "Read auth file list: %w": {
+    "key": "backend.read_auth_file_list_value",
+    "formats": [
+      "%v"
+    ]
+  },
+  "Parse auth file list: %w": {
+    "key": "backend.parse_auth_file_list_value",
+    "formats": [
+      "%v"
+    ]
+  },
+  "Read auth file: %w": {
+    "key": "backend.read_auth_file_value",
+    "formats": [
+      "%v"
+    ]
+  },
+  "Parse auth file: %w": {
+    "key": "backend.parse_auth_file_value",
+    "formats": [
+      "%v"
+    ]
+  },
+  "Invalid auth file contents": {
+    "key": "backend.invalid_auth_file_contents",
+    "formats": []
+  },
+  "API key credentials do not support this quota query": {
+    "key": "backend.api_key_credentials_do_not_support_this_quota_query",
+    "formats": []
+  },
+  "Quota queries do not support a separate proxy for an auth file": {
+    "key": "backend.quota_queries_do_not_support_a_separate_proxy_for_an_auth_file",
+    "formats": []
+  },
+  "Auth file has no usable credentials": {
+    "key": "backend.auth_file_has_no_usable_credentials",
+    "formats": []
+  },
+  "Auth file is missing project_id": {
+    "key": "backend.auth_file_is_missing_project_id",
+    "formats": []
+  },
+  "Build quota request: %w": {
+    "key": "backend.build_quota_request_value",
+    "formats": [
+      "%v"
+    ]
+  },
+  "Quota request failed: %s": {
+    "key": "backend.quota_request_failed_value",
+    "formats": [
+      "%s"
+    ]
+  },
+  "Parse quota response: %w": {
+    "key": "backend.parse_quota_response_value",
+    "formats": [
+      "%v"
+    ]
+  },
+  "Upstream returned HTTP %d: Credentials are invalid or expired": {
+    "key": "backend.upstream_credentials_invalid",
+    "formats": [
+      "%d"
+    ]
+  },
+  "Upstream returned HTTP %d: Credentials are invalid or expired: %s": {
+    "key": "backend.upstream_credentials_invalid_detail",
+    "formats": [
+      "%d",
+      "%s"
+    ]
+  },
+  "Upstream returned HTTP %d: %s": {
+    "key": "backend.upstream_returned_http_value_value",
+    "formats": [
+      "%d",
+      "%s"
+    ]
+  },
+  "Invalid upstream response": {
+    "key": "backend.invalid_upstream_response",
+    "formats": []
+  },
+  "5-hour limit": {
+    "key": "backend.5_hour_limit",
+    "formats": []
+  },
+  "Weekly limit": {
+    "key": "backend.weekly_limit",
+    "formats": []
+  },
+  "Monthly limit": {
+    "key": "backend.monthly_limit",
+    "formats": []
+  },
+  "OAuth Apps weekly limit": {
+    "key": "backend.oauth_apps_weekly_limit",
+    "formats": []
+  },
+  "Opus weekly limit": {
+    "key": "backend.opus_weekly_limit",
+    "formats": []
+  },
+  "Sonnet weekly limit": {
+    "key": "backend.sonnet_weekly_limit",
+    "formats": []
+  },
+  "Cowork weekly limit": {
+    "key": "backend.cowork_weekly_limit",
+    "formats": []
+  },
+  "Fable weekly limit": {
+    "key": "backend.fable_weekly_limit",
+    "formats": []
+  },
+  "Extra usage": {
+    "key": "backend.extra_usage",
+    "formats": []
+  },
+  "Quota": {
+    "key": "backend.quota",
+    "formats": []
+  },
+  "Monthly allowance": {
+    "key": "backend.monthly_allowance",
+    "formats": []
+  },
+  "Pay-as-you-go allowance": {
+    "key": "backend.pay_as_you_go_allowance",
+    "formats": []
+  },
+  "Quota group %d": {
+    "key": "backend.quota_group_value",
+    "formats": [
+      "%d"
+    ]
+  },
+  "include_custom must be true or false": {
+    "key": "backend.include_custom_must_be_true_or_false",
+    "formats": []
+  },
+  "Limit must be an integer from 1 to 50": {
+    "key": "backend.limit_must_be_an_integer_from_1_to_50",
+    "formats": []
+  },
+  "No email provided": {
+    "key": "backend.no_email_provided",
+    "formats": []
+  },
+  "Too many configured credentials": {
+    "key": "backend.too_many_configured_credentials",
+    "formats": []
+  },
+  "Invalid configured credential identifier": {
+    "key": "backend.invalid_configured_credential_identifier",
+    "formats": []
+  },
+  "No API key configured": {
+    "key": "backend.no_api_key_configured",
+    "formats": []
+  },
+  "failed must be true or false": {
+    "key": "backend.failed_must_be_true_or_false",
+    "formats": []
+  },
+  "HTTP status code must be an integer from 100 to 599": {
+    "key": "backend.http_status_code_must_be_an_integer_from_100_to_599",
+    "formats": []
+  },
+  "Timezone must be a valid IANA identifier": {
+    "key": "backend.timezone_must_be_a_valid_iana_identifier",
+    "formats": []
+  },
+  "snapshot_id must be a non-negative integer": {
+    "key": "backend.snapshot_id_must_be_a_non_negative_integer",
+    "formats": []
+  },
+  "Start time must be earlier than end time": {
+    "key": "backend.start_time_must_be_earlier_than_end_time",
+    "formats": []
+  },
+  "Limit must be an integer from 1 to 1000": {
+    "key": "backend.limit_must_be_an_integer_from_1_to_1000",
+    "formats": []
+  },
+  "No auth-file credentials match provider %q": {
+    "key": "backend.no_auth_file_credentials_match",
+    "formats": [
+      "%q"
+    ]
+  },
+  "No configured API keys match provider %q": {
+    "key": "backend.no_configured_credentials_match",
+    "formats": [
+      "%q"
+    ]
+  },
+  "No upstream credentials match %q": {
+    "key": "backend.no_credentials_match",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Configured credential %s": {
+    "key": "backend.configured_credential_value",
+    "formats": [
+      "%s"
+    ]
+  },
+  "%s usage": {
+    "key": "backend.product_usage",
+    "formats": [
+      "%s"
+    ]
+  },
+  "Failed to load upstream credentials: %s": {
+    "key": "backend.credentials_load_failed",
+    "formats": [
+      "%s"
+    ]
+  },
+  "Upstream credential no longer exists: %s": {
+    "key": "backend.credential_missing",
+    "formats": [
+      "%s"
+    ]
+  },
+  "%s must be an RFC3339 timestamp": {
+    "key": "backend.invalid_timestamp",
+    "formats": [
+      "%s"
+    ]
+  },
+  "%s must be a non-negative integer": {
+    "key": "backend.invalid_count",
+    "formats": [
+      "%s"
+    ]
+  },
+  "A model cannot be both allowed and denied": {
+    "key": "backend.model_permission_conflict",
+    "formats": []
+  },
+  "A credential cannot be both allowed and denied": {
+    "key": "backend.credential_permission_conflict",
+    "formats": []
+  },
+  "A credential category cannot be both allowed and denied": {
+    "key": "backend.category_permission_conflict",
+    "formats": []
+  },
+  "enabled and deny_ungrouped are required boolean values": {
+    "key": "backend.groups.enabled_and_deny_ungrouped_are_required_boolean_values",
+    "formats": []
+  },
+  "group_ids must be an array; pass [] explicitly to clear group bindings": {
+    "key": "backend.groups.group_ids_must_be_an_array_pass_explicitly_to_clear_group_bindings",
+    "formats": []
+  },
+  "Invalid group ID": {
+    "key": "backend.groups.invalid_group_id",
+    "formats": []
+  },
+  "Group name is required and must not exceed %d bytes": {
+    "key": "backend.groups.group_name_is_required_and_must_not_exceed_d_bytes",
+    "formats": [
+      "%d"
+    ]
+  },
+  "Group %q already exists": {
+    "key": "backend.groups.group_q_already_exists",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Group %q does not exist": {
+    "key": "backend.groups.group_q_does_not_exist",
+    "formats": [
+      "%q"
+    ]
+  },
+  "Select at least one API key": {
+    "key": "backend.groups.select_at_least_one_api_key",
+    "formats": []
+  },
+  "Routing rule is still used by group %q; remove its group binding first": {
+    "key": "backend.groups.routing_rule_is_still_used_by_group_q_remove_its_group_binding_first",
+    "formats": [
+      "%q"
+    ]
+  },
+  "API key is not assigned to a group; access is denied": {
+    "key": "backend.groups.api_key_is_not_assigned_to_a_group_access_is_denied",
+    "formats": []
+  },
+  "Group %q no longer exists": {
+    "key": "backend.groups.group_q_no_longer_exists",
+    "formats": [
+      "%q"
+    ]
+  },
+  "API key groups have no routing rules or upstream credentials configured; access is denied": {
+    "key": "backend.groups.api_key_groups_have_no_routing_rules_or_upstream_credentials_configured_access_is_denied",
+    "formats": []
+  },
+  "All groups assigned to this API key are disabled; access is denied": {
+    "key": "backend.groups.all_groups_assigned_to_this_api_key_are_disabled_access_is_denied",
+    "formats": []
+  },
+  "No upstream credentials are allowed; contact your administrator": {
+    "key": "backend.groups.no_upstream_credentials_are_allowed_contact_your_administrator",
+    "formats": []
+  },
+  "The upstream credential selected by CPA cannot be verified; access is denied": {
+    "key": "backend.groups.the_upstream_credential_selected_by_cpa_cannot_be_verified_access_is_denied",
+    "formats": []
+  },
+  "The upstream credential selected by CPA is not allowed; access is denied": {
+    "key": "backend.groups.the_upstream_credential_selected_by_cpa_is_not_allowed_access_is_denied",
+    "formats": []
+  },
+  "HTTP/SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards X-Codex-Turn-State; v7.2.143 drops this header in the Codex HTTP executor. WebSocket injection only applies to new connection handshakes; reused connections cannot update it per turn.": {
+    "key": "backend.turn_state_host_requirement",
+    "formats": []
+  },
+  "This host cannot read the authentication file list": {
+    "key": "backend.turn_state_host_inventory_unavailable",
+    "formats": []
+  },
+  "Invalid template clearing parameters": {
+    "key": "backend.turn_state_invalid_clear",
+    "formats": []
+  },
+  "Invalid probe parameters": {
+    "key": "backend.turn_state_invalid_probe",
+    "formats": []
+  },
+  "Failed to read the authentication file list": {
+    "key": "backend.turn_state_inventory_failed",
+    "formats": []
+  },
+  "The probe account does not exist or is not a Codex OAuth account": {
+    "key": "backend.turn_state_account_missing",
+    "formats": []
+  },
+  "Failed to save the turn-state template: %v": {
+    "key": "backend.turn_state_save_failed_log",
+    "formats": [
+      "%v"
+    ]
+  },
+  "A probe request is already running": {
+    "key": "backend.turn_state_busy",
+    "formats": []
+  },
+  "Cannot read a valid Codex OAuth credential; sign in again or check the account": {
+    "key": "backend.turn_state_credential_unavailable",
+    "formats": []
+  },
+  "The probe connection failed or exceeded 25 seconds; check the proxy and the network": {
+    "key": "backend.turn_state_connection_failed",
+    "formats": []
+  },
+  "All exits for pending account/model buckets are cooling down": {
+    "key": "backend.turn_state_cooling",
+    "formats": []
+  },
+  "The account is outside the saved probe scope": {
+    "key": "backend.turn_state_account_outside_scope",
+    "formats": []
+  },
+  "The model is outside the saved probe scope": {
+    "key": "backend.turn_state_model_outside_scope",
+    "formats": []
+  },
+  "Save the probe accounts and models first": {
+    "key": "backend.turn_state_scope_required",
+    "formats": []
+  },
+  "No eligible Codex OAuth accounts are available": {
+    "key": "backend.turn_state_no_accounts",
+    "formats": []
+  },
+  "All templates are fresh; probing resumes shortly before expiry": {
+    "key": "backend.turn_state_fresh",
+    "formats": []
+  },
+  "The upstream rejected this account; probes are paused for 55 minutes. Check sign-in and permissions": {
+    "key": "backend.turn_state_account_refused",
+    "formats": []
+  },
+  "The upstream rate-limited this account; probes are paused for 10 minutes": {
+    "key": "backend.turn_state_rate_limited",
+    "formats": []
+  },
+  "The upstream returned HTTP %d; no template was harvested": {
+    "key": "backend.turn_state_upstream_status",
+    "formats": [
+      "%d"
+    ]
+  },
+  "The response length matches, but its Fernet timestamp is invalid, in the future, or expired": {
+    "key": "backend.turn_state_invalid_response_timestamp",
+    "formats": []
+  },
+  "The upstream returned the same or an older template; its original expiry was not extended": {
+    "key": "backend.turn_state_unchanged",
+    "formats": []
+  },
+  "A valid template was harvested and saved for this account and model": {
+    "key": "backend.turn_state_harvested",
+    "formats": []
+  },
+  "The response template was not saved or renewed": {
+    "key": "backend.turn_state_not_saved",
+    "formats": []
+  },
+  "A degraded-length state was received and not saved; the next probe follows the exit pool retry rules": {
+    "key": "backend.turn_state_degraded",
+    "formats": []
+  },
+  "The response did not contain a turn-state of the configured template length": {
+    "key": "backend.turn_state_missing_template",
+    "formats": []
+  },
+  "Invalid authentication file format": {
+    "key": "backend.turn_state_invalid_auth_file",
+    "formats": []
+  },
+  "The authentication file has no OAuth access_token": {
+    "key": "backend.turn_state_missing_oauth_token",
+    "formats": []
+  },
+  "The OAuth access_token has expired; wait for CPA to refresh it or sign in again": {
+    "key": "backend.turn_state_expired_oauth_token",
+    "formats": []
+  },
+  "Invalid account in the authentication file": {
+    "key": "backend.turn_state_invalid_auth_account",
+    "formats": []
+  },
+  "Invalid turn-state state file": {
+    "key": "backend.turn_state_invalid_state_file",
+    "formats": []
+  },
+  "Unsupported turn-state state file version": {
+    "key": "backend.turn_state_unsupported_state_version",
+    "formats": []
+  },
+  "Invalid turn-state state configuration: %w": {
+    "key": "backend.turn_state_invalid_state_config",
+    "formats": [
+      "%v"
+    ]
+  },
+  "Cannot restrict turn-state state file permissions": {
+    "key": "backend.turn_state_state_permissions",
+    "formats": []
+  },
+  "Cannot read the turn-state state file": {
+    "key": "backend.turn_state_read_state_failed",
+    "formats": []
+  },
+  "inject_mode must be replace-only or always": {
+    "key": "backend.turn_state_invalid_inject_mode",
+    "formats": []
+  },
+  "Template and replacement lengths must be different and between 100 and 8192": {
+    "key": "backend.turn_state_invalid_lengths",
+    "formats": []
+  },
+  "Template lifetime must be 60–3600 seconds and must not exceed the upstream token lifetime": {
+    "key": "backend.turn_state_invalid_ttl",
+    "formats": []
+  },
+  "A configuration list may contain at most %d items": {
+    "key": "backend.turn_state_list_limit",
+    "formats": [
+      "%d"
+    ]
+  },
+  "A configuration item is too long or contains control characters": {
+    "key": "backend.turn_state_invalid_list_item",
+    "formats": []
+  },
+  "A proxy must be a complete URL: scheme://username:password@host:port": {
+    "key": "backend.turn_state_invalid_proxy_url",
+    "formats": []
+  },
+  "Proxy schemes are limited to http, https, socks5, and socks5h": {
+    "key": "backend.turn_state_invalid_proxy_scheme",
+    "formats": []
+  },
+  "The proxy port must be between 1 and 65535": {
+    "key": "backend.turn_state_invalid_proxy_port",
+    "formats": []
+  },
+  "The proxy contains control characters": {
+    "key": "backend.turn_state_invalid_proxy_chars",
+    "formats": []
+  },
+  "Invalid turn-state configuration format": {
+    "key": "backend.turn_state_invalid_config",
+    "formats": []
+  },
+  "Turn-state configuration must contain exactly one JSON object": {
+    "key": "backend.turn_state_config_object_required",
+    "formats": []
+  },
+  "Enter the complete proxy URL; omit the proxy field to preserve its current value": {
+    "key": "backend.turn_state_masked_proxy",
+    "formats": []
+  },
+  "Cannot verify the selected account and upstream model": {
+    "key": "backend.turn_state_unknown_request_bucket",
+    "formats": []
+  },
+  "There is no valid template for this account and model": {
+    "key": "backend.turn_state_no_valid_template",
+    "formats": []
+  },
+  "The request already carries the current template": {
+    "key": "backend.turn_state_already_current",
+    "formats": []
+  },
+  "replace-only replaces only request headers of the configured length": {
+    "key": "backend.turn_state_replace_only",
+    "formats": []
+  },
+  "A template is available; observe mode left the request unchanged": {
+    "key": "backend.turn_state_dry_run",
+    "formats": []
+  },
+  "A valid template for the same account and model was injected": {
+    "key": "backend.turn_state_injected",
+    "formats": []
+  },
+  "The Codex request has no verifiable account attribution": {
+    "key": "backend.turn_state_unattributed_request",
+    "formats": []
+  },
+  "The response account does not match the request attribution": {
+    "key": "backend.turn_state_account_mismatch",
+    "formats": []
+  },
+  "Cannot verify the response account and upstream model": {
+    "key": "backend.turn_state_unknown_response_bucket",
+    "formats": []
+  },
+  "The response header length does not match the template length": {
+    "key": "backend.turn_state_response_length_mismatch",
+    "formats": []
+  },
+  "The template timestamp is invalid, in the future, or expired": {
+    "key": "backend.turn_state_invalid_template_timestamp",
+    "formats": []
+  },
+  "Cannot save the template": {
+    "key": "backend.turn_state_save_template_failed",
+    "formats": []
+  },
+  "A valid template was saved": {
+    "key": "backend.turn_state_template_saved",
+    "formats": []
+  },
+  "Both account and model are required to clear a single template": {
+    "key": "backend.turn_state_clear_bucket_required",
+    "formats": []
+  },
+  "The turn-state state file has not been configured": {
+    "key": "backend.turn_state_state_not_configured",
+    "formats": []
+  },
+  "Cannot create the turn-state state directory": {
+    "key": "backend.turn_state_state_directory_failed",
+    "formats": []
+  },
+  "Cannot encode the turn-state state": {
+    "key": "backend.turn_state_state_encode_failed",
+    "formats": []
+  },
+  "Cannot create a temporary turn-state file": {
+    "key": "backend.turn_state_state_temp_failed",
+    "formats": []
+  },
+  "Cannot write the turn-state state": {
+    "key": "backend.turn_state_state_write_failed",
+    "formats": []
+  },
+  "Cannot replace the turn-state state file": {
+    "key": "backend.turn_state_state_replace_failed",
+    "formats": []
+  },
+  "Turn-state settings must not exceed 16 MiB": {
+    "key": "backend.turn_state_config_too_large",
+    "formats": []
+  },
+  "Too many settings uploads are active; finish or cancel another upload": {
+    "key": "backend.turn_state_upload_busy",
+    "formats": []
+  },
+  "Cannot create a settings upload": {
+    "key": "backend.turn_state_upload_create_failed",
+    "formats": []
+  },
+  "The settings upload expired or does not exist; save again": {
+    "key": "backend.turn_state_upload_expired",
+    "formats": []
+  },
+  "Invalid settings upload chunk": {
+    "key": "backend.turn_state_upload_chunk_invalid",
+    "formats": []
+  },
+  "Settings changed during upload; refresh and save again": {
+    "key": "backend.turn_state_upload_conflict",
+    "formats": []
+  },
+  "The settings upload is incomplete; save again": {
+    "key": "backend.turn_state_upload_incomplete",
+    "formats": []
+  }
+}

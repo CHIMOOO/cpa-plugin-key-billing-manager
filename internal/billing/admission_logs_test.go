@@ -20,7 +20,7 @@ func admissionPluginLogs(t *testing.T, store *Store) []PluginLog {
 	events := mustPluginLogs(t, store)
 	kept := make([]PluginLog, 0, len(events))
 	for _, event := range events {
-		if strings.HasPrefix(event.Message, "额度拦截：") {
+		if strings.HasPrefix(event.Message, "Quota blocked: ") {
 			kept = append(kept, event)
 		}
 	}
@@ -47,7 +47,7 @@ func TestQuotaBlockIsReportedOncePerCycle(t *testing.T) {
 	if len(events) != 1 || events[0].Level != PluginLogInfo {
 		t.Fatalf("events = %+v, want the onset reported once, as information", events)
 	}
-	for _, want := range []string{"额度拦截：", "Alice · sk-tes…0001", "/v1/messages", "$10.4000 / $10.0000", "Weekly 10"} {
+	for _, want := range []string{"Quota blocked: ", "Alice · sk-tes…0001", "/v1/messages", "$10.4000 / $10.0000", "Weekly 10"} {
 		if !strings.Contains(events[0].Message, want) {
 			t.Fatalf("message = %q, want it to name %q", events[0].Message, want)
 		}

@@ -42,14 +42,14 @@ func (d *DB) UpsertPrice(price billing.CustomPrice) error {
 		optionalPrice(price.CacheReadPer1M), optionalPrice(price.CacheWritePer1M),
 		threshold, tierInput, tierOutput, tierRead, tierWrite)
 	if err != nil {
-		return fmt.Errorf("保存模型 %s 的定价：%w", price.ModelID, err)
+		return fmt.Errorf("Save pricing for model %s: %w", price.ModelID, err)
 	}
 	return nil
 }
 
 func (d *DB) DeletePrice(modelID string) error {
 	if _, err := d.db.Exec("DELETE FROM prices WHERE model_id = ? COLLATE NOCASE", modelID); err != nil {
-		return fmt.Errorf("删除模型 %s 的定价：%w", modelID, err)
+		return fmt.Errorf("Delete pricing for model %s: %w", modelID, err)
 	}
 	return nil
 }
@@ -61,7 +61,7 @@ func (d *DB) loadPrices(state *billing.State) error {
 			long_context_cache_read_per_1m, long_context_cache_write_per_1m
 		FROM prices ORDER BY position`)
 	if errQuery != nil {
-		return fmt.Errorf("读取模型定价：%w", errQuery)
+		return fmt.Errorf("Read model pricing: %w", errQuery)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -73,7 +73,7 @@ func (d *DB) loadPrices(state *billing.State) error {
 		)
 		if errScan := rows.Scan(&price.ModelID, &price.InputPer1M, &price.OutputPer1M, &cacheRead, &cacheWrite,
 			&threshold, &tierInput, &tierOutput, &tierRead, &tierWrite); errScan != nil {
-			return fmt.Errorf("读取模型定价：%w", errScan)
+			return fmt.Errorf("Read model pricing: %w", errScan)
 		}
 		price.CacheReadPer1M = priceOrNil(cacheRead)
 		price.CacheWritePer1M = priceOrNil(cacheWrite)
@@ -89,7 +89,7 @@ func (d *DB) loadPrices(state *billing.State) error {
 		state.Prices[billing.NormalizeModelID(price.ModelID)] = price
 	}
 	if errRows := rows.Err(); errRows != nil {
-		return fmt.Errorf("读取模型定价：%w", errRows)
+		return fmt.Errorf("Read model pricing: %w", errRows)
 	}
 	return nil
 }

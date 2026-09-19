@@ -90,7 +90,7 @@ func cliproxy_plugin_init(host *C.cliproxy_host_api, api *C.cliproxy_plugin_api)
 func callHost(method string, payload any) (json.RawMessage, error) {
 	rawPayload, errMarshal := json.Marshal(payload)
 	if errMarshal != nil {
-		return nil, fmt.Errorf("编码宿主调用 %s 请求失败：%w", method, errMarshal)
+		return nil, fmt.Errorf("Encode host call %s request: %w", method, errMarshal)
 	}
 	cMethod := C.CString(method)
 	defer C.free(unsafe.Pointer(cMethod))
@@ -99,7 +99,7 @@ func callHost(method string, payload any) (json.RawMessage, error) {
 	if len(rawPayload) > 0 {
 		request := C.CBytes(rawPayload)
 		if request == nil {
-			return nil, fmt.Errorf("分配宿主调用 %s 请求内存失败", method)
+			return nil, fmt.Errorf("Allocate host call %s request memory", method)
 		}
 		defer C.free(request)
 		requestPtr = (*C.uint8_t)(request)
@@ -111,25 +111,25 @@ func callHost(method string, payload any) (json.RawMessage, error) {
 	var rawResponse []byte
 	if response.ptr != nil && response.len > 0 {
 		if response.len > C.size_t(^uint32(0)>>1) {
-			return nil, fmt.Errorf("宿主调用 %s 响应过大", method)
+			return nil, fmt.Errorf("Host call %s response exceeds the size limit", method)
 		}
 		rawResponse = C.GoBytes(response.ptr, C.int(response.len))
 	}
 	if len(rawResponse) == 0 {
-		return nil, fmt.Errorf("宿主调用 %s 无响应，code=%d", method, int(callCode))
+		return nil, fmt.Errorf("Host call %s returned no response, code=%d", method, int(callCode))
 	}
 	var envelope plugin.Envelope
 	if errUnmarshal := json.Unmarshal(rawResponse, &envelope); errUnmarshal != nil {
-		return nil, fmt.Errorf("解析宿主调用 %s 响应失败：%w", method, errUnmarshal)
+		return nil, fmt.Errorf("Parse host call %s response: %w", method, errUnmarshal)
 	}
 	if !envelope.OK {
 		if envelope.Error != nil {
 			return nil, fmt.Errorf("%s：%s", envelope.Error.Code, envelope.Error.Message)
 		}
-		return nil, fmt.Errorf("宿主调用 %s 失败", method)
+		return nil, fmt.Errorf("Host call %s failed", method)
 	}
 	if callCode != 0 {
-		return nil, fmt.Errorf("宿主调用 %s 返回 code=%d", method, int(callCode))
+		return nil, fmt.Errorf("Host call %s returned code=%d", method, int(callCode))
 	}
 	return append(json.RawMessage(nil), envelope.Result...), nil
 }
@@ -142,19 +142,19 @@ func cliproxyPluginCall(method *C.char, request *C.uint8_t, requestLen C.size_t,
 	response.ptr = nil
 	response.len = 0
 	if method == nil {
-		writeResponse(response, plugin.ErrorEnvelope("invalid_method", "缺少插件方法", http.StatusBadRequest))
+		writeResponse(response, plugin.ErrorEnvelope("invalid_method", "Plugin method is required", http.StatusBadRequest))
 		return 1
 	}
 	methodName := C.GoString(method)
 	var requestBytes []byte
 	if request == nil && requestLen > 0 {
-		writeResponse(response, plugin.ErrorEnvelope("invalid_request", "插件请求指针为空", http.StatusBadRequest))
+		writeResponse(response, plugin.ErrorEnvelope("invalid_request", "Plugin request pointer is null", http.StatusBadRequest))
 		return 1
 	}
 	if request != nil && requestLen > 0 {
 		length := C.int(requestLen)
 		if length < 0 || C.size_t(length) != requestLen {
-			writeResponse(response, plugin.ErrorEnvelope("invalid_request", "插件请求过大", http.StatusBadRequest))
+			writeResponse(response, plugin.ErrorEnvelope("invalid_request", "Plugin request exceeds the size limit", http.StatusBadRequest))
 			return 1
 		}
 		requestBytes = C.GoBytes(unsafe.Pointer(request), length)

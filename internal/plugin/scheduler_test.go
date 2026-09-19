@@ -92,7 +92,7 @@ func TestAfterAuthSelectionIsRecordedForTheSameRequest(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(page.Entries[0].Message, "route ")), &row); err != nil {
 		t.Fatal(err)
 	}
-	if row["credential_result"] != "selected" || row["selected_credential"] != "codex · 未提供邮箱" {
+	if row["credential_result"] != "selected" || row["selected_credential"] != "codex · No email provided" {
 		t.Fatalf("row=%+v", row)
 	}
 }
@@ -207,7 +207,7 @@ func TestAuthFileCredentialDisplayNameUsesOnlyEmail(t *testing.T) {
 	if name != file.Email {
 		t.Fatalf("name=%q, want email %q", name, file.Email)
 	}
-	if inferred := credentialDisplayName(hostAuthFile{Name: file.Name}, billing.CredentialSourceAuthFiles, "codex", billing.CredentialFingerprint("missing-email")); inferred != "未提供邮箱" {
+	if inferred := credentialDisplayName(hostAuthFile{Name: file.Name}, billing.CredentialSourceAuthFiles, "codex", billing.CredentialFingerprint("missing-email")); inferred != "No email provided" {
 		t.Fatalf("missing CPA email inferred from filename: %q", inferred)
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"cpa-key-billing/internal/messages"
 )
 
 func OKEnvelope(v any) ([]byte, error) {
@@ -40,7 +42,18 @@ func JSONResponse(status int, payload any) ManagementResponse {
 }
 
 func JSONError(status int, code, message string) ManagementResponse {
-	return JSONResponse(status, errorBody(code, message))
+	return jsonMessageError(status, code, messages.Literal(message))
+}
+
+func jsonMessageError(status int, code string, detail messages.Message) ManagementResponse {
+	value := map[string]any{"code": strings.TrimSpace(code), "message": detail.Text}
+	if detail.Key != "" {
+		value["message_key"] = detail.Key
+		if len(detail.Params) > 0 {
+			value["message_params"] = detail.Params
+		}
+	}
+	return JSONResponse(status, map[string]any{"error": value})
 }
 
 func errorBody(code, message string) map[string]any {

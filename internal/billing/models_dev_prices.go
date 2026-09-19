@@ -77,12 +77,12 @@ func parseModelsDevPrices(raw []byte) ([]ReferencePrice, error) {
 		for modelKey, rawModel := range provider.Models {
 			var model modelsDevModel
 			if err := json.Unmarshal(rawModel, &model); err != nil {
-				return nil, fmt.Errorf("读取 models.dev 模型 %s/%s：%w", providerID, modelKey, err)
+				return nil, fmt.Errorf("Read models.dev model %s/%s: %w", providerID, modelKey, err)
 			}
 			modelID := modelsDevID(model.ID, modelKey)
 			identity := providerID + "\x00" + modelID
 			if seen[identity] {
-				return nil, fmt.Errorf("models.dev 模型身份重复：%s/%s", providerID, modelID)
+				return nil, fmt.Errorf("Duplicate models.dev model identity: %s/%s", providerID, modelID)
 			}
 			seen[identity] = true
 			// The top-level model namespace identifies the originating provider.
@@ -101,7 +101,7 @@ func parseModelsDevPrices(raw []byte) ([]ReferencePrice, error) {
 		}
 	}
 	if pricedModels == 0 {
-		return nil, fmt.Errorf("models.dev 未返回可用参考价")
+		return nil, fmt.Errorf("models.dev returned no usable reference prices")
 	}
 	sort.Slice(prices, func(i, j int) bool {
 		if prices[i].ProviderID != prices[j].ProviderID {
@@ -169,7 +169,7 @@ func downloadModelsDevPrices(ctx context.Context) ([]byte, error) {
 func fetchModelsDevPrices(ctx context.Context, client *http.Client) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ModelsDevPricesURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("创建参考价请求：%w", err)
+		return nil, fmt.Errorf("Create reference price request: %w", err)
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -178,18 +178,18 @@ func fetchModelsDevPrices(ctx context.Context, client *http.Client) ([]byte, err
 		for errors.As(err, &requestError) {
 			err = requestError.Err
 		}
-		return nil, fmt.Errorf("下载参考价：%w", err)
+		return nil, fmt.Errorf("Download reference prices: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("下载参考价：HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("Download reference prices: HTTP %d", resp.StatusCode)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxReferencePriceResponseBytes+1))
 	if err != nil {
-		return nil, fmt.Errorf("读取参考价：%w", err)
+		return nil, fmt.Errorf("Read reference prices: %w", err)
 	}
 	if len(raw) > maxReferencePriceResponseBytes {
-		return nil, fmt.Errorf("参考价响应大小超限")
+		return nil, fmt.Errorf("Reference price response exceeds the size limit")
 	}
 	return raw, nil
 }

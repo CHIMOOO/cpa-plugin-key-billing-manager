@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"cpa-key-billing/internal/billing"
+	"cpa-key-billing/internal/messages"
 )
 
 const (
@@ -60,63 +61,63 @@ type managementEndpoint struct {
 }
 
 var managementEndpoints = []managementEndpoint{
-	{http.MethodGet, routeKeys, "查看 API Key 状态", func(a *App, _ ManagementRequest) ManagementResponse {
+	{http.MethodGet, routeKeys, "View API key status", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"keys": a.keyRows()})
 	}},
-	{http.MethodGet, routeGroups, "查看 API Key 分组", func(a *App, _ ManagementRequest) ManagementResponse {
+	{http.MethodGet, routeGroups, "View API key groups", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"groups": a.groupRows()})
 	}},
-	{http.MethodGet, routeAccessControl, "查看访问控制设置", func(a *App, _ ManagementRequest) ManagementResponse {
+	{http.MethodGet, routeAccessControl, "View access control settings", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"access_control": a.store.AccessControl()})
 	}},
-	{http.MethodPut, routeAccessControl, "保存访问控制设置", (*App).setAccessControl},
-	{http.MethodGet, routeTurnState, "查看 Codex turn-state 设置和模板状态", (*App).getTurnState},
-	{http.MethodPut, routeTurnState, "保存 Codex turn-state 设置", (*App).setTurnState},
-	{http.MethodDelete, routeTurnStateTemplates, "清理 Codex turn-state 模板", (*App).clearTurnState},
-	{http.MethodPost, routeTurnStateProbe, "执行一次 Codex turn-state 探测", (*App).probeTurnState},
-	{http.MethodPost, routeGroups, "新建 API Key 分组", (*App).createGroup},
-	{http.MethodPatch, routeGroups, "更新 API Key 分组", (*App).updateGroup},
-	{http.MethodDelete, routeGroups, "删除 API Key 分组", (*App).deleteGroup},
-	{http.MethodPut, routeKeysGroups, "替换 API Key 分组绑定", (*App).setKeyGroups},
-	{http.MethodGet, routePlans, "查看订阅计划", func(a *App, _ ManagementRequest) ManagementResponse {
+	{http.MethodPut, routeAccessControl, "Save access control settings", (*App).setAccessControl},
+	{http.MethodGet, routeTurnState, "View Codex turn-state settings and template status", (*App).getTurnState},
+	{http.MethodPut, routeTurnState, "Save Codex turn-state settings", (*App).setTurnState},
+	{http.MethodDelete, routeTurnStateTemplates, "Clear Codex turn-state templates", (*App).clearTurnState},
+	{http.MethodPost, routeTurnStateProbe, "Run one Codex turn-state probe", (*App).probeTurnState},
+	{http.MethodPost, routeGroups, "Create API key group", (*App).createGroup},
+	{http.MethodPatch, routeGroups, "Update API key group", (*App).updateGroup},
+	{http.MethodDelete, routeGroups, "Delete API key group", (*App).deleteGroup},
+	{http.MethodPut, routeKeysGroups, "Replace API key group bindings", (*App).setKeyGroups},
+	{http.MethodGet, routePlans, "View subscription plans", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"plans": a.store.Plans()})
 	}},
-	{http.MethodGet, routeRoutes, "查看路由规则", func(a *App, _ ManagementRequest) ManagementResponse {
+	{http.MethodGet, routeRoutes, "View routing rules", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"routes": a.routeRows()})
 	}},
-	{http.MethodGet, routeCredentials, "查看路由凭证选项", (*App).listCredentials},
-	{http.MethodGet, routePrices, "查看模型定价", func(a *App, req ManagementRequest) ManagementResponse { return a.listPrices(req, viewAccess{}) }},
-	{http.MethodGet, routeReferencePrices, "搜索模型参考价", (*App).searchReferencePrices},
-	{http.MethodGet, routeReferencePricesStatus, "查看参考价状态", func(a *App, _ ManagementRequest) ManagementResponse { return a.referencePriceStatus() }},
-	{http.MethodPost, routeReferencePricesRefresh, "更新参考价", func(a *App, _ ManagementRequest) ManagementResponse { return a.refreshReferencePrices() }},
-	{http.MethodDelete, routePrices, "删除自定义模型价格", (*App).deletePrice},
-	{http.MethodPut, routePrices, "更新模型定价", (*App).putPrices},
-	{http.MethodPost, routePlans, "新建订阅计划", (*App).createPlan},
-	{http.MethodPatch, routePlans, "更新订阅计划", (*App).updatePlan},
-	{http.MethodDelete, routePlans, "删除订阅计划并解除 API Key 绑定", (*App).deletePlan},
-	{http.MethodPost, routeRoutes, "新建路由规则", (*App).createRoute},
-	{http.MethodPatch, routeRoutes, "更新路由规则", (*App).updateRoute},
-	{http.MethodDelete, routeRoutes, "删除路由规则并解除相关绑定", (*App).deleteRoute},
-	{http.MethodPut, routeKeysRoutes, "更新 API Key 路由绑定", (*App).setKeyRoutes},
-	{http.MethodPost, routeKeysBind, "将 API Key 绑定到订阅计划", (*App).bindKey},
-	{http.MethodPost, routeKeysUnbind, "解除 API Key 与订阅计划的绑定", (*App).unbindKey},
-	{http.MethodPost, routeKeysReset, "重置指定 API Key 的订阅额度", (*App).resetKeys},
-	{http.MethodPost, routeKeysLabel, "设置 API Key 备注", (*App).labelKey},
-	{http.MethodPost, routeKeysConcurrency, "设置 API Key 最大并发请求数", (*App).setKeyConcurrency},
-	{http.MethodPost, routeKeysSync, "同步 CLIProxyAPI 中的 API Key 列表", (*App).syncKeys},
-	{http.MethodPost, routeCredentialsSync, "同步配置凭证", (*App).syncConfiguredCredentials},
-	{http.MethodGet, routeEventKeys, "查看事件范围内的 API Key", (*App).eventKeys},
-	{http.MethodGet, routeEvents, "分页查看请求事件", func(a *App, req ManagementRequest) ManagementResponse {
+	{http.MethodGet, routeCredentials, "View routing credential options", (*App).listCredentials},
+	{http.MethodGet, routePrices, "View model pricing", func(a *App, req ManagementRequest) ManagementResponse { return a.listPrices(req, viewAccess{}) }},
+	{http.MethodGet, routeReferencePrices, "Search model reference prices", (*App).searchReferencePrices},
+	{http.MethodGet, routeReferencePricesStatus, "View reference price status", func(a *App, _ ManagementRequest) ManagementResponse { return a.referencePriceStatus() }},
+	{http.MethodPost, routeReferencePricesRefresh, "Update reference prices", func(a *App, _ ManagementRequest) ManagementResponse { return a.refreshReferencePrices() }},
+	{http.MethodDelete, routePrices, "Delete custom model pricing", (*App).deletePrice},
+	{http.MethodPut, routePrices, "Update model pricing", (*App).putPrices},
+	{http.MethodPost, routePlans, "Create subscription plan", (*App).createPlan},
+	{http.MethodPatch, routePlans, "Update subscription plan", (*App).updatePlan},
+	{http.MethodDelete, routePlans, "Delete subscription plan and unbind API keys", (*App).deletePlan},
+	{http.MethodPost, routeRoutes, "Create routing rule", (*App).createRoute},
+	{http.MethodPatch, routeRoutes, "Update routing rule", (*App).updateRoute},
+	{http.MethodDelete, routeRoutes, "Delete routing rule and remove its bindings", (*App).deleteRoute},
+	{http.MethodPut, routeKeysRoutes, "Update API key routing bindings", (*App).setKeyRoutes},
+	{http.MethodPost, routeKeysBind, "Bind API key to subscription plan", (*App).bindKey},
+	{http.MethodPost, routeKeysUnbind, "Unbind API key from subscription plan", (*App).unbindKey},
+	{http.MethodPost, routeKeysReset, "Reset subscription quotas for selected API keys", (*App).resetKeys},
+	{http.MethodPost, routeKeysLabel, "Set API key label", (*App).labelKey},
+	{http.MethodPost, routeKeysConcurrency, "Set API key concurrency limit", (*App).setKeyConcurrency},
+	{http.MethodPost, routeKeysSync, "Sync API keys from CLIProxyAPI", (*App).syncKeys},
+	{http.MethodPost, routeCredentialsSync, "Sync configured credentials", (*App).syncConfiguredCredentials},
+	{http.MethodGet, routeEventKeys, "View API keys in the event time range", (*App).eventKeys},
+	{http.MethodGet, routeEvents, "List request events with pagination", func(a *App, req ManagementRequest) ManagementResponse {
 		return a.listRequestEvents(req, viewAccess{})
 	}},
-	{http.MethodGet, routeErrors, "分页查看错误事件", func(a *App, req ManagementRequest) ManagementResponse {
+	{http.MethodGet, routeErrors, "List error events with pagination", func(a *App, req ManagementRequest) ManagementResponse {
 		return a.listRequestErrors(req, viewAccess{})
 	}},
-	{http.MethodGet, routeAnalysis, "查看用量分布", func(a *App, req ManagementRequest) ManagementResponse { return a.analysis(req, viewAccess{}) }},
-	{http.MethodGet, routePluginLogs, "分页查看插件运行日志", (*App).listPluginLogs},
-	{http.MethodDelete, routePluginLogs, "清空插件运行日志", func(a *App, _ ManagementRequest) ManagementResponse { return a.clearPluginLogs() }},
-	{http.MethodGet, routeAuthFiles, "查看认证文件", func(a *App, _ ManagementRequest) ManagementResponse { return a.authFiles(viewAccess{}) }},
-	{http.MethodGet, routeAuthQuota, "查询认证文件限额", func(a *App, req ManagementRequest) ManagementResponse { return a.authQuota(req, viewAccess{}) }},
+	{http.MethodGet, routeAnalysis, "View usage distribution", func(a *App, req ManagementRequest) ManagementResponse { return a.analysis(req, viewAccess{}) }},
+	{http.MethodGet, routePluginLogs, "List plugin logs with pagination", (*App).listPluginLogs},
+	{http.MethodDelete, routePluginLogs, "Clear plugin logs", func(a *App, _ ManagementRequest) ManagementResponse { return a.clearPluginLogs() }},
+	{http.MethodGet, routeAuthFiles, "View auth files", func(a *App, _ ManagementRequest) ManagementResponse { return a.authFiles(viewAccess{}) }},
+	{http.MethodGet, routeAuthQuota, "Query auth file quotas", func(a *App, req ManagementRequest) ManagementResponse { return a.authQuota(req, viewAccess{}) }},
 }
 
 type resourceEndpoint struct {
@@ -162,7 +163,7 @@ func managementRegistration() ManagementRegistrationResponse {
 func (a *App) handleManagement(raw []byte) ([]byte, error) {
 	var req ManagementRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return nil, fmt.Errorf("解析管理请求：%w", errUnmarshal)
+		return nil, fmt.Errorf("Parse management request: %w", errUnmarshal)
 	}
 	path := strings.TrimRight(req.Path, "/")
 	if path == "" {
@@ -190,7 +191,7 @@ func (a *App) handleManagement(raw []byte) ([]byte, error) {
 		return OKEnvelope(a.routeResource(req, strings.TrimPrefix(path, resourceBase)))
 	}
 	if path != managementBase && !strings.HasPrefix(path, managementBase+"/") {
-		return OKEnvelope(JSONError(http.StatusNotFound, "not_found", "管理路由不存在："+req.Method+" "+req.Path))
+		return OKEnvelope(JSONError(http.StatusNotFound, "not_found", "Management route not found: "+req.Method+" "+req.Path))
 	}
 	return OKEnvelope(a.routeManagement(req, strings.TrimPrefix(path, managementBase)))
 }
@@ -204,18 +205,19 @@ func (a *App) routeManagement(req ManagementRequest, suffix string) ManagementRe
 			return endpoint.handle(a, req)
 		}
 	}
-	return JSONError(http.StatusNotFound, "not_found", "管理路由不存在："+req.Method+" "+req.Path)
+	return JSONError(http.StatusNotFound, "not_found", "Management route not found: "+req.Method+" "+req.Path)
 }
 
 func errorResponse(err error) ManagementResponse {
+	detail := messages.FromError(err)
 	switch billing.KindOf(err) {
 	case billing.KindInvalid:
-		return JSONError(http.StatusBadRequest, string(billing.KindInvalid), err.Error())
+		return jsonMessageError(http.StatusBadRequest, string(billing.KindInvalid), detail)
 	case billing.KindNotFound:
-		return JSONError(http.StatusNotFound, string(billing.KindNotFound), err.Error())
+		return jsonMessageError(http.StatusNotFound, string(billing.KindNotFound), detail)
 	case billing.KindConflict:
-		return JSONError(http.StatusConflict, string(billing.KindConflict), err.Error())
+		return jsonMessageError(http.StatusConflict, string(billing.KindConflict), detail)
 	default:
-		return JSONError(http.StatusInternalServerError, "internal_error", err.Error())
+		return jsonMessageError(http.StatusInternalServerError, "internal_error", detail)
 	}
 }

@@ -175,10 +175,10 @@ func normalizeCredentialProviderSelector(item CredentialProviderSelector) (Crede
 	item.Source = strings.ToLower(strings.TrimSpace(item.Source))
 	item.Provider = strings.ToLower(strings.TrimSpace(item.Provider))
 	if item.Source != CredentialSourceAuthFiles && item.Source != CredentialSourceAIProviders {
-		return CredentialProviderSelector{}, invalidf("上游凭证来源必须是 auth-files 或 ai-providers")
+		return CredentialProviderSelector{}, invalidf("Upstream credential source must be auth-files or ai-providers")
 	}
 	if item.Provider == "" || len(item.Provider) > maxRouteValueBytes || strings.ContainsAny(item.Provider, "*[]\x00") {
-		return CredentialProviderSelector{}, invalidf("供应商标识无效")
+		return CredentialProviderSelector{}, invalidf("Invalid provider identifier")
 	}
 	return item, nil
 }
@@ -186,20 +186,20 @@ func normalizeCredentialProviderSelector(item CredentialProviderSelector) (Crede
 func NormalizeRouteRule(rule RouteRule) (RouteRule, error) {
 	var err error
 	rule.Models, rule.DeniedModels, err = normalizeRouteSelection(
-		rule.Models, rule.DeniedModels, normalizeRouteStrings, strings.EqualFold, "模型",
+		rule.Models, rule.DeniedModels, normalizeRouteStrings, strings.EqualFold, "model",
 	)
 	if err != nil {
 		return RouteRule{}, err
 	}
 	rule.CredentialIDs, rule.DeniedCredentialIDs, err = normalizeRouteSelection(
-		rule.CredentialIDs, rule.DeniedCredentialIDs, normalizeCredentialIDs, strings.EqualFold, "凭证",
+		rule.CredentialIDs, rule.DeniedCredentialIDs, normalizeCredentialIDs, strings.EqualFold, "credential",
 	)
 	if err != nil {
 		return RouteRule{}, err
 	}
 	rule.CredentialProviders, rule.DeniedCredentialProviders, err = normalizeRouteSelection(
 		rule.CredentialProviders, rule.DeniedCredentialProviders, normalizeCredentialProviders,
-		func(a, b CredentialProviderSelector) bool { return a == b }, "凭证类别",
+		func(a, b CredentialProviderSelector) bool { return a == b }, "credential category",
 	)
 	if err != nil {
 		return RouteRule{}, err
@@ -220,7 +220,14 @@ func normalizeRouteSelection[T any](allow, deny []T, normalize func([]T) ([]T, e
 	}
 	for _, value := range deny {
 		if slices.ContainsFunc(allow, func(item T) bool { return equal(item, value) }) {
-			return nil, nil, invalidf("同一%s不能同时加入黑白名单", name)
+			switch name {
+			case "model":
+				return nil, nil, invalidf("A model cannot be both allowed and denied")
+			case "credential":
+				return nil, nil, invalidf("A credential cannot be both allowed and denied")
+			default:
+				return nil, nil, invalidf("A credential category cannot be both allowed and denied")
+			}
 		}
 	}
 	return allow, deny, nil
@@ -249,7 +256,7 @@ func normalizeRouteStrings(values []string) ([]string, error) {
 	for _, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" || len(value) > maxRouteValueBytes {
-			return nil, invalidf("路由选项无效")
+			return nil, invalidf("Invalid routing option")
 		}
 		key := strings.ToLower(value)
 		if _, ok := seen[key]; ok {
@@ -268,7 +275,7 @@ func normalizeCredentialIDs(values []string) ([]string, error) {
 	}
 	for i, value := range values {
 		if !ValidCredentialFingerprint(value) {
-			return nil, invalidf("上游凭证引用无效")
+			return nil, invalidf("Invalid upstream credential reference")
 		}
 		values[i] = strings.ToLower(value)
 	}
@@ -364,14 +371,14 @@ func (s *State) groupBindsRoute(key *KeyState, routeID string) bool {
 func NormalizeRoute(route Route) (Route, error) {
 	route.ID = strings.TrimSpace(route.ID)
 	if route.ID == "" {
-		return Route{}, invalidf("路由规则 ID 不能为空")
+		return Route{}, invalidf("Routing rule ID is required")
 	}
 	route.Name = strings.TrimSpace(route.Name)
 	if route.Name == "" {
-		return Route{}, invalidf("路由规则名称不能为空")
+		return Route{}, invalidf("Routing rule name is required")
 	}
 	if len([]byte(route.Name)) > maxRouteNameBytes {
-		return Route{}, invalidf("路由规则名称不能超过 %d 字节", maxRouteNameBytes)
+		return Route{}, invalidf("Routing rule name must not exceed %d bytes", maxRouteNameBytes)
 	}
 	rule, err := NormalizeRouteRule(route.Rule)
 	if err != nil {
@@ -386,7 +393,7 @@ func (s *Store) CreateRoute(route Route, scopes []string) (Route, error) {
 	return editConfiguration(s, func(state *State) (Route, Changes, error) {
 		for _, scope := range scopes {
 			if state.liveKey(scope) == nil {
-				return Route{}, Changes{}, notFoundf("API Key %q 不存在", scope)
+				return Route{}, Changes{}, notFoundf("API key %q does not exist", scope)
 			}
 		}
 		if strings.TrimSpace(route.ID) == "" {
@@ -401,7 +408,7 @@ func (s *Store) CreateRoute(route Route, scopes []string) (Route, error) {
 		}
 		route = validated
 		if _, ok := state.findRoute(route.ID); ok {
-			return Route{}, Changes{}, conflictf("路由规则 %q 已存在", route.ID)
+			return Route{}, Changes{}, conflictf("Routing rule %q already exists", route.ID)
 		}
 		state.Routes = append(state.Routes, route)
 		for _, scope := range scopes {
@@ -414,13 +421,13 @@ func (s *Store) CreateRoute(route Route, scopes []string) (Route, error) {
 func (s *Store) UpdateRoute(patch RoutePatch, scopes *[]string) (Route, error) {
 	patch.ID = strings.TrimSpace(patch.ID)
 	if patch.ID == "" {
-		return Route{}, invalidf("路由规则 ID 不能为空")
+		return Route{}, invalidf("Routing rule ID is required")
 	}
 	return editConfiguration(s, func(state *State) (Route, Changes, error) {
 		var changed []string
 		i := state.findRouteIndex(patch.ID)
 		if i < 0 {
-			return Route{}, Changes{}, notFoundf("路由规则 %q 不存在", patch.ID)
+			return Route{}, Changes{}, notFoundf("Routing rule %q does not exist", patch.ID)
 		}
 		updated := state.Routes[i]
 		if patch.Name != nil {
@@ -440,7 +447,7 @@ func (s *Store) UpdateRoute(patch RoutePatch, scopes *[]string) (Route, error) {
 			for _, scope := range normalized {
 				key := state.Keys[scope]
 				if key == nil || !key.DeletedAt.IsZero() && !slices.Contains(key.RouteBindings.RouteIDs, patch.ID) {
-					return Route{}, Changes{}, notFoundf("API Key %q 不存在", scope)
+					return Route{}, Changes{}, notFoundf("API key %q does not exist", scope)
 				}
 				selected[scope] = struct{}{}
 			}
@@ -470,7 +477,7 @@ func (s *Store) UpdateRoute(patch RoutePatch, scopes *[]string) (Route, error) {
 func (s *Store) SetKeyRoutes(scope string, bindings RouteBindings) error {
 	scope = normalizeScope(scope)
 	if scope == "" {
-		return invalidf("API Key 标识不能为空")
+		return invalidf("API key identifier is required")
 	}
 	bindings, err := NormalizeRouteBindings(bindings)
 	if err != nil {
@@ -480,11 +487,11 @@ func (s *Store) SetKeyRoutes(scope string, bindings RouteBindings) error {
 	_, err = editConfiguration(s, func(state *State) (struct{}, Changes, error) {
 		key := state.liveKey(scope)
 		if key == nil {
-			return struct{}{}, Changes{}, notFoundf("API Key %q 不存在", scope)
+			return struct{}{}, Changes{}, notFoundf("API key %q does not exist", scope)
 		}
 		for _, id := range bindings.RouteIDs {
 			if _, ok := state.findRoute(id); !ok {
-				return struct{}{}, Changes{}, notFoundf("路由规则 %q 不存在", id)
+				return struct{}{}, Changes{}, notFoundf("Routing rule %q does not exist", id)
 			}
 		}
 		key.RouteBindings = bindings
@@ -496,17 +503,17 @@ func (s *Store) SetKeyRoutes(scope string, bindings RouteBindings) error {
 func (s *Store) DeleteRoute(id string) (RouteDeleteResult, error) {
 	id = strings.TrimSpace(id)
 	if id == "" {
-		return RouteDeleteResult{}, invalidf("路由规则 ID 不能为空")
+		return RouteDeleteResult{}, invalidf("Routing rule ID is required")
 	}
 	return editConfiguration(s, func(state *State) (RouteDeleteResult, Changes, error) {
 		var changed []string
 		i := state.findRouteIndex(id)
 		if i < 0 {
-			return RouteDeleteResult{}, Changes{}, notFoundf("路由规则 %q 不存在", id)
+			return RouteDeleteResult{}, Changes{}, notFoundf("Routing rule %q does not exist", id)
 		}
 		for _, group := range state.Groups {
 			if slices.Contains(group.RouteIDs, id) {
-				return RouteDeleteResult{}, Changes{}, conflictf("路由规则仍被分组 %q 使用，请先解除分组绑定", group.Name)
+				return RouteDeleteResult{}, Changes{}, conflictf("Routing rule is still used by group %q; remove its group binding first", group.Name)
 			}
 		}
 		out := RouteDeleteResult{Deleted: id}
@@ -566,7 +573,7 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 		return d
 	}
 	if state.AccessControl.DenyUngrouped && (key == nil || len(key.GroupIDs) == 0) {
-		d.AccessDenied = "API Key 尚未加入分组，访问已被禁止"
+		d.AccessDenied = "API key is not assigned to a group; access is denied"
 		return d
 	}
 	if key == nil {
@@ -579,7 +586,7 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	for _, id := range key.GroupIDs {
 		i := state.findGroupIndex(id)
 		if i < 0 {
-			d.ConfigurationError = fmt.Sprintf("分组 %q 已不存在", id)
+			d.ConfigurationError = fmt.Sprintf("Group %q no longer exists", id)
 			return d
 		}
 		group := state.Groups[i]
@@ -592,9 +599,9 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 		groupRules = append(groupRules, group.Rule)
 	}
 	if len(key.GroupIDs) > 0 && !groupConfigured {
-		d.AccessDenied = "API Key 所属分组尚未绑定路由规则或上游凭证，访问已被禁止"
+		d.AccessDenied = "API key groups have no routing rules or upstream credentials configured; access is denied"
 		if !groupEnabled {
-			d.AccessDenied = "API Key 所属分组均已禁用，访问已被禁止"
+			d.AccessDenied = "All groups assigned to this API key are disabled; access is denied"
 		}
 		return d
 	}
@@ -611,7 +618,7 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	for _, id := range routeIDs {
 		route, ok := state.findRoute(id)
 		if !ok {
-			d.ConfigurationError = fmt.Sprintf("路由规则 %q 已不存在", id)
+			d.ConfigurationError = fmt.Sprintf("Routing rule %q no longer exists", id)
 			return d
 		}
 		merge(route.Rule)

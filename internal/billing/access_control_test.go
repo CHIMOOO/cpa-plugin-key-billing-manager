@@ -324,7 +324,7 @@ func TestUnconfiguredGroupsDenyAndDisabledAccessControlIgnoresGroupRules(t *test
 		state.Keys["empty"] = &KeyState{GroupIDs: []string{"empty"}}
 		state.Keys["mixed"] = &KeyState{GroupIDs: []string{"empty", "direct"}}
 	})
-	const message = "API Key 所属分组尚未绑定路由规则或上游凭证，访问已被禁止"
+	const message = "API key groups have no routing rules or upstream credentials configured; access is denied"
 	if d := store.ResolveRouting("empty", "model", "model"); d.AccessDenied != message || d.AllowsCredential(ref, "auth-files", "codex") {
 		t.Fatalf("unconfigured group decision = %+v", d)
 	}

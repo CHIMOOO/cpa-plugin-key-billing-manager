@@ -14,7 +14,7 @@ func (a *App) listPrices(req ManagementRequest, access viewAccess) ManagementRes
 	if raw := req.Query.Get("include_custom"); raw != "" {
 		value, err := strconv.ParseBool(raw)
 		if err != nil {
-			return viewJSONError(access, http.StatusBadRequest, "invalid", "include_custom 必须是 true 或 false")
+			return viewJSONError(access, http.StatusBadRequest, "invalid", "include_custom must be true or false")
 		}
 		includeCustom = includeCustom && value
 	}
@@ -42,7 +42,7 @@ func (a *App) searchReferencePrices(req ManagementRequest) ManagementResponse {
 	if raw := strings.TrimSpace(req.Query.Get("limit")); raw != "" {
 		parsed, errParse := strconv.Atoi(raw)
 		if errParse != nil || parsed < 1 || parsed > 50 {
-			return JSONError(http.StatusBadRequest, "invalid", "查询条数必须为 1 到 50 的整数")
+			return JSONError(http.StatusBadRequest, "invalid", "Limit must be an integer from 1 to 50")
 		}
 		limit = parsed
 	}

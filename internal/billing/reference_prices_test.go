@@ -536,8 +536,8 @@ func TestReferencePriceSyncLogsOnlyActualDownloads(t *testing.T) {
 		t.Fatal(err)
 	}
 	logs := mustPluginLogs(t, store)
-	if len(logs) != 2 || logs[0].Level != PluginLogInfo || !strings.Contains(logs[0].Message, "内容未变") ||
-		logs[1].Level != PluginLogInfo || !strings.Contains(logs[1].Message, "正在从 models.dev 同步参考价") {
+	if len(logs) != 2 || logs[0].Level != PluginLogInfo || !strings.Contains(logs[0].Message, "are unchanged") ||
+		logs[1].Level != PluginLogInfo || !strings.Contains(logs[1].Message, "Syncing reference prices from models.dev") {
 		t.Fatalf("sync logs = %+v", logs)
 	}
 	if _, _, err := store.ResolveModelPrice("gpt-4o", "gpt-4o", true); err != nil {

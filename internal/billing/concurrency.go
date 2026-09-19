@@ -83,16 +83,16 @@ func (s *Store) ReleaseSlot(requestID string) bool {
 func (s *Store) SetConcurrencyLimit(scope string, limit int) error {
 	scope = normalizeScope(scope)
 	if scope == "" {
-		return invalidf("API Key 标识不能为空")
+		return invalidf("API key identifier is required")
 	}
 	if limit < 0 || limit > MaxConcurrencyLimit {
-		return invalidf("并发限制必须为 0 到 %d 的整数", MaxConcurrencyLimit)
+		return invalidf("Concurrency limit must be an integer from 0 to %d", MaxConcurrencyLimit)
 	}
 
 	_, err := editConfiguration(s, func(state *State) (struct{}, Changes, error) {
 		key := state.liveKey(scope)
 		if key == nil {
-			return struct{}{}, Changes{}, notFoundf("API Key %q 不存在", scope)
+			return struct{}{}, Changes{}, notFoundf("API key %q does not exist", scope)
 		}
 		if key.ConcurrencyLimit == limit {
 			return struct{}{}, Changes{}, nil

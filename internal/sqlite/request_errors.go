@@ -20,7 +20,7 @@ func appendRequestErrorEvent(tx *sql.Tx, entry billing.RequestErrorEvent) error 
 		(request_event_id, status_code, error_type, reason, body) VALUES (?, ?, ?, ?, ?)`,
 		requestEventID, entry.Error.StatusCode, entry.Error.ErrorType, entry.Error.Reason, entry.Error.Body)
 	if err != nil {
-		return fmt.Errorf("写入错误事件：%w", err)
+		return fmt.Errorf("Write error event: %w", err)
 	}
 	return nil
 }
@@ -64,7 +64,7 @@ func (d *DB) RequestErrors(query billing.RequestErrorQuery, since time.Time) (bi
 	countWhere, countArgs := requestErrorFilter(countQuery, since)
 	countRows, err := d.db.Query("SELECT e.error_type, count(*)"+countWhere+" GROUP BY e.error_type", countArgs...)
 	if err != nil {
-		return billing.RequestErrorView{}, fmt.Errorf("统计错误类型：%w", err)
+		return billing.RequestErrorView{}, fmt.Errorf("Count error types: %w", err)
 	}
 	view.ErrorTypeCounts = map[string]int{}
 	for countRows.Next() {
@@ -72,14 +72,14 @@ func (d *DB) RequestErrors(query billing.RequestErrorQuery, since time.Time) (bi
 		var count int
 		if err := countRows.Scan(&errorType, &count); err != nil {
 			countRows.Close()
-			return billing.RequestErrorView{}, fmt.Errorf("统计错误类型：%w", err)
+			return billing.RequestErrorView{}, fmt.Errorf("Count error types: %w", err)
 		}
 		view.ErrorTypeCounts[errorType] = count
 	}
 	countErr := countRows.Err()
 	countRows.Close()
 	if countErr != nil {
-		return billing.RequestErrorView{}, fmt.Errorf("统计错误类型：%w", countErr)
+		return billing.RequestErrorView{}, fmt.Errorf("Count error types: %w", countErr)
 	}
 	if query.ErrorTypeEmpty {
 		view.Total = view.ErrorTypeCounts[""]
@@ -114,7 +114,7 @@ func (d *DB) RequestErrors(query billing.RequestErrorQuery, since time.Time) (bi
 		LEFT JOIN api_keys k ON k.scope = r.scope
 		ORDER BY r.at DESC, r.id DESC`, pageArgs...)
 	if err != nil {
-		return billing.RequestErrorView{}, fmt.Errorf("读取错误事件：%w", err)
+		return billing.RequestErrorView{}, fmt.Errorf("Read error events: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -123,13 +123,13 @@ func (d *DB) RequestErrors(query billing.RequestErrorQuery, since time.Time) (bi
 		if err := rows.Scan(&row.ID, &at, &row.Scope, &row.Preview, &row.Label, &row.AuthIndex, &row.Source,
 			&row.Provider, &row.ExecutorType, &row.UpstreamModel, &row.BillingModel, &row.LatencyMS,
 			&row.TTFTMS, &row.StatusCode, &row.ErrorType, &row.Reason, &row.Body); err != nil {
-			return billing.RequestErrorView{}, fmt.Errorf("读取错误事件：%w", err)
+			return billing.RequestErrorView{}, fmt.Errorf("Read error events: %w", err)
 		}
 		row.At = timeAt(at)
 		view.Entries = append(view.Entries, row)
 	}
 	if err := rows.Err(); err != nil {
-		return billing.RequestErrorView{}, fmt.Errorf("读取错误事件：%w", err)
+		return billing.RequestErrorView{}, fmt.Errorf("Read error events: %w", err)
 	}
 	return view, nil
 }
@@ -142,7 +142,7 @@ func (d *DB) requestErrorFilterValues(query billing.RequestErrorQuery, since tim
 		r.executor_type, r.provider,
 		e.status_code, e.error_type`+where, args...)
 	if err != nil {
-		return nil, fmt.Errorf("读取错误事件筛选项：%w", err)
+		return nil, fmt.Errorf("Read error event filters: %w", err)
 	}
 	defer rows.Close()
 	models, sources, executors, providers := filterValues{}, filterValues{}, filterValues{}, filterValues{}
@@ -152,7 +152,7 @@ func (d *DB) requestErrorFilterValues(query billing.RequestErrorQuery, since tim
 		var model, source, executor, provider, errorType string
 		var statusCode int
 		if err := rows.Scan(&model, &source, &executor, &provider, &statusCode, &errorType); err != nil {
-			return nil, fmt.Errorf("读取错误事件筛选项：%w", err)
+			return nil, fmt.Errorf("Read error event filters: %w", err)
 		}
 		models.add(model)
 		sources.add(source)
@@ -164,7 +164,7 @@ func (d *DB) requestErrorFilterValues(query billing.RequestErrorQuery, since tim
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("读取错误事件筛选项：%w", err)
+		return nil, fmt.Errorf("Read error event filters: %w", err)
 	}
 	result := &billing.RequestErrorFilterValues{
 		Models: models.sorted(), Sources: sources.sorted(),

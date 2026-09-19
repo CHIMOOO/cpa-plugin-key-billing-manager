@@ -9,6 +9,7 @@ import (
 	_ "time/tzdata"
 
 	"cpa-key-billing/internal/billing"
+	"cpa-key-billing/internal/messages"
 )
 
 const (
@@ -34,7 +35,7 @@ func (a *App) apiKeyViewAccess(req ManagementRequest) (viewAccess, bool) {
 
 func (a *App) routeResource(req ManagementRequest, suffix string) ManagementResponse {
 	if req.Method != http.MethodGet {
-		return apiKeyJSONError(http.StatusNotFound, "not_found", "资源路由不存在："+req.Method+" "+req.Path)
+		return apiKeyJSONError(http.StatusNotFound, "not_found", "Resource route not found: "+req.Method+" "+req.Path)
 	}
 	var handler func(*App, ManagementRequest, viewAccess) ManagementResponse
 	for _, endpoint := range resourceEndpoints {
@@ -44,7 +45,7 @@ func (a *App) routeResource(req ManagementRequest, suffix string) ManagementResp
 		}
 	}
 	if handler == nil {
-		return apiKeyJSONError(http.StatusNotFound, "not_found", "资源路由不存在："+req.Method+" "+req.Path)
+		return apiKeyJSONError(http.StatusNotFound, "not_found", "Resource route not found: "+req.Method+" "+req.Path)
 	}
 	access, ok := a.apiKeyViewAccess(req)
 	if !ok {
@@ -72,7 +73,7 @@ func (a *App) listRequestEvents(req ManagementRequest, access viewAccess) Manage
 		failed := raw == "true"
 		query.Failed = &failed
 	default:
-		return viewJSONError(access, http.StatusBadRequest, "invalid", "failed 必须是 true 或 false")
+		return viewJSONError(access, http.StatusBadRequest, "invalid", "failed must be true or false")
 	}
 	if errQuery := requestPageParams(req.Query, &query.Offset, &query.Limit, &query.From, &query.To, &query.SnapshotID); errQuery != nil {
 		return viewErrorResponse(access, errQuery)
@@ -107,7 +108,7 @@ func (a *App) listRequestErrors(req ManagementRequest, access viewAccess) Manage
 	if raw := strings.TrimSpace(req.Query.Get("status_code")); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil || value < 100 || value > 599 {
-			return viewJSONError(access, http.StatusBadRequest, "invalid", "HTTP 状态码必须为 100 到 599 的整数")
+			return viewJSONError(access, http.StatusBadRequest, "invalid", "HTTP status code must be an integer from 100 to 599")
 		}
 		query.StatusCode = value
 	}
@@ -153,7 +154,7 @@ func (a *App) analysis(req ManagementRequest, access viewAccess) ManagementRespo
 		location, err := time.LoadLocation(name)
 		if err != nil {
 			return viewErrorResponse(access, &billing.Error{
-				Kind: billing.KindInvalid, Msg: "时区必须为有效的 IANA 标识",
+				Kind: billing.KindInvalid, Msg: "Timezone must be a valid IANA identifier",
 			})
 		}
 		query.Timezone = location
@@ -172,7 +173,7 @@ func requestPageParams(values url.Values, offset, limit *int, from, to *time.Tim
 	if raw := strings.TrimSpace(values.Get("snapshot_id")); raw != "" {
 		id, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || id < 0 {
-			return &billing.Error{Kind: billing.KindInvalid, Msg: "snapshot_id 必须是非负整数"}
+			return &billing.Error{Kind: billing.KindInvalid, Msg: "snapshot_id must be a non-negative integer"}
 		}
 		*snapshot = &id
 	}
@@ -189,10 +190,10 @@ func requestPageParams(values url.Values, offset, limit *int, from, to *time.Tim
 		return errTo
 	}
 	if !from.IsZero() && !to.IsZero() && !from.Before(*to) {
-		return &billing.Error{Kind: billing.KindInvalid, Msg: "开始时间必须早于结束时间"}
+		return &billing.Error{Kind: billing.KindInvalid, Msg: "Start time must be earlier than end time"}
 	}
 	if *limit < 1 || *limit > maxEventPageSize {
-		return &billing.Error{Kind: billing.KindInvalid, Msg: "查询条数必须为 1 到 1000 的整数"}
+		return &billing.Error{Kind: billing.KindInvalid, Msg: "Limit must be an integer from 1 to 1000"}
 	}
 	return nil
 }
@@ -204,7 +205,8 @@ func timeParam(query url.Values, name string, target *time.Time) error {
 	}
 	parsed, errParse := time.Parse(time.RFC3339Nano, raw)
 	if errParse != nil {
-		return &billing.Error{Kind: billing.KindInvalid, Msg: name + " 必须是 RFC3339 时间"}
+		detail := messages.New("%s must be an RFC3339 timestamp", name)
+		return &billing.Error{Kind: billing.KindInvalid, Msg: detail.Text, Detail: detail}
 	}
 	*target = parsed
 	return nil
@@ -217,7 +219,8 @@ func countParam(query url.Values, name string, target *int) error {
 	}
 	parsed, errParse := strconv.Atoi(raw)
 	if errParse != nil || parsed < 0 {
-		return &billing.Error{Kind: billing.KindInvalid, Msg: name + " 必须是非负整数"}
+		detail := messages.New("%s must be a non-negative integer", name)
+		return &billing.Error{Kind: billing.KindInvalid, Msg: detail.Text, Detail: detail}
 	}
 	*target = parsed
 	return nil
@@ -237,6 +240,14 @@ func viewJSONError(access viewAccess, status int, code, message string) Manageme
 	return JSONError(status, code, message)
 }
 
+func viewDetailedError(access viewAccess, status int, code string, err error) ManagementResponse {
+	response := jsonMessageError(status, code, messages.FromError(err))
+	if access.APIKey {
+		secureAPIKeyResponse(&response)
+	}
+	return response
+}
+
 func viewErrorResponse(access viewAccess, err error) ManagementResponse {
 	response := errorResponse(err)
 	if access.APIKey {
@@ -254,7 +265,7 @@ func (a *App) eventKeys(req ManagementRequest) ManagementResponse {
 		return errorResponse(err)
 	}
 	if !from.IsZero() && !to.IsZero() && !from.Before(to) {
-		return JSONError(http.StatusBadRequest, "invalid", "开始时间必须早于结束时间")
+		return JSONError(http.StatusBadRequest, "invalid", "Start time must be earlier than end time")
 	}
 	keys, err := a.store.EventKeys(from, to)
 	if err != nil {

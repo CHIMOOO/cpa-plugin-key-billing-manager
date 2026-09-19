@@ -15,7 +15,7 @@ func (a *App) setAccessControl(req ManagementRequest) ManagementResponse {
 		return errorResponse(err)
 	}
 	if body.Enabled == nil || body.DenyUngrouped == nil {
-		return JSONError(http.StatusBadRequest, "invalid", "enabled 和 deny_ungrouped 均为必填布尔值")
+		return JSONError(http.StatusBadRequest, "invalid", "enabled and deny_ungrouped are required boolean values")
 	}
 	settings := billing.AccessControl{Enabled: *body.Enabled, DenyUngrouped: *body.DenyUngrouped}
 	if err := a.store.SetAccessControl(settings); err != nil {
@@ -94,7 +94,7 @@ func (a *App) setKeyGroups(req ManagementRequest) ManagementResponse {
 		return errorResponse(err)
 	}
 	if body.GroupIDs == nil {
-		return JSONError(http.StatusBadRequest, "invalid", "group_ids 必须是数组；显式传入 [] 才会清空分组")
+		return JSONError(http.StatusBadRequest, "invalid", "group_ids must be an array; pass [] explicitly to clear group bindings")
 	}
 	if err := a.store.SetKeyGroups(body.Scopes, body.GroupIDs); err != nil {
 		return errorResponse(err)

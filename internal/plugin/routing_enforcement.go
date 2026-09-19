@@ -23,14 +23,14 @@ func (a *App) enforceSelectedCredential(req RequestInterceptRequest) RequestInte
 	}
 	id := metadataString(req.Metadata, MetadataSelectedAuth)
 	if id == "" {
-		return accessDeniedResponse(req.SourceFormat, "无法确认 CPA 选中的上游凭证，访问已被禁止")
+		return accessDeniedResponse(req.SourceFormat, "The upstream credential selected by CPA cannot be verified; access is denied")
 	}
 	ref := billing.CredentialFingerprint(id)
 	a.routingMu.Lock()
 	credential := a.credentials[ref]
 	a.routingMu.Unlock()
 	if !decision.AllowsCredential(ref, credential.Source, credential.Provider) {
-		return accessDeniedResponse(req.SourceFormat, "CPA 选中的上游凭证不在允许范围内，访问已被禁止")
+		return accessDeniedResponse(req.SourceFormat, "The upstream credential selected by CPA is not allowed; access is denied")
 	}
 	return RequestInterceptResponse{}
 }

@@ -23,7 +23,7 @@ func (s *Store) ReportQuotaBlock(scope, endpoint string, decision Decision) {
 	s.read(func(state *State) { name = state.describeKey(scope) })
 
 	var message strings.Builder
-	message.WriteString("额度拦截：")
+	message.WriteString("Quota blocked: ")
 	message.WriteString(name)
 	if endpoint = strings.TrimSpace(endpoint); endpoint != "" {
 		message.WriteString(" → ")
@@ -32,17 +32,17 @@ func (s *Store) ReportQuotaBlock(scope, endpoint string, decision Decision) {
 	for _, window := range decision.Windows {
 		for _, balance := range window.Dimensions {
 			if balance.Blocked {
-				fmt.Fprintf(&message, "，%s 已用 %s（%s 重置）", window.Name,
+				fmt.Fprintf(&message, ", %s used %s (resets at %s)", window.Name,
 					balance.Description(), window.EndAt.UTC().Format(time.RFC3339))
 			}
 		}
 	}
 	if plan := planName(decision); plan != "" {
-		message.WriteString("，计划 ")
+		message.WriteString(", plan ")
 		message.WriteString(plan)
 	}
 	if !decision.RetryAt.IsZero() {
-		message.WriteString("，预计恢复 ")
+		message.WriteString(", expected recovery ")
 		message.WriteString(decision.RetryAt.UTC().Format(time.RFC3339))
 	}
 	// Enforcement working as configured is not a fault of the plugin's, so this

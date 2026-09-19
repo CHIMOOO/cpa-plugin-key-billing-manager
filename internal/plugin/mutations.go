@@ -17,7 +17,7 @@ func (a *App) mutateWithView(req ManagementRequest, path string, handle func(*Ap
 	}
 	for _, model := range input.Models {
 		if len(strings.TrimSpace(model)) > 1024 {
-			return JSONError(http.StatusBadRequest, "invalid", "模型 ID 过长")
+			return JSONError(http.StatusBadRequest, "invalid", "Model ID is too long")
 		}
 	}
 	req.Body = input.Data

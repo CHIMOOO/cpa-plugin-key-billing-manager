@@ -30,7 +30,7 @@ func (d *DB) LoadReferencePriceMetadata(ctx context.Context) (billing.ReferenceP
 		return metadata, nil
 	}
 	if err != nil {
-		return metadata, fmt.Errorf("读取参考价元信息：%w", err)
+		return metadata, fmt.Errorf("Read reference price metadata: %w", err)
 	}
 	metadata.FetchedAt = timeAt(fetchedAt)
 	metadata.LastAttemptAt = timeAt(lastAttemptAt)
@@ -41,7 +41,7 @@ func (d *DB) LoadReferencePriceMetadata(ctx context.Context) (billing.ReferenceP
         SELECT count(*), count(rates_json) FROM reference_prices
     `).Scan(&modelCount, &pricedCount)
 	if err != nil {
-		return metadata, fmt.Errorf("检查参考价完整性：%w", err)
+		return metadata, fmt.Errorf("Check reference price integrity: %w", err)
 	}
 	metadata.Usable = metadata.ContentHash != "" && modelCount == metadata.ModelCount && pricedCount > 0
 	return metadata, nil
@@ -80,14 +80,14 @@ func (d *DB) SaveReferencePrices(ctx context.Context, metadata billing.Reference
 		nanos(metadata.FetchedAt), metadata.ModelCount, nanos(metadata.LastAttemptAt),
 		nanos(metadata.RetryAfter), metadata.LastError, metadata.ConsecutiveFailures)
 	if err != nil {
-		return fmt.Errorf("保存参考价元信息：%w", err)
+		return fmt.Errorf("Save reference price metadata: %w", err)
 	}
 	return tx.Commit()
 }
 
 func replaceReferencePrices(ctx context.Context, tx *sql.Tx, prices []billing.ReferencePrice) error {
 	if len(prices) == 0 {
-		return fmt.Errorf("参考价数据不能为空")
+		return fmt.Errorf("Reference price data is required")
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM reference_prices"); err != nil {
 		return err
@@ -114,7 +114,7 @@ func replaceReferencePrices(ctx context.Context, tx *sql.Tx, prices []billing.Re
 			ratesJSON = string(encoded)
 		}
 		if _, err := priceStatement.ExecContext(ctx, price.ProviderID, price.ModelID, billing.ReferenceModelKey(price.ModelID), price.IsCanonical, ratesJSON); err != nil {
-			return fmt.Errorf("保存参考价 %s/%s：%w", price.ProviderID, price.ModelID, err)
+			return fmt.Errorf("Save reference price %s/%s: %w", price.ProviderID, price.ModelID, err)
 		}
 	}
 	return nil
@@ -129,7 +129,7 @@ func (d *DB) ReferencePriceCandidates(ctx context.Context, keys []string) ([]bil
 			continue
 		}
 		if len(key) > 1024 {
-			return nil, fmt.Errorf("模型 ID 过长")
+			return nil, fmt.Errorf("Model ID is too long")
 		}
 		arguments = append(arguments, key)
 		placeholders = append(placeholders, "?")

@@ -131,7 +131,7 @@ func (a *App) finishRouteLog(completion RequestCompletion) {
 			} else {
 				ref := billing.CredentialFingerprint(id)
 				row["credential_result"] = "selected"
-				row["selected_credential"] = "未知上游凭证 · " + shortCredentialRef(ref)
+				row["selected_credential"] = "Unknown upstream credential · " + shortCredentialRef(ref)
 			}
 		} else if completion.StatusCode == 503 && strings.Contains(completion.Error, noRoutedCredentialMessage) {
 			row["credential_result"] = "no_match"

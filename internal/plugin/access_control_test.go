@@ -165,7 +165,7 @@ func TestGroupDirectRuleThroughManagementAPI(t *testing.T) {
 	response := callManagement(t, app, http.MethodPost, routeGroups, nil, map[string]any{
 		"name": "Missing", "rule": map[string]any{"credential_ids": []string{missing}}, "scopes": []string{scope},
 	})
-	if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(response.Body), "上游凭证已不存在") || len(app.store.GroupViews()) != 0 {
+	if response.StatusCode != http.StatusBadRequest || !strings.Contains(string(response.Body), "Upstream credential no longer exists") || len(app.store.GroupViews()) != 0 {
 		t.Fatalf("missing credential accepted: %d %s", response.StatusCode, response.Body)
 	}
 
@@ -283,7 +283,7 @@ func TestGroupDirectRuleThroughManagementAPI(t *testing.T) {
 	denied := billing.CredentialFingerprint("dummy-group-denied")
 	if response := callManagement(t, app, http.MethodPost, routeGroups, nil, map[string]any{
 		"name": "Missing deny", "rule": map[string]any{"credential_ids": []string{other}, "denied_credential_ids": []string{missing}},
-	}); response.StatusCode != http.StatusBadRequest || !strings.Contains(string(response.Body), "上游凭证已不存在") || len(app.store.GroupViews()) != 1 {
+	}); response.StatusCode != http.StatusBadRequest || !strings.Contains(string(response.Body), "Upstream credential no longer exists") || len(app.store.GroupViews()) != 1 {
 		t.Fatalf("missing denied credential accepted on create: %d %s", response.StatusCode, response.Body)
 	}
 	if response := callManagement(t, app, http.MethodPatch, routeGroups, nil, map[string]any{
@@ -313,7 +313,7 @@ func TestGroupDirectRuleThroughManagementAPI(t *testing.T) {
 	}
 	var admission RequestInterceptResponse
 	decodeResult(t, raw, &admission)
-	if !admission.Terminate || admission.StatusCode != http.StatusForbidden || !strings.Contains(string(admission.ResponseBody), "尚未绑定路由规则或上游凭证") {
+	if !admission.Terminate || admission.StatusCode != http.StatusForbidden || !strings.Contains(string(admission.ResponseBody), "have no routing rules or upstream credentials configured") {
 		t.Fatalf("unconfigured group admission = %+v (%s)", admission, admission.ResponseBody)
 	}
 }

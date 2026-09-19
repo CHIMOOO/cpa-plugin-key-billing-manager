@@ -55,7 +55,7 @@ func (a *App) endAdmission(requestID string, admission *requestAdmission) {
 func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	var req RequestInterceptRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return nil, fmt.Errorf("解析请求拦截参数：%w", errUnmarshal)
+		return nil, fmt.Errorf("Parse request interception parameters: %w", errUnmarshal)
 	}
 	if a == nil || a.store == nil {
 		return OKEnvelope(RequestInterceptResponse{})
@@ -104,7 +104,7 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	a.admissionsMu.Lock()
 	defer a.admissionsMu.Unlock()
 	if admission != nil && admission.completed {
-		return OKEnvelope(priceRefusal(req.SourceFormat, "request_completed", "请求已结束"))
+		return OKEnvelope(priceRefusal(req.SourceFormat, "request_completed", "The request has already completed"))
 	}
 	slot := billing.SlotDecision{Allowed: true}
 	admitted := false
@@ -138,7 +138,7 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 	var req RequestInterceptRequest
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
-		return nil, fmt.Errorf("解析凭证选择后请求拦截参数：%w", errUnmarshal)
+		return nil, fmt.Errorf("Parse post-auth request interception parameters: %w", errUnmarshal)
 	}
 	if a != nil {
 		a.observeRouteCredential(
@@ -157,7 +157,7 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 func (a *App) completeRequest(raw []byte) ([]byte, error) {
 	var completion RequestCompletion
 	if errUnmarshal := json.Unmarshal(raw, &completion); errUnmarshal != nil {
-		return nil, fmt.Errorf("解析请求完成事件：%w", errUnmarshal)
+		return nil, fmt.Errorf("Parse request completion event: %w", errUnmarshal)
 	}
 	if a != nil && a.store != nil {
 		if a.turnState != nil {
@@ -183,7 +183,7 @@ func routingConfigurationResponse(sourceFormat, message string) RequestIntercept
 func (a *App) handleUsage(raw []byte) ([]byte, error) {
 	var record UsageRecord
 	if errUnmarshal := json.Unmarshal(raw, &record); errUnmarshal != nil {
-		return nil, fmt.Errorf("解析用量记录：%w", errUnmarshal)
+		return nil, fmt.Errorf("Parse usage record: %w", errUnmarshal)
 	}
 	if a == nil || a.store == nil || !a.store.Enabled() {
 		return OKEnvelope(struct{}{})

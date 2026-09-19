@@ -232,26 +232,26 @@ func sameOptionalPrice(a, b *float64) bool {
 
 func (r PriceRates) validate(modelID string) error {
 	if invalidPrice(r.InputPer1M) || invalidPrice(r.OutputPer1M) {
-		return invalidf("模型 %q：Token 单价必须是非负有限数", modelID)
+		return invalidf("Model %q: token rates must be finite non-negative numbers", modelID)
 	}
 	if r.CacheReadPer1M != nil && invalidPrice(*r.CacheReadPer1M) {
-		return invalidf("模型 %q：缓存读取单价必须是非负有限数", modelID)
+		return invalidf("Model %q: cache read rate must be a finite non-negative number", modelID)
 	}
 	if r.CacheWritePer1M != nil && invalidPrice(*r.CacheWritePer1M) {
-		return invalidf("模型 %q：缓存写入单价必须是非负有限数", modelID)
+		return invalidf("Model %q: cache write rate must be a finite non-negative number", modelID)
 	}
 	if tier := r.LongContext; tier != nil {
 		if tier.ThresholdInputTokens <= 0 {
-			return invalidf("模型 %q：长上下文阈值必须大于 0", modelID)
+			return invalidf("Model %q: long-context threshold must be greater than zero", modelID)
 		}
 		if invalidPrice(tier.InputPer1M) || invalidPrice(tier.OutputPer1M) {
-			return invalidf("模型 %q：长上下文 Token 单价必须是非负有限数", modelID)
+			return invalidf("Model %q: long-context token rates must be finite non-negative numbers", modelID)
 		}
 		if tier.CacheReadPer1M != nil && invalidPrice(*tier.CacheReadPer1M) {
-			return invalidf("模型 %q：长上下文缓存读取单价必须是非负有限数", modelID)
+			return invalidf("Model %q: long-context cache read rate must be a finite non-negative number", modelID)
 		}
 		if tier.CacheWritePer1M != nil && invalidPrice(*tier.CacheWritePer1M) {
-			return invalidf("模型 %q：长上下文缓存写入单价必须是非负有限数", modelID)
+			return invalidf("Model %q: long-context cache write rate must be a finite non-negative number", modelID)
 		}
 	}
 	return nil

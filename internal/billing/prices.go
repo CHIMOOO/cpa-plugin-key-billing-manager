@@ -58,7 +58,7 @@ func (s *Store) ModelPriceRows(models []string, includeCustom bool) ([]PriceRow,
 			continue
 		}
 		if len(name) > 1024 {
-			return nil, invalidf("模型 ID 过长")
+			return nil, invalidf("Model ID is too long")
 		}
 		seen[key] = true
 		row := PriceRow{ModelID: name, Source: PriceSourceNone, InModels: available[key]}
@@ -91,10 +91,10 @@ func (s *Store) ModelPriceRows(models []string, includeCustom bool) ([]PriceRow,
 func (price CustomPrice) Validate() error {
 	modelID := strings.TrimSpace(price.ModelID)
 	if modelID == "" {
-		return invalidf("模型 ID 不能为空")
+		return invalidf("Model ID is required")
 	}
 	if len(modelID) > 1024 {
-		return invalidf("模型 ID 过长")
+		return invalidf("Model ID is too long")
 	}
 	return price.PriceRates.validate(modelID)
 }
@@ -127,7 +127,7 @@ func (s *Store) DeletePrice(model string) error {
 	key := NormalizeModelID(model)
 	price, found := s.state.Prices[key]
 	if !found {
-		return notFoundf("自定义价不存在")
+		return notFoundf("Custom price does not exist")
 	}
 	if s.repo != nil {
 		if err := s.repo.DeletePrice(price.ModelID); err != nil {
@@ -175,7 +175,7 @@ func (s *Store) ResolveModelPrice(upstream, requested string, refresh bool) (Pri
 		price = state.ResolveCustomPrice(model)
 	})
 	if switched {
-		return Price{Source: PriceSourceNone}, model, fmt.Errorf("参考价数据库已切换，请重试")
+		return Price{Source: PriceSourceNone}, model, fmt.Errorf("The reference price database changed; please retry")
 	}
 	if price.Source == PriceSourceCustom {
 		return price, model, nil

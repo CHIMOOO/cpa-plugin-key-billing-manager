@@ -16,7 +16,7 @@ import (
 
 const maxPoolsPerKey = 256
 const maxCredentialsPerPool = 1024
-const noRoutedCredentialMessage = "当前没有符合路由规则且可用的上游凭证"
+const noRoutedCredentialMessage = "No available upstream credentials match the routing rules"
 
 type subsetScheduleState struct {
 	Current map[string]int64
@@ -147,7 +147,7 @@ func candidateAllowed(candidate SchedulerAuthCandidate, decision billing.Routing
 func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	var req SchedulerPickRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
-		return nil, fmt.Errorf("解析上游凭证调度参数：%w", err)
+		return nil, fmt.Errorf("Parse upstream credential scheduling parameters: %w", err)
 	}
 	if a == nil || a.store == nil || !a.store.Enabled() {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})

@@ -14,7 +14,7 @@ import (
 // v18 adds an enabled-by-default group switch without rewriting history.
 func migrateToV18(tx *sql.Tx) error {
 	if _, err := tx.Exec(groupDisabledSchema); err != nil {
-		return fmt.Errorf("迁移分组启用状态：%w", err)
+		return fmt.Errorf("Migrate group enabled state: %w", err)
 	}
 	return nil
 }
@@ -23,7 +23,7 @@ func migrateToV18(tx *sql.Tx) error {
 // existing group, and leaves every other table untouched.
 func migrateToV17(tx *sql.Tx) error {
 	if _, err := tx.Exec(groupRuleSchema); err != nil {
-		return fmt.Errorf("迁移分组直接选择：%w", err)
+		return fmt.Errorf("Migrate group direct selections: %w", err)
 	}
 	return nil
 }
@@ -32,7 +32,7 @@ func migrateToV17(tx *sql.Tx) error {
 // table untouched.
 func migrateToV16(tx *sql.Tx) error {
 	if _, err := tx.Exec(forwardedForBlockSchema); err != nil {
-		return fmt.Errorf("迁移 X-Forwarded-For 拦截设置：%w", err)
+		return fmt.Errorf("Migrate X-Forwarded-For block settings: %w", err)
 	}
 	return nil
 }
@@ -41,7 +41,7 @@ func migrateToV16(tx *sql.Tx) error {
 // keys, quotas, routes, or historical request records.
 func migrateToV15(tx *sql.Tx) error {
 	if _, err := tx.Exec(accessControlSchema); err != nil {
-		return fmt.Errorf("迁移分组访问控制：%w", err)
+		return fmt.Errorf("Migrate group access control: %w", err)
 	}
 	return nil
 }
@@ -75,18 +75,18 @@ func migrateCredentials(tx *sql.Tx) error {
 			(name = 'auth_index' AND pk = 1) OR
 			(name IN ('provider', 'account', 'name') AND pk = 0)
 		)) = 4 FROM pragma_table_xinfo('credentials')`).Scan(&compatible); err != nil {
-		return fmt.Errorf("读取旧凭证表格式：%w", err)
+		return fmt.Errorf("Read legacy credential table schema: %w", err)
 	}
 	if !compatible {
-		return fmt.Errorf("旧凭证表格式不兼容")
+		return fmt.Errorf("The legacy credential table schema is incompatible")
 	}
 	if err := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM credentials
 		WHERE typeof(auth_index) != 'text' OR typeof(provider) != 'text'
 		OR typeof(account) != 'text' OR typeof(name) != 'text')`).Scan(&invalid); err != nil {
-		return fmt.Errorf("迁移请求事件账户：%w", err)
+		return fmt.Errorf("Migrate request event accounts: %w", err)
 	}
 	if invalid {
-		return fmt.Errorf("旧凭证表包含不兼容的数据")
+		return fmt.Errorf("The legacy credential table contains incompatible data")
 	}
 	_, err := tx.Exec(`
 		ALTER TABLE request_events ADD COLUMN account TEXT NOT NULL DEFAULT '';
@@ -102,7 +102,7 @@ func migrateCredentials(tx *sql.Tx) error {
 		);
 	`)
 	if err != nil {
-		return fmt.Errorf("迁移凭证数据：%w", err)
+		return fmt.Errorf("Migrate credential data: %w", err)
 	}
 	return nil
 }
@@ -145,10 +145,10 @@ func migrateModelGroups(tx *sql.Tx) error {
 			name TEXT NOT NULL DEFAULT '',
 			rule_json TEXT NOT NULL DEFAULT '{}'
 		)`); err != nil {
-		return fmt.Errorf("创建路由规则表：%w", err)
+		return fmt.Errorf("Create routing rules table: %w", err)
 	}
 	if _, err := tx.Exec("ALTER TABLE api_keys ADD COLUMN route_bindings_json TEXT NOT NULL DEFAULT '{}'"); err != nil {
-		return fmt.Errorf("添加 API Key 路由绑定：%w", err)
+		return fmt.Errorf("Add API key routing bindings: %w", err)
 	}
 	type legacyGroup struct {
 		oldID, id, name string
@@ -158,17 +158,17 @@ func migrateModelGroups(tx *sql.Tx) error {
 	usedRouteIDs := map[string]struct{}{}
 	rows, err := tx.Query("SELECT id,name FROM model_groups ORDER BY position")
 	if err != nil {
-		return fmt.Errorf("读取旧模型分组：%w", err)
+		return fmt.Errorf("Read legacy model groups: %w", err)
 	}
 	for rows.Next() {
 		var group legacyGroup
 		if err := rows.Scan(&group.oldID, &group.name); err != nil {
 			rows.Close()
-			return fmt.Errorf("读取旧模型分组：%w", err)
+			return fmt.Errorf("Read legacy model groups: %w", err)
 		}
 		group.id = strings.TrimSpace(group.oldID)
 		if _, exists := usedRouteIDs[group.id]; exists {
-			return fmt.Errorf("旧模型分组 ID %q 迁移后冲突", group.oldID)
+			return fmt.Errorf("Legacy model group ID %q conflicts after migration", group.oldID)
 		}
 		usedRouteIDs[group.id] = struct{}{}
 		groups = append(groups, group)
@@ -177,7 +177,7 @@ func migrateModelGroups(tx *sql.Tx) error {
 		return err
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("读取旧模型分组：%w", err)
+		return fmt.Errorf("Read legacy model groups: %w", err)
 	}
 	byOld := make(map[string]int, len(groups))
 	for i := range groups {
@@ -185,13 +185,13 @@ func migrateModelGroups(tx *sql.Tx) error {
 	}
 	members, err := tx.Query("SELECT group_id,model FROM model_group_models ORDER BY group_id,position")
 	if err != nil {
-		return fmt.Errorf("读取旧模型分组成员：%w", err)
+		return fmt.Errorf("Read legacy model group members: %w", err)
 	}
 	for members.Next() {
 		var id, model string
 		if err := members.Scan(&id, &model); err != nil {
 			members.Close()
-			return fmt.Errorf("读取旧模型分组成员：%w", err)
+			return fmt.Errorf("Read legacy model group members: %w", err)
 		}
 		if i, ok := byOld[id]; ok {
 			groups[i].models = append(groups[i].models, model)
@@ -201,12 +201,12 @@ func migrateModelGroups(tx *sql.Tx) error {
 		return err
 	}
 	if err := members.Err(); err != nil {
-		return fmt.Errorf("读取旧模型分组成员：%w", err)
+		return fmt.Errorf("Read legacy model group members: %w", err)
 	}
 	for i, group := range groups {
 		route, err := billing.NormalizeRoute(billing.Route{ID: group.id, Name: group.name, Rule: billing.RouteRule{Models: group.models}})
 		if err != nil {
-			return fmt.Errorf("校验旧模型分组 %s：%w", group.oldID, err)
+			return fmt.Errorf("Validate legacy model group %s: %w", group.oldID, err)
 		}
 		groups[i].id = route.ID
 		groups[i].models = route.Rule.Models
@@ -215,20 +215,20 @@ func migrateModelGroups(tx *sql.Tx) error {
 			return err
 		}
 		if _, err = tx.Exec("INSERT INTO routes(position,id,name,rule_json) VALUES(?,?,?,?)", i, route.ID, route.Name, string(raw)); err != nil {
-			return fmt.Errorf("迁移模型分组 %s：%w", group.oldID, err)
+			return fmt.Errorf("Migrate model group %s: %w", group.oldID, err)
 		}
 	}
 
 	bindingsByScope := make(map[string]billing.RouteBindings)
 	groupRows, err := tx.Query("SELECT scope,group_id FROM key_model_groups ORDER BY scope,position")
 	if err != nil {
-		return fmt.Errorf("读取旧模型分组绑定：%w", err)
+		return fmt.Errorf("Read legacy model group bindings: %w", err)
 	}
 	for groupRows.Next() {
 		var scope, id string
 		if err := groupRows.Scan(&scope, &id); err != nil {
 			groupRows.Close()
-			return fmt.Errorf("读取旧模型分组绑定：%w", err)
+			return fmt.Errorf("Read legacy model group bindings: %w", err)
 		}
 		if i, ok := byOld[id]; ok && len(groups[i].models) > 0 {
 			bindings := bindingsByScope[scope]
@@ -240,18 +240,18 @@ func migrateModelGroups(tx *sql.Tx) error {
 		return err
 	}
 	if err := groupRows.Err(); err != nil {
-		return fmt.Errorf("读取旧模型分组绑定：%w", err)
+		return fmt.Errorf("Read legacy model group bindings: %w", err)
 	}
 
 	modelRows, err := tx.Query("SELECT scope,model FROM key_allowed_models ORDER BY scope,position")
 	if err != nil {
-		return fmt.Errorf("读取旧模型绑定：%w", err)
+		return fmt.Errorf("Read legacy model bindings: %w", err)
 	}
 	for modelRows.Next() {
 		var scope, model string
 		if err := modelRows.Scan(&scope, &model); err != nil {
 			modelRows.Close()
-			return fmt.Errorf("读取旧模型绑定：%w", err)
+			return fmt.Errorf("Read legacy model bindings: %w", err)
 		}
 		bindings := bindingsByScope[scope]
 		bindings.Models = append(bindings.Models, model)
@@ -261,25 +261,25 @@ func migrateModelGroups(tx *sql.Tx) error {
 		return err
 	}
 	if err := modelRows.Err(); err != nil {
-		return fmt.Errorf("读取旧模型绑定：%w", err)
+		return fmt.Errorf("Read legacy model bindings: %w", err)
 	}
 
 	for scope, bindings := range bindingsByScope {
 		bindings, err = billing.NormalizeRouteBindings(bindings)
 		if err != nil {
-			return fmt.Errorf("校验 API Key %s 的迁移绑定：%w", scope, err)
+			return fmt.Errorf("Validate migrated bindings for API key %s: %w", scope, err)
 		}
 		raw, err := json.Marshal(bindings)
 		if err != nil {
 			return err
 		}
 		if _, err = tx.Exec("UPDATE api_keys SET route_bindings_json=? WHERE scope=?", string(raw), scope); err != nil {
-			return fmt.Errorf("迁移 API Key %s：%w", scope, err)
+			return fmt.Errorf("Migrate API key %s: %w", scope, err)
 		}
 	}
 	for _, table := range []string{"key_model_groups", "key_allowed_models", "model_group_models", "model_groups"} {
 		if _, err := tx.Exec("DROP TABLE " + table); err != nil {
-			return fmt.Errorf("删除旧表 %s：%w", table, err)
+			return fmt.Errorf("Drop legacy table %s: %w", table, err)
 		}
 	}
 	return nil
@@ -289,20 +289,20 @@ func migrateLegacyRouteBindings(tx *sql.Tx) error {
 	updates := map[string]string{}
 	rows, err := tx.Query("SELECT scope,route_bindings_json FROM api_keys")
 	if err != nil {
-		return fmt.Errorf("读取旧 API Key 路由绑定：%w", err)
+		return fmt.Errorf("Read legacy API key routing bindings: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var scope, raw string
 		if err = rows.Scan(&scope, &raw); err != nil {
-			return fmt.Errorf("读取旧 API Key 路由绑定：%w", err)
+			return fmt.Errorf("Read legacy API key routing bindings: %w", err)
 		}
 		var legacy []struct {
 			Kind  string `json:"kind"`
 			Value string `json:"value"`
 		}
 		if err = json.Unmarshal([]byte(raw), &legacy); err != nil {
-			return fmt.Errorf("读取 API Key %s 的旧路由绑定：%w", scope, err)
+			return fmt.Errorf("Read legacy routing bindings for API key %s: %w", scope, err)
 		}
 		var bindings billing.RouteBindings
 		for _, binding := range legacy {
@@ -316,17 +316,17 @@ func migrateLegacyRouteBindings(tx *sql.Tx) error {
 			case "credential_provider":
 				source, provider, ok := strings.Cut(binding.Value, "\x00")
 				if !ok {
-					return fmt.Errorf("API Key %s 的旧凭证类别绑定无效", scope)
+					return fmt.Errorf("API key %s has an invalid legacy credential category", scope)
 				}
 				bindings.CredentialProviders = append(bindings.CredentialProviders,
 					billing.CredentialProviderSelector{Source: source, Provider: provider})
 			default:
-				return fmt.Errorf("API Key %s 的旧路由绑定类型 %q 无效", scope, binding.Kind)
+				return fmt.Errorf("API key %s has an invalid legacy routing binding type %q", scope, binding.Kind)
 			}
 		}
 		bindings, err = billing.NormalizeRouteBindings(bindings)
 		if err != nil {
-			return fmt.Errorf("校验 API Key %s 的旧路由绑定：%w", scope, err)
+			return fmt.Errorf("Validate legacy routing bindings for API key %s: %w", scope, err)
 		}
 		converted, err := json.Marshal(bindings)
 		if err != nil {
@@ -338,15 +338,15 @@ func migrateLegacyRouteBindings(tx *sql.Tx) error {
 		return err
 	}
 	if err = rows.Err(); err != nil {
-		return fmt.Errorf("读取旧 API Key 路由绑定：%w", err)
+		return fmt.Errorf("Read legacy API key routing bindings: %w", err)
 	}
 	for scope, raw := range updates {
 		if _, err = tx.Exec("UPDATE api_keys SET route_bindings_json=? WHERE scope=?", raw, scope); err != nil {
-			return fmt.Errorf("迁移 API Key %s 的路由绑定：%w", scope, err)
+			return fmt.Errorf("Migrate routing bindings for API key %s: %w", scope, err)
 		}
 	}
 	if _, err = tx.Exec("DELETE FROM routes WHERE id = 'system:all'"); err != nil {
-		return fmt.Errorf("清理旧路由规则：%w", err)
+		return fmt.Errorf("Clean up legacy routing rules: %w", err)
 	}
 
 	return nil
@@ -361,10 +361,10 @@ func migrateSubscriptionPeriods(tx *sql.Tx) error {
 		   OR (period_kind = 'custom' AND (period_seconds <= 0 OR period_seconds > ?))
 		LIMIT 1`, int64(math.MaxInt64)/int64(time.Second)).Scan(&id, &kind, &seconds)
 	if err == nil {
-		return fmt.Errorf("订阅计划 %s 的旧周期无效：%s (%d 秒)", id, kind, seconds)
+		return fmt.Errorf("Subscription plan %s has an invalid legacy cycle: %s (%d seconds)", id, kind, seconds)
 	}
 	if err != sql.ErrNoRows {
-		return fmt.Errorf("检查旧订阅计划：%w", err)
+		return fmt.Errorf("Check legacy subscription plans: %w", err)
 	}
 	if _, err = tx.Exec(`
 		UPDATE plans SET period_seconds =
@@ -376,10 +376,10 @@ func migrateSubscriptionPeriods(tx *sql.Tx) error {
 				WHEN 'never' THEN 0
 			END
 	`); err != nil {
-		return fmt.Errorf("迁移订阅计划：%w", err)
+		return fmt.Errorf("Migrate subscription plans: %w", err)
 	}
 	if _, err = tx.Exec("ALTER TABLE plans DROP COLUMN period_kind"); err != nil {
-		return fmt.Errorf("删除旧订阅周期类型：%w", err)
+		return fmt.Errorf("Remove legacy subscription cycle types: %w", err)
 	}
 	return nil
 }
@@ -440,7 +440,7 @@ func migrateQuotaWindows(tx *sql.Tx) error {
 		}
 		if err := key.ValidateCycles(plans[key.PlanID]); err != nil {
 			rows.Close()
-			return fmt.Errorf("迁移额度周期：%w", err)
+			return fmt.Errorf("Migrate quota cycles: %w", err)
 		}
 		raw, err := json.Marshal(key.Cycles)
 		if err != nil {
