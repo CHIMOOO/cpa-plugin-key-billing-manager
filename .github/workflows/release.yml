@@ -260,13 +260,14 @@ jobs:
           test -s "$binary"
           file "$binary"
           version="${RELEASE_TAG#v}"
+          cp LICENSE THIRD_PARTY_NOTICES.md dist/
 
           release_archive="cpa-key-billing_${version}_${TARGET_OS}_${TARGET_ARCH}.tar.gz"
-          tar -czf "$release_archive" -C dist "cpa-key-billing.${EXTENSION}"
+          tar -czf "$release_archive" -C dist "cpa-key-billing.${EXTENSION}" LICENSE THIRD_PARTY_NOTICES.md
 
           store_archive="cpa-key-billing_${version}_${TARGET_OS}_${TARGET_ARCH}.zip"
-          zip -j "$store_archive" "$binary"
-          test "$(unzip -Z1 "$store_archive")" = "cpa-key-billing.${EXTENSION}"
+          zip -j "$store_archive" "$binary" LICENSE THIRD_PARTY_NOTICES.md
+          diff -u <(printf '%s\n' "cpa-key-billing.${EXTENSION}" LICENSE THIRD_PARTY_NOTICES.md | sort) <(unzip -Z1 "$store_archive" | sort)
 
       - name: Verify and package Windows plugin
         if: matrix.os == 'windows'
@@ -293,12 +294,13 @@ jobs:
           $version = $env:RELEASE_TAG -replace '^v', ''
 
           $storeArchive = "cpa-key-billing_$($version)_$($env:TARGET_OS)_$($env:TARGET_ARCH).zip"
-          Compress-Archive -Path $binary -DestinationPath $storeArchive -Force
+          Compress-Archive -Path $binary, LICENSE, THIRD_PARTY_NOTICES.md -DestinationPath $storeArchive -Force
           Add-Type -AssemblyName System.IO.Compression.FileSystem
           $archive = [IO.Compression.ZipFile]::OpenRead($storeArchive)
           try {
             $entries = @($archive.Entries | ForEach-Object FullName)
-            if ($entries.Count -ne 1 -or $entries[0] -ne "cpa-key-billing.$($env:EXTENSION)") {
+            $expectedEntries = @("cpa-key-billing.$($env:EXTENSION)", "LICENSE", "THIRD_PARTY_NOTICES.md")
+            if ($entries.Count -ne 3 -or (Compare-Object ($expectedEntries | Sort-Object) ($entries | Sort-Object))) {
               throw "Unexpected archive contents: $($entries -join ', ')"
             }
           } finally {
