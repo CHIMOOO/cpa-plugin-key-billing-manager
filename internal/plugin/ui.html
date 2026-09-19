@@ -1548,6 +1548,59 @@
         .chooser-tabs button { flex: 1; padding-inline: 8px; font-size: 12px; }
         .group-dialog .routing-list, .route-dialog .route-rule-list { max-height: 52dvh; }
       }
+      .integration-actions { margin-top: 14px; }
+      .integration-card { overflow-wrap: anywhere; }
+      #integration-dialog .field input, #integration-dialog .field textarea, #integration-dialog .field select { width: 100%; }
+      .team-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
+      .team-account-name { min-width: 0; overflow-wrap: anywhere; }
+      .team-account-usage { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px; margin: 12px 0; }
+      .team-account-concurrency { display: flex; gap: 10px; align-items: flex-end; margin: 14px 0 8px; }
+      .team-account-concurrency .field { flex: 1; margin: 0; min-width: 0; }
+      .team-account-concurrency input { width: 100%; }
+      .team-gate-card { margin-bottom: 16px; }
+      #risk-events td { white-space: normal; overflow-wrap: anywhere; }
+      .team-group-accounts { display: grid; gap: 8px; width: 100%; }
+      .team-group-account {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+      .team-group-account .team-account-name { flex: 1 1 160px; }
+      @media (max-width: 600px) {
+        .settings-entry-field.team-group-field { flex-direction: column; }
+        .team-group-field > .error-event-field-label { max-width: 100%; }
+        .team-group-field > .settings-entry-value { width: 100%; }
+      }
+      .integration-client-models { width: 100%; margin-top: 8px; overflow-wrap: anywhere; }
+      #integration-device-status { overflow-wrap: anywhere; }
+      .project-link { display: inline-flex; margin-top: 4px; font-size: 12px; text-decoration: none; }
+      #app > .app-header .app-title { flex-direction: column; align-items: flex-start; gap: 0; }
+      .state-save-bar {
+        position: sticky;
+        top: 8px;
+        z-index: 4;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        box-shadow: 0 4px 16px #0000000a;
+      }
+      .state-save-bar.has-changes { border-color: var(--primary-color); }
+      .state-save-bar p { margin: 4px 0 0; }
+      .state-bucket-exit { min-width: 150px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin-top: 5px; }
+      @media (max-width: 640px) {
+        .state-save-bar { position: static; flex-direction: column; align-items: stretch; gap: 10px; }
+        .state-save-bar > .row { justify-content: flex-end; }
+      }
       .turn-state-page-head { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
       .turn-state-page-head h2, .turn-state-page-head p { margin: 0 0 4px; }
       .state-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
@@ -2010,6 +2063,9 @@
         .app-header { align-items: center; }
         body:not(.embedded) .app-header { flex-wrap: nowrap; }
         body:not(.embedded) .app-header .app-title { flex: 1 1 auto; flex-wrap: nowrap; overflow: hidden; }
+        body:not(.embedded) #app > .app-header { flex-wrap: wrap; }
+        body:not(.embedded) #app > .app-header .app-title { flex: 1 0 100%; }
+        body:not(.embedded) #app > .app-header .standalone-actions { margin-left: auto; }
         body:not(.embedded) #account-identity { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         body:not(.embedded) .app-header .standalone-actions {
           flex: 0 0 auto;
@@ -2236,7 +2292,7 @@
       /* Apply the host or stored theme before painting the body. */
       (function () {
         const STORE_KEY = "cli-proxy-theme";
-        const PLUGIN_STORE_KEY = "cpa-key-billing:theme";
+        const PLUGIN_STORE_KEY = "cpa-team-manager:theme";
 
         function parentDocument() {
           if (window.parent === window) return null;
@@ -2335,7 +2391,7 @@
 
       <main id="app" class="hidden">
         <header class="head app-header">
-          <div class="app-title"><h1 data-i18n="ui.fork_api_key_manager">API Key Team Manager</h1></div>
+          <div class="app-title"><h1 data-i18n="ui.fork_api_key_manager">API Key Team Manager</h1><a class="project-link" href="https://github.com/CHIMOOO/cpa-plugin-key-billing-manager" target="_blank" rel="noopener noreferrer" data-i18n="ui.team_project_link">GitHub · project and updates</a></div>
           <div class="standalone-actions" aria-label="Page actions" data-i18n-aria-label="ui.page_actions">
             <button type="button" class="icon-action" data-page-action="refresh" aria-label="Refresh" data-i18n-aria-label="ui.refresh"></button>
             <button type="button" class="icon-action" data-page-action="theme" aria-label="Switch theme" data-i18n-aria-label="ui.switch_theme"></button>
@@ -2352,7 +2408,9 @@
               <button data-tab="analysis" data-i18n="ui.analysis">Analysis</button>
               <button data-tab="request-events" data-i18n="ui.request_events">Request events</button>
               <button data-tab="errors" data-i18n="ui.error_events">Error events</button>
-              <button data-tab="auth-files" data-i18n="ui.auth_files">Auth Files</button>
+              <button data-tab="auth-files" data-i18n="ui.team_accounts">Accounts</button>
+              <button data-tab="integrations" data-i18n="ui.team_integrations">Integrations</button>
+              <button data-tab="risk" data-i18n="ui.team_risk_center">Risk center</button>
               <button data-tab="turn-state">Codex Turn State</button>
               <button data-tab="settings" data-i18n="ui.settings">Settings</button>
             </div>
@@ -2378,7 +2436,6 @@
         <div id="shared-time-backdrop" class="time-range-backdrop hidden"></div>
 
         <div id="admin-data-status" class="notice err" role="status"></div>
-        <div id="plugin-persistence-notice" class="notice hidden" role="status"></div>
         <section id="tab-keys">
           <div class="card">
             <div class="row spread section-toolbar">
@@ -2462,7 +2519,9 @@
 
         <section id="tab-turn-state" class="hidden">
           <div class="turn-state-page-head"><div><h2>Codex Turn State</h2><p class="muted small" data-i18n="ui.state_intro">Collect, inspect and renew account-specific model templates.</p></div><span id="turn-state-mode-badge" class="tag plain"></span></div>
+          <div class="state-save-bar"><div><strong data-i18n="ui.state_apply_heading">Apply collection settings</strong><p id="turn-state-draft-status" class="small muted" role="status"></p></div><div class="row"><button id="turn-state-discard" type="button" data-i18n="ui.state_discard">Discard changes</button><button id="turn-state-save" class="primary" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
           <div id="turn-state-status" class="notice hidden" role="status"></div>
+          <div class="card team-gate-card"><label class="toggle-filter"><input id="team-require-state" type="checkbox" role="switch" disabled /><span data-i18n="ui.team_require_state">Require valid Turn State for selected accounts</span></label><p class="access-help" data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected collection account needs a usable template for its requested model. Disabled injection, observation mode or a replace-only skip blocks that attempt. This switch is saved immediately.</p><div id="team-require-state-status" class="small muted" role="status"></div></div>
           <div class="card turn-state-console" id="turn-state-card">
             <div class="row spread settings-section-header"><h3 data-i18n="ui.state_probe_console">Probe console</h3><div class="row"><button id="turn-state-probe-start" class="primary" type="button" disabled data-i18n="ui.fork_start_probing">Start probing</button><button id="turn-state-probe-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-refresh" type="button" disabled data-i18n="ui.fork_refresh_status">Refresh status</button></div></div>
             <div id="turn-state-session-status" class="notice hidden" role="status"></div>
@@ -2478,13 +2537,13 @@
             <p class="access-help" data-i18n="ui.state_readiness_help">Each cell is one account × model. Use Actions to collect, test, clear cooldowns or remove its template. Remaining validity is shown in minutes.</p>
             <div id="turn-state-templates" class="turn-state-table"></div>
           </div>
-          <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><span id="turn-state-account-count" class="tag plain"></span></div>
+          <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button data-state-save="scope" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
             <p class="access-help" data-i18n="ui.fork_select_accounts_for_active_probing_including_disabled_codex_accounts_probi">Select accounts for active probing, including disabled Codex accounts. Probing does not change account enablement. No selection means no active probes; learning from normal responses follows the switch above.</p>
             <div class="state-account-toolbar"><input id="turn-state-account-search" type="search" placeholder="Search account name or ID" data-i18n-placeholder="ui.state_account_search" /><span class="native-select"><select id="turn-state-account-filter" aria-label="Account display" data-i18n-aria-label="ui.state_account_filter"><option value="all" data-i18n="ui.chooser_every_status">All, including disabled</option><option value="enabled" data-i18n="ui.enabled_only">Enabled only</option><option value="selected" data-i18n="ui.chooser_selected">Selected only</option></select></span><button id="turn-state-account-all" type="button" data-i18n="ui.state_select_matching">Select matching</button><button id="turn-state-account-none" type="button" data-i18n="ui.state_clear_matching">Deselect matching</button></div>
             <div id="turn-state-accounts" class="selection-list turn-state-accounts"></div>
             <div class="turn-state-fields">              <label class="field turn-state-wide"><span data-i18n="ui.fork_probe_models_one_per_line">Probe models (one per line)</span><textarea id="turn-state-models" rows="2" placeholder="For example: gpt-6-astra, gpt-5.6-sol" data-i18n-placeholder="ui.probe_models_example" disabled></textarea></label></div>
           </div>
-          <div class="card"><h3 data-i18n="ui.state_proxy_pools">Proxy pools</h3>              <div class="turn-state-fields">
+          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_proxy_pools">Proxy pools</h3><button data-state-save="proxies" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>              <div class="turn-state-fields">
                 <div class="field"><label for="turn-state-proxies" data-i18n="ui.fork_static_proxies_one_per_line">Static proxies (one per line)</label><textarea id="turn-state-proxies" rows="6" placeholder="http://username:password@host:port" data-i18n-placeholder="ui.fork_http_username_password_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-proxy-count" class="small muted"></span><div class="row"><button id="turn-state-static-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-static-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-static-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-static-test-status" class="small muted" role="status"></div><div id="turn-state-static-results" class="turn-state-table turn-state-proxy-results"></div></div>
                 <div class="field"><label for="turn-state-rotating" data-i18n="ui.fork_rotating_proxies_one_per_line">Rotating proxies (one per line)</label><textarea id="turn-state-rotating" rows="6" placeholder="http://username:password@rotating-host:port" data-i18n-placeholder="ui.fork_http_username_password_rotating_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-rotating-count" class="small muted"></span><div class="row"><button id="turn-state-rotating-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-rotating-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-rotating-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-rotating-test-status" class="small muted" role="status"></div><div id="turn-state-rotating-results" class="turn-state-table turn-state-proxy-results"></div></div>
               </div>
@@ -2492,7 +2551,7 @@
               <p class="access-help" data-i18n="ui.turn_state_pool_limits">Each pool supports up to 20,000 proxies; total settings size is limited to 16 MiB. Failed uploads keep the previous settings.</p>
               <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes; rotating exits retry up to 10 times and cool down for 10 minutes. Connectivity testing checks the current editor; removal takes effect after saving. IP is the address observed during the connectivity test; rotating proxies may use another IP for collection. Upstream 403/429 or degraded states do not count as invalid proxies.</p>
 </div>
-          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_strategy">Injection and renewal</h3><button id="turn-state-save" class="primary" type="button" disabled data-i18n="ui.save">Save</button></div><p id="turn-state-draft-status" class="small muted" role="status"></p>            <div class="access-controls">
+          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_strategy">Injection and renewal</h3><button data-state-save="strategy" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>            <div class="access-controls">
               <label class="toggle-filter"><input id="turn-state-enabled" type="checkbox" role="switch" disabled /><span data-i18n="ui.group_enabled_state">enabled</span></label>
               <label class="toggle-filter"><input id="turn-state-dry-run" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_observe_only_do_not_modify_requests">Observe only; do not modify requests</span></label>
               <label class="toggle-filter"><input id="turn-state-learn-responses" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_learn_from_upstream_responses">Learn from upstream responses</span></label>
@@ -2637,9 +2696,10 @@
         </section>
 
         <section id="tab-auth-files" class="hidden">
+
           <div class="card">
             <div class="row spread section-toolbar">
-              <h2 data-i18n="ui.auth_files">Auth Files</h2>
+              <h2 data-i18n="ui.team_accounts">Accounts</h2>
               <div class="row section-actions auth-filter-bar">
                 <label class="toggle-filter">
                   <input id="auth-enabled-only" type="checkbox" role="switch" checked />
@@ -2659,10 +2719,51 @@
                 <button id="auth-refresh-filtered" class="labeled-icon-button" type="button" data-i18n="ui.update_quotas">Refresh quotas</button>
               </div>
             </div>
+          </div>
+          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.team_account_usage">Account usage and concurrency</h2><span id="team-runtime-retention" class="small muted"></span></div><p class="access-help" data-i18n="ui.team_usage_help">Usage comes from CPA usage events in the retained history; upstream subscription quota is queried separately. Refresh to update usage and current concurrency.</p><div id="team-runtime-summary" class="state-metrics"></div><div id="team-runtime-status" class="notice hidden"></div><div id="team-runtime-accounts"></div></div>
+          <div class="card"><h2 data-i18n="ui.team_subscription_quotas">Upstream subscription quotas</h2>
             <div id="auth-files-body"></div>
           </div>
         </section>
 
+        <section id="tab-risk" class="hidden">
+          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.team_risk_center">Risk center</h2><button id="risk-save" class="primary" type="button" disabled data-i18n="ui.save">Save</button></div>
+            <p class="access-help" data-i18n="ui.team_risk_help">Inspect request text against your keywords, observe matches or block before upstream access. Events contain rule identifiers and hashes, not request text. Requests CPA cannot expose are recorded as not inspected.</p>
+            <div id="risk-status" class="notice hidden" role="status"></div><div id="risk-metrics" class="state-metrics"></div>
+            <div class="turn-state-fields"><label class="toggle-filter"><input id="risk-enabled" type="checkbox" role="switch"/><span data-i18n="ui.team_risk_enabled">Enable request inspection</span></label>
+              <label class="field"><span data-i18n="ui.team_risk_mode">Action on match</span><span class="native-select"><select id="risk-mode"><option value="observe" data-i18n="ui.team_risk_observe">Observe and record</option><option value="pre_block" data-i18n="ui.team_risk_block">Block before upstream</option></select></span></label>
+              <label class="field turn-state-wide"><span data-i18n="ui.team_risk_keywords">Blocked keywords (one per line)</span><textarea id="risk-keywords" rows="5" spellcheck="false"></textarea></label>
+              <label class="field"><span data-i18n="ui.team_risk_model_scope">Model scope</span><span class="native-select"><select id="risk-model-mode"><option value="all" data-i18n="ui.all_models">All models</option><option value="include" data-i18n="ui.team_risk_include">Only these models</option><option value="exclude" data-i18n="ui.team_risk_exclude">Except these models</option></select></span></label>
+              <label class="field"><span data-i18n="ui.team_risk_models">Model IDs (one per line)</span><textarea id="risk-models" rows="3"></textarea></label>
+              <label class="toggle-filter"><input id="risk-remember" type="checkbox" role="switch"/><span data-i18n="ui.team_risk_remember">Remember matched content hashes</span></label>
+              <label class="field"><span data-i18n="ui.team_risk_retention">Event retention (days)</span><input id="risk-retention" type="number" min="1" max="365" step="1"/></label>
+              <label class="field"><span data-i18n="ui.team_risk_event_limit">Maximum retained events</span><input id="risk-max-events" type="number" min="1" max="2000" step="1"/></label>
+              <label class="field"><span data-i18n="ui.team_risk_http_status">Block HTTP status</span><input id="risk-block-status" type="number" min="400" max="499" step="1"/></label>
+              <label class="field turn-state-wide"><span data-i18n="ui.team_risk_message">Message returned when blocked</span><input id="risk-block-message" /></label>
+            </div><p id="risk-dirty" class="small muted" role="status"></p>
+          </div>
+          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.team_risk_events">Inspection events</h3><div class="row"><button id="risk-clear-hashes" type="button" data-i18n="ui.team_risk_clear_hashes">Clear remembered hashes</button><button id="risk-clear-events" class="danger" type="button" data-i18n="ui.clear_logs">Clear logs</button></div></div><div id="risk-events"></div></div>
+        </section>
+        <section id="tab-integrations" class="hidden">
+          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.team_integrations">Integrations</h2><button id="integration-new" class="primary" type="button" disabled data-i18n="ui.team_integration_add">Add account</button></div>
+            <p class="access-help" data-i18n="ui.team_integration_help">Connect OpenCode Go / Zen, CommandCode and Cline Pass accounts. Account credentials are stored by CPA; this page can create their dedicated upstream channel and query supported subscription quotas.</p>
+            <div id="integration-status" class="notice hidden" role="status"></div><div id="integration-tabs" class="chooser-tabs"></div><div id="team-integrations-body"></div>
+          </div>
+          <dialog id="integration-dialog" class="settings-dialog"><h2 id="integration-dialog-title" data-i18n="ui.team_integration_add">Add account</h2><div class="editor-state notice hidden"></div>
+            <input id="integration-id" type="hidden"/>
+            <label class="field"><span data-i18n="ui.team_integration_name">Account name</span><input id="integration-name" autocomplete="off"/></label>
+            <label class="field"><span data-i18n="ui.team_integration_product">Product</span><span class="native-select"><select id="integration-kind"><option value="opencode-go">OpenCode Go</option><option value="opencode-zen">OpenCode Zen</option><option value="commandcode">CommandCode</option><option value="cline-pass">Cline Pass</option></select></span></label>
+            <label class="field"><span data-i18n="ui.team_integration_api_key">API key / access token</span><input id="integration-api-key" type="password" autocomplete="new-password"/></label>
+            <label class="field integration-opencode"><span data-i18n="ui.team_integration_workspace">Workspace ID</span><input id="integration-workspace" autocomplete="off"/></label>
+            <label class="field integration-opencode"><span data-i18n="ui.team_integration_cookie">Quota session cookie</span><input id="integration-cookie" type="password" autocomplete="new-password"/></label>
+            <p class="small muted integration-opencode" data-i18n="ui.team_opencode_quota_help">Subscription queries require the workspace ID and its authenticated OpenCode session cookie. The API key is used for models and traffic.</p>
+            <div id="integration-device" class="card hidden"><button id="integration-device-start" type="button" data-i18n="ui.team_device_signin">Sign in to Cline in browser</button><div id="integration-device-status" class="small" role="status"></div><button id="integration-device-stop" class="link hidden" type="button" data-i18n="ui.cancel">Cancel</button></div>
+            <label class="field"><span data-i18n="ui.team_integration_models">Model IDs (one per line)</span><textarea id="integration-models" rows="4"></textarea></label>
+            <p class="access-help" data-i18n="ui.team_integration_credentials_help">Editing never displays saved credentials. Leave secret fields blank to keep existing values. Save creates or updates only this account’s dedicated CPA channel; other providers are preserved.</p>
+            <div class="row dialog-actions"><button id="integration-cancel" data-i18n="ui.cancel">Cancel</button><button id="integration-save" class="primary" data-i18n="ui.team_integration_save_bind">Save and connect to CPA</button></div>
+          </dialog>
+        </section>
+        <section id="tab-persistence" class="hidden"><div id="plugin-persistence-notice" class="notice hidden" role="status"></div></section>
         <section id="tab-plugin-logs" class="hidden">
           <div class="card event-list-card plugin-log-card">
             <div class="row spread section-toolbar">
@@ -2900,8 +3001,8 @@
 
     <script>
       "use strict";
-      const PLUGIN_BASE = "/v0/management/plugins/cpa-key-billing";
-      const ACCOUNT_BASE = "/v0/resource/plugins/cpa-key-billing";
+      const PLUGIN_BASE = "/v0/management/plugins/cpa-team-manager";
+      const ACCOUNT_BASE = "/v0/resource/plugins/cpa-team-manager";
       const CALLER_SCOPE_SALT = "cli-proxy-api:caller-scope:v1\u0000";
       const DISPLAY_SEPARATOR = "\u2009·\u2009";
       const $ = (id) => document.getElementById(id);
@@ -2911,11 +3012,11 @@
 
       /* A same-origin iframe can borrow the panel's obfuscated management key. When
        * it is unavailable, the standalone login can use its own encrypted vault. */
-      const CREDENTIAL_DB = "cpa-key-billing-credentials";
+      const CREDENTIAL_DB = "cpa-team-manager-credentials";
       const CREDENTIAL_STORE = "vault";
       const CREDENTIAL_KEY = "wrapping-key";
-      const SESSION_CREDENTIAL_PREFIX = "cpa-key-billing.session.v1.";
-      const VIEW_PREFERENCE_PREFIX = "cpa-key-billing.view.v1.";
+      const SESSION_CREDENTIAL_PREFIX = "cpa-team-manager.session.v1.";
+      const VIEW_PREFERENCE_PREFIX = "cpa-team-manager.view.v1.";
 
       function readPanelKey() {
         const fromStore = panelStoredValue("cli-proxy-auth")?.state?.managementKey;
@@ -2929,9 +3030,21 @@
 
       const embedded = window.parent !== window;
       document.body.classList.toggle("embedded", embedded);
-      const ADMIN_TAB_IDS = ["keys", "groups", "analysis", "request-events", "errors", "auth-files", "turn-state", "plans", "settings"];
+      const ADMIN_TAB_IDS = [
+        "keys",
+        "groups",
+        "analysis",
+        "request-events",
+        "errors",
+        "auth-files",
+        "turn-state",
+        "plans",
+        "integrations",
+        "risk",
+        "settings"
+      ];
       const ACCOUNT_TAB_IDS = ["subscription", "analysis", "request-events", "errors", "auth-files"];
-      const PAGE_ROUTE_KEY = "cpa-key-billing.route.v1." + (embedded ? "embedded" : "standalone");
+      const PAGE_ROUTE_KEY = "cpa-team-manager.route.v1." + (embedded ? "embedded" : "standalone");
 
       function parsePageRoute(value) {
         const [role, tab] = value.split("/");
@@ -3126,7 +3239,10 @@
           models: m("ui.model_catalog"),
           catalog: m("ui.model_prices"),
           priceStatus: m("ui.reference_price_status"),
-          authFiles: m("ui.auth_files")
+          authFiles: m("ui.auth_files"),
+          accountRuntime: m("ui.team_account_runtime"),
+          riskCenter: m("ui.team_risk_center"),
+          integrations: m("ui.team_integrations")
         }),
         account: dataEntries({
           profile: m("ui.account_profile"),
@@ -3179,7 +3295,10 @@
           configuration: { names: ["keys", "plans", "routes", "groups", "accessControl", "credentials", "models"], syncErrors: [] },
           turnState: { names: ["turnState"] },
           pricing: { names: ["catalog", "priceStatus"], after: "configuration" },
-          authFiles: { names: ["authFiles"] }
+          authFiles: { names: ["authFiles"] },
+          accountRuntime: { names: ["accountRuntime"] },
+          riskCenter: { names: ["riskCenter"] },
+          integrations: { names: ["integrations"] }
         },
         account: {
           ...Object.fromEntries(Object.keys(resources.account).map((name) => [name, { names: [name] }])),
@@ -3943,7 +4062,16 @@
         }
       }
 
-      for (const id of ["plan-dialog", "route-dialog", "route-picker", "group-dialog", "group-picker", "price-dialog", "action-dialog"]) {
+      for (const id of [
+        "plan-dialog",
+        "route-dialog",
+        "route-picker",
+        "group-dialog",
+        "group-picker",
+        "price-dialog",
+        "integration-dialog",
+        "action-dialog"
+      ]) {
         const dialog = $(id);
         dialog.querySelector(".dialog-actions button:not(.primary):not(.link)").onclick = () => dialog.close();
         dialog.addEventListener("cancel", (event) => { if (editors.get(dialog)?.saving) event.preventDefault(); });
@@ -3985,6 +4113,7 @@
       }
 
       function showGate(mode, error) {
+        stopIntegrationDevice();
         sessionGeneration++;
         hideNotice();
         hideCostTooltip();
@@ -4580,7 +4709,13 @@
             ]);
           } else if (name === "turnState") {
             await read("turnState", async () => validateTurnState(await plugin("GET", "/turn-state")));
-          } else { await read("authFiles", () => fetchAuthFiles(false)); }
+          } else if (name === "accountRuntime") {
+            await read("accountRuntime", () => plugin("GET", "/account-runtime"));
+          } else if (name === "riskCenter") {
+            await read("riskCenter", () => plugin("GET", "/risk-center"));
+          } else if (name === "integrations") { await read("integrations", () => plugin("GET", "/integrations")); } else {
+            await read("authFiles", () => fetchAuthFiles(false));
+          }
           if (generation !== sessionGeneration) throw new StaleRequestError();
           if (account && name !== "profile" && !resources.account.profile.value?.tracked) return;
           if (values.keys) values.keys = keyDirectory.receive(values.keys, identityRevision);
@@ -4681,10 +4816,13 @@
             editors: ["group"],
             sections: [
               section(["accessControl"], renderAccessControl),
-              keyedSection(["groups", "keys", "routes", "credentials"], renderGroups)
+              keyedSection(["groups", "keys", "routes", "credentials", "authFiles", "integrations"], renderGroups)
             ]
           };
-          result["turn-state"] = { sections: [section(["turnState"], renderTurnState)] };
+          result["turn-state"] = { sections: [section(["turnState", "accountRuntime"], renderTurnState)] };
+          result["auth-files"] = { sections: [section(["authFiles", "accountRuntime"], () => renderAuthFiles(false))] };
+          result.risk = { sections: [section(["riskCenter"], renderRiskCenter)] };
+          result.integrations = { sections: [section(["integrations"], renderIntegrations)] };
           result.plans = { editors: ["plan"], sections: [keyedSection(["plans", "keys"], renderPlans)] };
           result.settings = {
             editors: ["route"],
@@ -4719,6 +4857,7 @@
       // Cached navigation only paints changed sections. A refresh retains the
       // existing DOM until new data arrives; hidden pages are painted on entry.
       function renderPage() {
+        if (currentRole !== "admin" || activeTab(false) !== "integrations") stopIntegrationDevice();
         const page = currentPage();
         if (!page) return;
         const account = currentRole === "account";
@@ -4747,7 +4886,7 @@
           if (account) await loadDataGroup(true, "profile", reload);
           if (generation !== sessionGeneration || currentPage() !== page) return;
           const tasks = [];
-          if (!account) tasks.push(loadPersistenceNotice());
+          if (!account && activeTab(false) === "settings") tasks.push(loadPersistenceNotice());
           if (!account || resources.account.profile.value?.tracked) {
             tasks.push(...page.groups.map((name) => loadDataGroup(account, name, reload)));
             if (page.sources.includes(eventKeysQuery)) tasks.push(readEventKeys(reload));
@@ -5735,7 +5874,7 @@
         };
       }
 
-      const AUTH_QUOTA_CACHE_PREFIX = "cpa-key-billing.auth-quotas.v3.";
+      const AUTH_QUOTA_CACHE_PREFIX = "cpa-team-manager.auth-quotas.v3.";
 
       function resetAuthQuotaMemory(account) {
         const role = account ? "account" : "admin";
@@ -5890,9 +6029,12 @@
       }
 
       function quotaAmount(row) {
-        const hasUsed = row.used !== undefined;
-        const hasLimit = row.limit !== undefined;
-        if (!hasUsed && !hasLimit) return "";
+        const hasUsed = Number.isFinite(row.used);
+        const hasLimit = Number.isFinite(row.limit);
+        if (!hasUsed && !hasLimit)
+          return Number.isFinite(row.remaining)
+            ? m("ui.team_quota_balance", { value: row.currency === "USD" ? usd(row.remaining) : int(row.remaining) })
+            : "";
         const money = row.currency === "USD";
         const format = (value) => (money ? usd(value) : value.toLocaleString(locale(), { maximumFractionDigits: 2 }));
         if (hasUsed && hasLimit) return format(row.used) + "/" + format(row.limit);
@@ -5911,7 +6053,7 @@
       function renderQuotaRow(row) {
         const label = quotaLabel(row);
         const percent = row.remaining_percent;
-        const hasPercent = percent !== undefined;
+        const hasPercent = Number.isFinite(percent);
         const value = hasPercent ? percent.toFixed(0) + "%" : "—";
         const level = percent >= 70 ? "high" : percent >= 30 ? "medium" : "low";
         const reset = quotaResetMeta(row);
@@ -5982,6 +6124,7 @@
       }
 
       function renderAuthFiles(account) {
+        if (!account) renderTeamAccountRuntime();
         const ui = authUI(account);
         if (renderDataPending(ui.body, [ui.files])) {
           ui.bulk.disabled = true;
@@ -6048,6 +6191,720 @@
             );
           }
         });
+      }
+
+      const INTEGRATION_PRODUCTS = {
+        "opencode-go": "OpenCode Go",
+        "opencode-zen": "OpenCode Zen",
+        commandcode: "CommandCode",
+        "cline-pass": "Cline Pass"
+      };
+      let integrationFilter = "all";
+      let integrationHostQueue = Promise.resolve();
+      async function bindIntegrationChannels(account, descriptors, remove = false, stillCurrent = () => true) {
+        const declared = account?.channels;
+        if (!Array.isArray(descriptors) || !descriptors.length || !Array.isArray(declared))
+          throw new UIError(m("ui.team_integration_invalid_channel"));
+        const allowedResources = { "openai-compatibility": "name", "codex-api-key": "prefix", "claude-api-key": "prefix" };
+        const seen = new Set();
+        for (const descriptor of descriptors) {
+          const { resource, identity_field: field, identity, config } = descriptor;
+          const key = resource + "\0" + identity;
+          if (
+            allowedResources[resource] !== field || typeof identity !== "string" || !identity || seen.has(key) ||
+            !declared.some((item) => item.resource === resource && item.identity_field === field && item.identity === identity) ||
+            (!remove && config !== null && (!config || config[field] !== identity))
+          )
+            throw new UIError(m("ui.team_integration_invalid_channel"));
+          seen.add(key);
+        }
+        if (declared.length !== descriptors.length) throw new UIError(m("ui.team_integration_invalid_channel"));
+        const generation = sessionGeneration;
+        const operation = integrationHostQueue.catch(() => {}).then(async () => {
+          for (const descriptor of descriptors) {
+            const { resource, identity_field: field, identity, config } = descriptor;
+            const path = "/v0/management/" + resource;
+            const snapshot = await api("GET", path);
+            const entries = requireArray(snapshot?.[resource], m("ui.ai_providers"));
+            if (entries.some((item) => !item || typeof item !== "object" || Array.isArray(item)))
+              throw new UIError(m("ui.team_integration_invalid_channel"));
+            if (generation !== sessionGeneration || currentRole !== "admin" || !stillCurrent()) throw new StaleRequestError();
+            const next = entries.filter((item) => item[field] !== identity);
+            const shouldExist = !remove && config !== null;
+            if (shouldExist) next.push(config);
+            await api("PUT", path, next, { command: true });
+            const after = await api("GET", path);
+            const found = requireArray(after?.[resource], m("ui.ai_providers")).filter((item) => item[field] === identity);
+            if (found.length !== (shouldExist ? 1 : 0)) throw new UIError(m("ui.team_integration_bind_unconfirmed"));
+          }
+        });
+        integrationHostQueue = operation;
+        return operation;
+      }
+      async function finishIntegrationBinding(result, stillCurrent = () => true) {
+        await bindIntegrationChannels(result.account, result.channels, false, stillCurrent);
+        if (!stillCurrent()) throw new StaleRequestError();
+        await loadDataGroup(false, "configuration", true);
+        if (!stillCurrent()) throw new StaleRequestError();
+        if (resourceGroups.admin.configuration.syncErrors?.length) throw new UIError(m("ui.team_integration_sync_pending"));
+        const migration = result.migration_id || result.account.pending_migration;
+        if (migration) {
+          await plugin(
+            "POST",
+            "/integrations/commit",
+            { id: result.account.id, migration_id: migration },
+            { command: true, timeoutMS: 65000 }
+          );
+          if (!stillCurrent()) throw new StaleRequestError();
+          await loadDataGroup(false, "configuration", true);
+        }
+        if (!stillCurrent()) throw new StaleRequestError();
+        await loadDataGroup(false, "integrations", true);
+      }
+      function integrationState() {
+        return (adminUIState.integrationState ||= { busy: new Set(), quota: new Map(), errors: new Map(), bound: new Map() });
+      }
+      function renderIntegrations() {
+        const resource = resources.admin.integrations, state = integrationState(), data = resource.value;
+        $("integration-new").disabled = !data;
+        const status = $("integration-status");
+        status.className = resource.error ? "notice err show" : "notice hidden";
+        setText(status, resource.error || "");
+        $("integration-tabs").replaceChildren(
+          ...[["all", m("ui.fork_all")], ...Object.entries(INTEGRATION_PRODUCTS)].map(([value, text]) =>
+            el("button", {
+              type: "button",
+              role: "tab",
+              class: integrationFilter === value ? "active" : "",
+              "aria-selected": String(integrationFilter === value),
+              text,
+              onclick: () => {
+                integrationFilter = value;
+                renderIntegrations();
+              }
+            })
+          )
+        );
+        if (renderDataPending($("team-integrations-body"), [resource])) return;
+        const accounts = (data.accounts || []).filter((account) => integrationFilter === "all" || account.kind === integrationFilter);
+        renderCollection($("team-integrations-body"), accounts, {
+          attrs: { class: "team-account-grid" },
+          empty: m("ui.team_integrations_empty"),
+          render: (account) => {
+            const busy = state.busy.has(account.id), quota = state.quota.get(account.id), error = state.errors.get(account.id);
+            return el(
+              "article",
+              { class: "auth-file-card integration-card" },
+              el(
+                "div",
+                { class: "row spread" },
+                el("strong", { class: "team-account-name", text: account.name || account.id }),
+                el("span", { class: "tag plain", text: INTEGRATION_PRODUCTS[account.kind] || account.kind })
+              ),
+              el("p", { class: "small muted", text: account.base_url || "" }),
+              el(
+                "div",
+                { class: "row" },
+                el("span", {
+                  class: "tag " + (account.has_api_key ? "ok" : "warn"),
+                  text: m(account.has_api_key ? "ui.team_integration_credential_set" : "ui.team_integration_credential_missing")
+                }),
+                el("span", {
+                  class: "tag plain",
+                  text: m(state.bound.get(account.id) === true ? "ui.team_integration_bound" : "ui.team_integration_binding_unknown")
+                })
+              ),
+              account.pending_migration
+                ? el("p", { class: "auth-quota-error small", text: m("ui.team_integration_migration_pending") })
+                : null,
+              account.workspace_id
+                ? el("p", { class: "small muted", text: m("ui.team_integration_workspace") + ": " + account.workspace_id })
+                : null,
+              el("div", { class: "small muted", text: m("ui.team_integration_model_count", { count: account.models?.length || 0 }) }),
+              account.client_models?.length
+                ? el(
+                    "details",
+                    { class: "state-bucket-actions" },
+                    el("summary", { text: m("ui.team_client_models") }),
+                    el("textarea", {
+                      class: "integration-client-models",
+                      readOnly: true,
+                      rows: Math.min(6, account.client_models.length),
+                      text: account.client_models.join("\n"),
+                      "aria-label": m("ui.team_client_models")
+                    })
+                  )
+                : null,
+              account.unsupported_models?.length
+                ? el(
+                    "div",
+                    { class: "auth-quota-error small" },
+                    el("strong", { text: m("ui.team_unsupported_models") }),
+                    ...account.unsupported_models.map((item) => el("p", { text: item.id + ": " + item.reason }))
+                  )
+                : null,
+              el(
+                "div",
+                { class: "row integration-actions" },
+                el("button", {
+                  type: "button",
+                  disabled: busy,
+                  text: m("ui.team_integration_query"),
+                  onclick: () => guard(() => queryIntegration(account))
+                }),
+                el("button", {
+                  type: "button",
+                  disabled: busy,
+                  text: m("ui.team_integration_connect"),
+                  onclick: () => guard(() => connectIntegration(account))
+                }),
+                account.kind === "cline-pass" && account.has_refresh_token
+                  ? el("button", {
+                      type: "button",
+                      disabled: busy,
+                      text: m("ui.team_integration_refresh_login"),
+                      onclick: () => guard(() => refreshIntegrationLogin(account))
+                    })
+                  : null,
+                el("button", {
+                  type: "button",
+                  class: "link",
+                  disabled: busy,
+                  text: m("ui.edit"),
+                  onclick: () => editIntegration(account)
+                }),
+                el("button", {
+                  type: "button",
+                  class: "link danger",
+                  disabled: busy,
+                  text: m("ui.delete"),
+                  onclick: () => guard(() => deleteIntegration(account))
+                })
+              ),
+              error ? el("p", { class: "auth-quota-error", text: error }) : null,
+              quota?.models_error ? el("p", { class: "auth-quota-error", text: quota.models_error }) : null,
+              quota?.models?.length
+                ? el("button", {
+                    type: "button",
+                    class: "link small",
+                    disabled: busy,
+                    text: m("ui.team_integration_use_models", { count: quota.models.length }),
+                    onclick: () => editIntegration({ ...account, models: quota.models })
+                  })
+                : null,
+              quota
+                ? el(
+                    "div",
+                    { class: "auth-file-quota" },
+                    el("p", {
+                      class: "small muted",
+                      text: [quota.account?.name, quota.quota?.plan, quota.quota?.fetched_at ? when(quota.quota.fetched_at) : ""]
+                        .filter(Boolean)
+                        .join(DISPLAY_SEPARATOR)
+                    }),
+                    quota.quota?.subscription_status
+                      ? el("p", {
+                          class: "small muted",
+                          text:
+                            quota.quota.subscription_status +
+                            (quota.quota.subscription_ends_at ? DISPLAY_SEPARATOR + when(quota.quota.subscription_ends_at) : "")
+                        })
+                      : null,
+                    ...(quota.quota?.quota || []).map(renderQuotaRow),
+                    quota.quota_supported === false
+                      ? el("p", { class: "small muted", text: quota.quota_message || m("ui.team_integration_quota_unavailable") })
+                      : null
+                  )
+                : null
+            );
+          }
+        });
+      }
+      let integrationDevice = null;
+      async function cancelIntegrationDevice(run, loginId) {
+        if (!loginId || run.cancelSent || run.generation !== sessionGeneration || currentRole !== "admin") return;
+        run.cancelSent = true;
+        try {
+          const result = await plugin("POST", "/integrations/cline/cancel", { login_id: loginId }, { command: true, timeoutMS: 65000 });
+          if (run.generation !== sessionGeneration || currentRole !== "admin") return;
+          if (result.status === "complete") {
+            notify(m("ui.team_device_completed_before_cancel"));
+            await loadDataGroup(false, "integrations", true);
+          }
+        } catch (error) {
+          if (!(error instanceof AuthError) && !(error instanceof StaleRequestError) && run.generation === sessionGeneration)
+            notify(m("ui.team_device_cancel_failed"), "err");
+        }
+      }
+      function stopIntegrationDevice(clear = true, cancel = true) {
+        if (integrationDevice) {
+          if (cancel) void cancelIntegrationDevice(integrationDevice, integrationDevice.loginId);
+          clearTimeout(integrationDevice.timer);
+          integrationDevice.cancelled = true;
+        }
+        integrationDevice = null;
+        $("integration-device-start").disabled = false;
+        $("integration-save").disabled = false;
+        $("integration-device-stop").classList.add("hidden");
+        if (clear) $("integration-device-status").replaceChildren();
+      }
+      function currentIntegrationDevice(run) {
+        return (
+          run === integrationDevice && !run.cancelled && run.generation === sessionGeneration && currentRole === "admin" &&
+          activeTab(false) === "integrations" &&
+          $("integration-dialog").open
+        );
+      }
+      function scheduleIntegrationDevice(run, interval) {
+        run.timer = setTimeout(() => guard(() => pollIntegrationDevice(run)), Math.max(5, Math.min(60, Number(interval) || 5)) * 1000);
+      }
+      async function startIntegrationDevice() {
+        const name = $("integration-name").value.trim();
+        if (!name) throw new UIError(m("ui.team_integration_name_required"));
+        stopIntegrationDevice();
+        const run = (integrationDevice = { generation: sessionGeneration, cancelled: false });
+        $("integration-device-start").disabled = true;
+        $("integration-save").disabled = true;
+        $("integration-device-stop").classList.remove("hidden");
+        setText($("integration-device-status"), m("ui.loading"));
+        try {
+          const result = await plugin("POST", "/integrations/cline/device", { name }, { command: true, timeoutMS: 65000 });
+          if (!currentIntegrationDevice(run)) {
+            void cancelIntegrationDevice(run, result.login_id);
+            return;
+          }
+          const url = new URL(result.verification_uri_complete || result.verification_uri);
+          if (
+            url.protocol !== "https:" || url.username || url.password ||
+            !["cline.bot", "workos.com"].some((host) => url.hostname === host || url.hostname.endsWith("." + host))
+          )
+            throw new UIError(m("ui.team_device_invalid_url"));
+          run.loginId = result.login_id;
+          run.expires = Date.parse(result.expires_at);
+          $("integration-device-status").replaceChildren(
+            el("p", { text: m("ui.team_device_code", { code: result.user_code }) }),
+            el("a", { href: url.href, target: "_blank", rel: "noopener noreferrer", text: m("ui.team_device_open") }),
+            el("p", { class: "small muted", text: m("ui.team_device_waiting") })
+          );
+          scheduleIntegrationDevice(run, result.interval);
+        } catch (error) {
+          if (currentIntegrationDevice(run)) {
+            stopIntegrationDevice(false);
+            setText($("integration-device-status"), error.message || String(error));
+          }
+          if (error instanceof AuthError) throw error;
+        }
+      }
+      async function pollIntegrationDevice(run) {
+        if (!currentIntegrationDevice(run)) return;
+        if (run.expires <= Date.now()) {
+          stopIntegrationDevice(false);
+          setText($("integration-device-status"), m("ui.team_device_expired"));
+          return;
+        }
+        try {
+          const result = await plugin("POST", "/integrations/cline/poll", { login_id: run.loginId }, { command: true, timeoutMS: 65000 });
+          if (!currentIntegrationDevice(run)) return;
+          if (result.status === "pending") {
+            scheduleIntegrationDevice(run, result.interval);
+            return;
+          }
+          if (result.status !== "complete" || !result.account || !Array.isArray(result.channels))
+            throw new UIError(m("ui.team_integration_invalid_channel"));
+          const state = integrationState();
+          try {
+            await finishIntegrationBinding(result, () => currentIntegrationDevice(run));
+            state.bound.set(result.account.id, true);
+          } catch (error) {
+            if (!currentIntegrationDevice(run)) return;
+            state.bound.set(result.account.id, false);
+            state.errors.set(result.account.id, m("ui.team_integration_bind_failed", { reason: error.message || String(error) }));
+          }
+          if (!currentIntegrationDevice(run)) return;
+          stopIntegrationDevice(true, false);
+          $("integration-dialog").close();
+          await loadDataGroup(false, "integrations", true);
+          renderIntegrations();
+        } catch (error) {
+          if (currentIntegrationDevice(run)) {
+            stopIntegrationDevice(false);
+            setText($("integration-device-status"), error.message || String(error));
+          }
+          if (error instanceof AuthError) throw error;
+        }
+      }
+      async function refreshIntegrationLogin(account) {
+        const state = integrationState();
+        state.busy.add(account.id);
+        state.errors.delete(account.id);
+        renderIntegrations();
+        try {
+          const result = await plugin("POST", "/integrations/refresh", { id: account.id }, { command: true, timeoutMS: 65000 });
+          await finishIntegrationBinding(result);
+          state.bound.set(account.id, true);
+        } catch (error) {
+          state.bound.set(account.id, false);
+          state.errors.set(account.id, error.message || String(error));
+          if (error instanceof AuthError) throw error;
+        } finally {
+          state.busy.delete(account.id);
+          renderIntegrations();
+        }
+      }
+
+      function syncIntegrationForm() {
+        stopIntegrationDevice();
+        const openCode = $("integration-kind").value.startsWith("opencode-");
+        $("integration-device").classList.toggle("hidden", $("integration-kind").value !== "cline-pass" || !!$("integration-id").value);
+        for (const node of document.querySelectorAll(".integration-opencode")) node.classList.toggle("hidden", !openCode);
+      }
+      function editIntegration(account) {
+        openEditor("integration-dialog", null, () => {
+          setText($("integration-dialog-title"), m(account ? "ui.team_integration_edit" : "ui.team_integration_add"));
+          $("integration-id").value = account?.id || "";
+          $("integration-name").value = account?.name || "";
+          $("integration-kind").value = account?.kind || (integrationFilter !== "all" ? integrationFilter : "opencode-go");
+          $("integration-kind").disabled = !!account;
+          $("integration-api-key").value = "";
+          $("integration-cookie").value = "";
+          $("integration-workspace").value = account?.workspace_id || "";
+          $("integration-models").value = (account?.models || []).join("\n");
+          syncIntegrationForm();
+        });
+      }
+      async function saveIntegration() {
+        const id = $("integration-id").value,
+          payload = {
+            name: $("integration-name").value.trim(),
+            kind: $("integration-kind").value,
+            models: turnStateLines($("integration-models").value),
+            ...(id ? { id } : {})
+          };
+        if (!payload.name) throw new UIError(m("ui.team_integration_name_required"));
+        for (const [field, key] of [["api-key", "api_key"], ["cookie", "auth_cookie"], ["workspace", "workspace_id"]])
+          if ($("integration-" + field).value.trim()) payload[key] = $("integration-" + field).value.trim();
+        const result = await plugin("POST", "/integrations", payload, { command: true, timeoutMS: 65000 });
+        $("integration-api-key").value = "";
+        $("integration-cookie").value = "";
+        const state = integrationState();
+        state.quota.delete(result.account.id);
+        state.errors.delete(result.account.id);
+        try {
+          await finishIntegrationBinding(result);
+          state.bound.set(result.account.id, true);
+        } catch (error) {
+          state.bound.set(result.account.id, false);
+          state.errors.set(result.account.id, m("ui.team_integration_bind_failed", { reason: error.message || String(error) }));
+        }
+        await loadDataGroup(false, "integrations", true);
+      }
+      async function queryIntegration(account) {
+        const state = integrationState();
+        state.busy.add(account.id);
+        state.errors.delete(account.id);
+        renderIntegrations();
+        try {
+          state.quota.set(account.id, await plugin("POST", "/integrations/query", { id: account.id }, { command: true, timeoutMS: 65000 }));
+        } catch (error) {
+          state.errors.set(account.id, error.message || String(error));
+          if (error instanceof AuthError) throw error;
+        } finally {
+          state.busy.delete(account.id);
+          renderIntegrations();
+        }
+      }
+      async function connectIntegration(account) {
+        const state = integrationState();
+        state.busy.add(account.id);
+        state.errors.delete(account.id);
+        renderIntegrations();
+        try {
+          const result = await plugin("POST", "/integrations/channel", { id: account.id }, { command: true });
+          await finishIntegrationBinding(result);
+          state.bound.set(account.id, true);
+        } catch (error) {
+          state.bound.set(account.id, false);
+          state.errors.set(account.id, error.message || String(error));
+          if (error instanceof AuthError) throw error;
+        } finally {
+          state.busy.delete(account.id);
+          renderIntegrations();
+        }
+      }
+      async function deleteIntegration(account) {
+        if (!(await openActionDialog(m("ui.delete"), m("ui.team_integration_delete_warning", { name: account.name || account.id }))))
+          return;
+        const state = integrationState();
+        state.busy.add(account.id);
+        renderIntegrations();
+        try {
+          await bindIntegrationChannels(account, account.channels, true);
+          await plugin("DELETE", "/integrations", { id: account.id }, { command: true });
+          state.quota.delete(account.id);
+          state.bound.delete(account.id);
+          await loadDataGroup(false, "configuration", true);
+          await loadDataGroup(false, "integrations", true);
+        } finally {
+          state.busy.delete(account.id);
+          renderIntegrations();
+        }
+      }
+
+      function renderTeamAccountRuntime() {
+        const resource = resources.admin.accountRuntime, data = resource.value;
+        if (renderDataPending($("team-runtime-accounts"), [resource])) return;
+        const accounts = (data.accounts || []).filter((item) => {
+          const category = $("auth-provider").value, search = $("auth-search").value.trim();
+          return (
+            (!$("auth-enabled-only").checked || !item.disabled) && (!category || item.provider === category) &&
+            matchesTerm([item.name, item.provider, item.auth_index].join(" "), search)
+          );
+        });
+        setText($("team-runtime-retention"), m("ui.team_retained_days", { days: data.usage_retention_days || 0 }));
+        const unknown = accounts.filter((item) => item.usage_available === false).length;
+        $("team-runtime-status").className = unknown ? "notice show" : "notice hidden";
+        setText($("team-runtime-status"), unknown ? m("ui.team_usage_pending_count", { count: unknown }) : "");
+        const sum = (field) =>
+          accounts.reduce((total, item) => total + (item.usage_available === false ? 0 : Number(item.usage?.[field] || 0)), 0);
+        $("team-runtime-summary").replaceChildren(
+          ...[
+            ["team_accounts", accounts.length],
+            ["requests", sum("requests")],
+            ["team_runtime_tokens", tokens(sum("total_tokens"))],
+            ["amount", usd(sum("amount_usd"))]
+          ].map(([key, value]) =>
+            el(
+              "div",
+              { class: "state-metric" },
+              el("span", { class: "small muted", text: m("ui." + key) }),
+              el("strong", { text: String(value) })
+            )
+          )
+        );
+        renderCollection($("team-runtime-accounts"), accounts, {
+          attrs: { class: "team-account-grid" },
+          empty: m("ui.team_no_accounts"),
+          render: (item) => {
+            const pending = adminUIState.runtimeSaving?.has(item.credential_ref), usage = item.usage || {};
+            const limit = el("input", {
+              type: "number",
+              min: "0",
+              max: "1000",
+              step: "1",
+              value: item.concurrency_limit || 0,
+              disabled: pending || !item.credential_ref,
+              "aria-label": m("ui.team_account_limit", { name: item.name || item.auth_index })
+            });
+            const save = el("button", {
+              type: "button",
+              disabled: pending || !item.credential_ref,
+              text: pending ? m("ui.saving") : m("ui.save"),
+              onclick: () =>
+                guard(async () => {
+                  if (!limit.reportValidity()) return;
+                  const owner = adminUIState;
+                  owner.runtimeSaving ||= new Set();
+                  owner.runtimeSaving.add(item.credential_ref);
+                  renderTeamAccountRuntime();
+                  try {
+                    await plugin(
+                      "PUT",
+                      "/account-runtime/settings",
+                      { accounts: { [item.credential_ref]: { concurrency_limit: Number(limit.value) } } },
+                      { command: true }
+                    );
+                    await loadDataGroup(false, "accountRuntime", true);
+                  } finally {
+                    owner.runtimeSaving.delete(item.credential_ref);
+                    if (owner === adminUIState) renderTeamAccountRuntime();
+                  }
+                })
+            });
+            return el(
+              "article",
+              { class: "auth-file-card" },
+              el(
+                "div",
+                { class: "row spread" },
+                el("strong", { class: "team-account-name", text: item.name || item.auth_index || item.credential_ref }),
+                el("span", {
+                  class: "tag " + (item.disabled ? "plain" : item.unavailable ? "warn" : "ok"),
+                  text: m(item.disabled ? "ui.disabled" : item.unavailable ? "ui.unavailable" : "ui.enabled")
+                })
+              ),
+              el("p", { class: "small muted", text: item.provider || m("ui.unknown_2") }),
+              usage.incomplete_records > 0
+                ? el("p", { class: "small auth-quota-error", text: m("ui.team_usage_incomplete", { count: usage.incomplete_records }) })
+                : null,
+              item.usage_available === false
+                ? el("p", { class: "small muted", text: m("ui.team_usage_pending") })
+                : el(
+                    "div",
+                    { class: "team-account-usage" },
+                    ...[
+                      ["requests", usage.requests || 0],
+                      ["succeeded", usage.successes || 0],
+                      ["failed", usage.failures || 0],
+                      ["team_runtime_tokens", tokens(usage.total_tokens || 0)],
+                      ["amount", usd(usage.amount_usd || 0)]
+                    ].map(([key, value]) => el("span", {}, m("ui." + key), " ", el("b", { text: String(value) })))
+                  ),
+              el("div", {
+                class: "small muted",
+                text: m("ui.team_last_used", { at: item.usage_available !== false && usage.last_used_at ? when(usage.last_used_at) : "—" })
+              }),
+              el(
+                "div",
+                { class: "team-account-concurrency" },
+                el("label", { class: "field" }, m("ui.team_concurrency_limit"), limit),
+                save
+              ),
+              el("div", { class: "small muted", text: m("ui.team_concurrency_active", { active: item.current_concurrency || 0 }) })
+            );
+          }
+        });
+      }
+      function renderTeamStateGate() {
+        const data = resources.admin.accountRuntime.value, input = $("team-require-state");
+        input.disabled = !data || !!adminUIState.runtimeGateSaving;
+        input.checked = data?.settings?.require_turn_state !== false;
+        setText(
+          $("team-require-state-status"),
+          resources.admin.accountRuntime.error ||
+            (adminUIState.runtimeGateSaving
+              ? m("ui.saving")
+              : data?.turn_state_host_supported === false
+                ? m("ui.team_gate_host_unsupported", { schema: data.host_schema || "—" })
+                : m("ui.team_gate_transport_help"))
+        );
+      }
+      async function saveTeamStateGate() {
+        const input = $("team-require-state"), enabled = input.checked;
+        if (!enabled && !(await openActionDialog(m("ui.team_gate_disable_title"), m("ui.team_gate_disable_warning")))) {
+          renderTeamStateGate();
+          return;
+        }
+        const owner = adminUIState;
+        owner.runtimeGateSaving = true;
+        renderTeamStateGate();
+        try {
+          await plugin("PUT", "/account-runtime/settings", { require_turn_state: enabled }, { command: true });
+          await loadDataGroup(false, "accountRuntime", true);
+        } finally {
+          owner.runtimeGateSaving = false;
+          if (owner === adminUIState) renderTeamStateGate();
+        }
+      }
+      const RISK_FIELDS = [
+        "enabled",
+        "mode",
+        "keywords",
+        "model-mode",
+        "models",
+        "remember",
+        "retention",
+        "max-events",
+        "block-status",
+        "block-message"
+      ];
+      function renderRiskCenter() {
+        const resource = resources.admin.riskCenter, data = resource.value, busy = !!adminUIState.riskSaving;
+        $("risk-save").disabled = !data || busy || !adminUIState.riskDirty;
+        for (const field of RISK_FIELDS) $("risk-" + field).disabled = !data || busy;
+        const notice = $("risk-status");
+        notice.className = resource.error || data?.storage_error ? "notice err show" : "notice hidden";
+        setText(notice, resource.error || data?.storage_error || "");
+        if (!data) return;
+        const config = data.config || {}, signature = JSON.stringify(config);
+        if (adminUIState.riskShown === undefined || (!adminUIState.riskDirty && adminUIState.riskShown !== signature)) {
+          $("risk-enabled").checked = !!config.enabled;
+          $("risk-remember").checked = !!config.remember_hashes;
+          for (const [id, value] of [
+            ["mode", config.mode || "observe"],
+            ["keywords", (config.blocked_keywords || []).join("\n")],
+            ["model-mode", config.model_filter?.mode || "all"],
+            ["models", (config.model_filter?.models || []).join("\n")],
+            ["retention", config.retention_days || 30],
+            ["max-events", config.max_events || 500],
+            ["block-status", config.block_status || 403],
+            ["block-message", config.block_message || ""]
+          ])
+            $("risk-" + id).value = value;
+          adminUIState.riskShown = signature;
+        }
+        $("risk-models").disabled = busy || $("risk-model-mode").value === "all";
+        setText($("risk-dirty"), adminUIState.riskDirty ? m("ui.team_risk_unsaved") : m("ui.team_risk_saved"));
+        const status = data.status || {};
+        $("risk-metrics").replaceChildren(
+          ...["observed", "blocked", "not_inspected", "remembered_hashes"].map((key) =>
+            el(
+              "div",
+              { class: "state-metric" },
+              el("span", { class: "small muted", text: m("ui.team_risk_" + key) }),
+              el("strong", { text: int(status[key] || 0) })
+            )
+          )
+        );
+        renderCollection($("risk-events"), data.events || [], {
+          headers: [m("ui.time"), m("ui.model"), m("ui.team_risk_decision"), m("ui.team_risk_reason"), m("ui.team_risk_caller")],
+          empty: m("ui.team_risk_no_events"),
+          render: (event) =>
+            el(
+              "tr",
+              {},
+              el("td", {}, when(event.at)),
+              el("td", { text: event.model || "—" }),
+              el(
+                "td",
+                {},
+                el("span", { class: "tag " + (event.decision === "blocked" ? "bad" : "plain"), text: m("ui.team_risk_" + event.decision) })
+              ),
+              el("td", { text: m("ui.team_risk_reason_" + event.reason) }),
+              el("td", { class: "mono", text: event.caller_ref ? event.caller_ref.slice(0, 16) + "…" : "—" })
+            )
+        });
+      }
+      async function saveRiskCenter() {
+        for (const id of ["retention", "max-events", "block-status"]) if (!$("risk-" + id).reportValidity()) return;
+        const models = turnStateLines($("risk-models").value);
+        if ($("risk-model-mode").value !== "all" && !models.length) throw new UIError(m("ui.team_risk_models_required"));
+        const owner = adminUIState;
+        owner.riskSaving = true;
+        renderRiskCenter();
+        try {
+          await plugin(
+            "PUT",
+            "/risk-center/config",
+            {
+              enabled: $("risk-enabled").checked,
+              mode: $("risk-mode").value,
+              blocked_keywords: turnStateLines($("risk-keywords").value),
+              model_filter: { mode: $("risk-model-mode").value, models },
+              remember_hashes: $("risk-remember").checked,
+              block_status: Number($("risk-block-status").value),
+              block_message: $("risk-block-message").value.trim(),
+              retention_days: Number($("risk-retention").value),
+              max_events: Number($("risk-max-events").value)
+            },
+            { command: true }
+          );
+          owner.riskDirty = false;
+          await loadDataGroup(false, "riskCenter", true);
+        } finally {
+          owner.riskSaving = false;
+          if (owner === adminUIState) renderRiskCenter();
+        }
+      }
+      async function clearRiskData(kind) {
+        if (
+          !(await openActionDialog(
+            m(kind === "hashes" ? "ui.team_risk_clear_hashes" : "ui.clear_logs"),
+            m(kind === "hashes" ? "ui.team_risk_hash_clear_warning" : "ui.this_action_cannot_be_undone")
+          ))
+        )
+          return;
+        await plugin("DELETE", "/risk-center/" + kind, null, { command: true });
+        await loadDataGroup(false, "riskCenter", true);
       }
 
       const AUTH_QUOTA_TIMEOUT_MS = 65000;
@@ -7198,7 +8055,7 @@
       let turnStateSessionTimer = 0, turnStateResumeAttempted = false, turnStateLogLoaded = "";
       let turnStateLogRows = [];
       function turnStateSessionKey() {
-        return credentialScope.admin ? "cpa.turn-state.runner.v1." + location.pathname + "." + credentialScope.admin : "";
+        return credentialScope.admin ? "cpa.team-manager.turn-state.runner.v1." + location.pathname + "." + credentialScope.admin : "";
       }
       function readTurnStateSession() {
         try {
@@ -7273,7 +8130,7 @@
           const result = await plugin("GET", "/persistence");
           if (owner !== adminUIState) return;
           const notice = $("plugin-persistence-notice");
-          if (!result.detected) {
+          if (!result.detected || !result.at_risk) {
             notice.className = "notice hidden";
             return;
           }
@@ -7346,6 +8203,7 @@
             : m("ui.turn_state_invalid_proxy");
         } catch (_) { return m("ui.turn_state_invalid_proxy"); }
       }
+      function turnStateProxyEndpoint(value) { try { return new URL(value).host; } catch (_) { return turnStateProxyDisplay(value); } }
       function turnStateNow(state) {
         const serverTime = Date.parse(state.server_time);
         return Number.isFinite(serverTime) ? serverTime + Date.now() - state.received_at : Date.now();
@@ -7474,7 +8332,16 @@
                     })
                   }),
                   el("div", { class: "small muted", text: m("ui.turn_state_template_detail", { length: template.length, source }) }),
-                  template.exit ? el("div", { class: "small muted", text: turnStateProxyDisplay(template.exit) }) : null,
+                  template.exit
+                    ? el("div", {
+                        class: "state-bucket-exit small",
+                        title: String(turnStateProxyDisplay(template.exit)),
+                        text: m("ui.state_bucket_endpoint", { value: turnStateProxyEndpoint(template.exit) })
+                      })
+                    : null,
+                  template.egress_ip
+                    ? el("div", { class: "state-bucket-exit small", text: m("ui.state_bucket_egress", { value: template.egress_ip }) })
+                    : null,
                   !inScope ? el("div", { class: "small muted", text: m("ui.turn_state_outside_scope") }) : null,
                   turnStateBucketActions(account, model, template, inScope)
                 );
@@ -7817,7 +8684,8 @@
           $("turn-state-mode-badge"),
           m(!state.config.enabled ? "ui.state_disabled_badge" : state.config.dry_run ? "ui.state_observe_badge" : "ui.state_inject_badge")
         );
-        setText($("turn-state-draft-status"), adminUIState.turnStateDirty ? m("ui.state_unsaved") : m("ui.state_saved"));
+        setText($("turn-state-draft-status"), adminUIState.turnStateDirty ? m("ui.state_apply_unsaved") : m("ui.state_apply_saved"));
+        document.querySelector(".state-save-bar").classList.toggle("has-changes", !!adminUIState.turnStateDirty);
         $("turn-state-clear-cooldowns").disabled =
           !!adminUIState.turnStateSaving || turnStateProbe.inFlight || turnStateDiagnostics.running || turnStateDiagnostics.inFlight;
         renderTurnStateSession();
@@ -7833,14 +8701,20 @@
         for (const field of TURN_STATE_FIELDS) $("turn-state-" + field).disabled = !state || busy;
         for (const field of Object.values(TURN_STATE_POOLS))
           $("turn-state-" + field).disabled = !state || busy || !pools.loaded || pools.loading;
-        $("turn-state-save").disabled = !state || busy || pools.loading;
-        setText($("turn-state-save"), saving ? m("ui.saving") : m("ui.save"));
+        $("turn-state-save").disabled = !state || busy || pools.loading || !adminUIState.turnStateDirty;
+        setText($("turn-state-save"), saving ? m("ui.saving") : m("ui.state_save_all"));
+        for (const button of document.querySelectorAll("[data-state-save]")) {
+          button.disabled = !state || busy || pools.loading || !adminUIState.turnStateDirty;
+          setText(button, saving ? m("ui.saving") : m("ui.state_save_all"));
+        }
+        $("turn-state-discard").disabled = !state || busy || pools.loading || !adminUIState.turnStateDirty;
         $("turn-state-refresh").disabled = !state || busy;
         $("turn-state-clear-templates").disabled = !state || busy || turnStateProbe.running || !state.templates.length;
         const status = $("turn-state-status");
         status.className = resource.error ? "notice err show" : state ? "notice hidden" : "notice show";
         setText(status, resource.error || (state ? "" : m("ui.fork_loading_turn_state_settings")));
         if (!state) return;
+        renderTeamStateGate();
         const config = state.config;
         if (state.host_requirement)
           setText(
@@ -8321,6 +9195,155 @@
           .map(([label, items]) => settingsEntryField(label, settingsChipList(items)));
       }
 
+      function groupAccounts(group) {
+        const routes = resources.admin.routes.value || [], credentials = resources.admin.credentials.value || [];
+        const rules = [
+          group.rule || {},
+          ...(group.route_ids || []).map((id) => routes.find((route) => route.id === id)?.rule).filter(Boolean)
+        ];
+        const matchesProvider = (selectors, item) =>
+          (selectors || []).some(
+            (selector) => selector.source === item.source && String(selector.provider).toLowerCase() === String(item.provider).toLowerCase()
+          );
+        const allows = (item) =>
+          rules.some((rule) => (rule.credential_ids || []).includes(item.ref) || matchesProvider(rule.credential_providers, item));
+        const denies = (item) =>
+          rules.some(
+            (rule) => (rule.denied_credential_ids || []).includes(item.ref) || matchesProvider(rule.denied_credential_providers, item)
+          );
+        return credentials.filter((item) => allows(item) && !denies(item)).sort(compareCredentials);
+      }
+      function groupAccountQuotaSource(item) {
+        const integrations = (resources.admin.integrations.value?.accounts || []).filter((account) =>
+          (account.credential_refs || []).includes(item.ref)
+        );
+        if (integrations.length === 1) return { integration: integrations[0] };
+        if (integrations.length > 1) return {};
+        return { file: (resources.admin.authFiles.value || []).find((file) => file.credential_ref === item.ref) };
+      }
+      function groupAccountField(group) {
+        const items = groupAccounts(group);
+        const missing = (group.route_ids || []).some((id) => !(resources.admin.routes.value || []).some((route) => route.id === id));
+        const pending = adminUIState.groupQuotaLoading?.has(group.id);
+        const content = el(
+          "div",
+          { class: "team-group-accounts" },
+          el(
+            "div",
+            { class: "row spread" },
+            el("span", { class: "small muted", text: m("ui.team_group_quota_help") }),
+            el("button", {
+              type: "button",
+              class: "link small",
+              disabled:
+                pending ||
+                !items.some((item) => {
+                  const source = groupAccountQuotaSource(item);
+                  return source.file?.quota_supported || source.integration;
+                }),
+              text: m(pending ? "ui.updating_quotas" : "ui.update_quotas"),
+              onclick: () => guard(() => refreshGroupQuotas(group))
+            })
+          ),
+          missing ? el("div", { class: "auth-quota-error", text: m("ui.team_group_missing_route") }) : null,
+          ...items.map((item) => {
+            const { file, integration } = groupAccountQuotaSource(item);
+            const quota = file
+              ? adminUIState.authQuotas.get(file.auth_index)
+              : integration ? integrationState().quota.get(integration.id)?.quota : null;
+            const error = file
+              ? adminUIState.authQuotaErrors.get(file.auth_index)
+              : integration ? integrationState().errors.get(integration.id) : null;
+            const windows = [18000, 604800].flatMap((seconds) => {
+              const rows = (quota?.quota || []).filter((row) => row.scope === "account" && row.window_seconds === seconds);
+              if (rows.length !== 1) return [];
+              const row = rows[0];
+              const hasValue = Number.isFinite(row?.remaining_percent), stale = row?.reset_at && Date.parse(row.reset_at) <= Date.now();
+              return el("span", {
+                class: "tag " + (stale ? "warn" : "plain"),
+                title: row
+                  ? [
+                      quota?.fetched_at ? m("ui.last_checked_value", { v0: when(quota.fetched_at) }) : "",
+                      row.reset_at ? when(row.reset_at) : ""
+                    ]
+                      .filter(Boolean)
+                      .join(DISPLAY_SEPARATOR)
+                  : m("ui.team_quota_unknown"),
+                text:
+                  m(seconds === 18000 ? "ui.team_quota_5h" : "ui.team_quota_week") + ": " +
+                  (hasValue ? row.remaining_percent.toFixed(0) + "%" : "—") +
+                  (stale ? " · " + m("ui.team_quota_stale") : "")
+              });
+            });
+            return el(
+              "div",
+              { class: "team-group-account", "data-credential-ref": item.ref },
+              el("span", { class: "team-account-name", text: credentialLabel(item) }),
+              el("span", {
+                class: "tag " + (item.disabled ? "plain" : item.unavailable ? "warn" : "ok"),
+                text: m(item.disabled ? "ui.disabled" : item.unavailable ? "ui.unavailable" : "ui.enabled")
+              }),
+              ...windows,
+              !windows.length && !error
+                ? el("span", {
+                    class: "small muted",
+                    text: m(quota || (!file?.quota_supported && !integration) ? "ui.team_quota_unavailable" : "ui.team_quota_not_queried")
+                  })
+                : null,
+              error ? el("span", { class: "auth-quota-error small", text: error }) : null
+            );
+          }),
+          !items.length ? el("span", { class: "small muted", text: m("ui.team_group_no_accounts") }) : null,
+          group.disabled ? el("span", { class: "small muted", text: m("ui.team_group_disabled_accounts") }) : null
+        );
+        const field = settingsEntryField(m("ui.team_group_accounts"), content);
+        field.classList.add("team-group-field");
+        return field;
+      }
+      async function refreshGroupQuotas(group) {
+        const owner = adminUIState, generation = authQuotaGeneration.admin;
+        owner.groupQuotaLoading ||= new Set();
+        if (owner.groupQuotaLoading.has(group.id)) return;
+        owner.groupQuotaLoading.add(group.id);
+        const refs = new Set(groupAccounts(group).map((item) => item.ref));
+        const files = (resources.admin.authFiles.value || []).filter((file) => refs.has(file.credential_ref) && file.quota_supported);
+        const integrations = [
+          ...new Map(
+            groupAccounts(group).map(groupAccountQuotaSource).map((source) => source.integration).filter(Boolean)
+              .map((account) => [account.id, account])
+          ).values()
+        ];
+        let next = 0;
+        renderGroups();
+        try {
+          await Promise.all(
+            Array.from({ length: Math.min(AUTH_QUOTA_BATCH_CONCURRENCY, files.length) }, async () => {
+              while (next < files.length && generation === authQuotaGeneration.admin) await loadAuthQuota(files[next++], false);
+            })
+          );
+          for (const account of integrations) {
+            if (owner !== adminUIState || generation !== authQuotaGeneration.admin) break;
+            const state = integrationState();
+            state.errors.delete(account.id);
+            try {
+              state.quota.set(
+                account.id,
+                await plugin("POST", "/integrations/query", { id: account.id }, { command: true, timeoutMS: 65000 })
+              );
+            } catch (error) {
+              state.errors.set(account.id, error.message || String(error));
+              if (error instanceof AuthError) throw error;
+            }
+          }
+        } finally {
+          owner.groupQuotaLoading.delete(group.id);
+          if (owner === adminUIState) {
+            persistAuthQuotaCache(false);
+            renderGroups();
+          }
+        }
+      }
+
       function renderGroups() {
         if (
           renderDataPending(
@@ -8339,6 +9362,7 @@
               group.name || group.id,
               [
                 ...groupRoutingFields(group),
+                groupAccountField(group),
                 boundKeyField(resources.admin.keys.value.filter((key) => (key.group_ids || []).includes(group.id)))
               ],
               () => editGroup(group),
@@ -9657,7 +10681,7 @@
           } while (result.cursor);
           const entries = result.page.entries;
           const stamp = new Date().toISOString().replaceAll(":", "-").slice(0, 19);
-          const name = "cpa-key-billing-" + (account ? "account-" : "") + view.tab + "-";
+          const name = "cpa-team-manager-" + (account ? "account-" : "") + view.tab + "-";
           downloadCSV(name + stamp + ".csv", eventCSV(entries, kind, account));
           notify(m("ui.exported_value_value_records", { v0: int(entries.length), v1: view.label }));
         } finally {
@@ -11017,7 +12041,7 @@
           tab.classList.toggle("active", active);
           tab.setAttribute("aria-selected", String(active));
         }
-        const visible = selected === "settings" ? new Set(["routes", "prices", "plugin-logs"]) : new Set([selected]);
+        const visible = selected === "settings" ? new Set(["routes", "prices", "plugin-logs", "persistence"]) : new Set([selected]);
         for (const section of [
           "keys",
           "analysis",
@@ -11029,7 +12053,10 @@
           "request-events",
           "errors",
           "auth-files",
-          "plugin-logs"
+          "integrations",
+          "risk",
+          "plugin-logs",
+          "persistence"
         ]) { $("tab-" + section).classList.toggle("hidden", !visible.has(section)); }
         $("shared-time-filter").classList.toggle("hidden", !["analysis", "request-events", "errors"].includes(selected));
         $("events-export").classList.toggle("hidden", !["request-events", "errors"].includes(selected));
@@ -11058,6 +12085,25 @@
       };
       $("keys-edit-groups").onclick = () => editKeyGroups([...adminUIState.selectedKeys]);
       $("access-control-save").onclick = saveAccessControl;
+      $("integration-new").onclick = () => editIntegration();
+      $("integration-kind").onchange = syncIntegrationForm;
+      $("integration-save").onclick = () => submitEditor("integration-dialog", saveIntegration);
+      $("integration-device-start").onclick = () => guard(startIntegrationDevice);
+      $("integration-device-stop").onclick = () => stopIntegrationDevice();
+      $("integration-dialog").addEventListener("close", () => {
+        stopIntegrationDevice();
+        $("integration-api-key").value = "";
+        $("integration-cookie").value = "";
+      });
+      $("team-require-state").onchange = () => guard(saveTeamStateGate);
+      $("risk-save").onclick = () => guard(saveRiskCenter);
+      $("risk-clear-hashes").onclick = () => guard(() => clearRiskData("hashes"));
+      $("risk-clear-events").onclick = () => guard(() => clearRiskData("events"));
+      for (const field of RISK_FIELDS)
+        $("risk-" + field).addEventListener("input", () => {
+          adminUIState.riskDirty = true;
+          renderRiskCenter();
+        });
       $("turn-state-account-search").oninput = () => renderTurnStateAccounts(turnStateBusy());
       $("turn-state-account-filter").onchange = () => renderTurnStateAccounts(turnStateBusy());
       for (const [id, selected] of [["all", true], ["none", false]])
@@ -11070,7 +12116,16 @@
           renderTurnState();
         };
       $("turn-state-clear-cooldowns").onclick = () => guard(() => clearTurnStateCooldowns());
-      $("turn-state-save").onclick = () => guard(saveTurnState);
+      for (const button of document.querySelectorAll("[data-state-save], #turn-state-save")) button.onclick = () => guard(saveTurnState);
+      $("turn-state-discard").onclick = () =>
+        guard(async () => {
+          if (!(await openActionDialog(m("ui.state_discard"), m("ui.state_discard_warning")))) return;
+          adminUIState.turnStateDirty = false;
+          adminUIState.turnStateShown = undefined;
+          const pools = turnStatePoolState();
+          for (const pool of Object.keys(TURN_STATE_POOLS)) $("turn-state-" + TURN_STATE_POOLS[pool]).value = pools.baseline[pool] || "";
+          renderTurnState();
+        });
       $("turn-state-refresh").onclick = () => guard(refreshTurnState);
       $("turn-state-probe-start").onclick = () => guard(startTurnStateProbe);
       $("turn-state-probe-stop").onclick = () => stopTurnStateProbe();
@@ -11086,7 +12141,13 @@
       for (const field of TURN_STATE_FIELDS.filter((field) => field !== "save")) {
         $("turn-state-" + field).addEventListener("input", () => {
           adminUIState.turnStateDirty = true;
-          setText($("turn-state-draft-status"), m("ui.state_unsaved"));
+          setText($("turn-state-draft-status"), m("ui.state_apply_unsaved"));
+          document.querySelector(".state-save-bar").classList.add("has-changes");
+          for (const button of document.querySelectorAll("[data-state-save], #turn-state-save, #turn-state-discard"))
+            button.disabled =
+              !!adminUIState.turnStateSaving || turnStateProbe.inFlight || turnStateDiagnostics.running || turnStateDiagnostics.inFlight ||
+              turnStatePoolState().loading;
+          $("turn-state-probe-start").disabled = true;
           if (["ttl", "renew-before"].includes(field)) renderTurnStateRenewHelp();
           if (["proxies", "rotating"].includes(field)) renderTurnStateDiagnostics();
         });

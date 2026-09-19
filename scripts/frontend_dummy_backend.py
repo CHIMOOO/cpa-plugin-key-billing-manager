@@ -15,8 +15,8 @@ from urllib.parse import parse_qs, urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
 UI_PATH = ROOT / "internal" / "plugin" / "ui.html"
-API_BASE = "/v0/management/plugins/cpa-key-billing"
-RESOURCE_BASE = "/v0/resource/plugins/cpa-key-billing"
+API_BASE = "/v0/management/plugins/cpa-team-manager"
+RESOURCE_BASE = "/v0/resource/plugins/cpa-team-manager"
 NOW = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
 CALLER_SCOPE_SALT = b"cli-proxy-api:caller-scope:v1\0"
 
@@ -425,6 +425,7 @@ AUTH_FILE_CREDENTIAL_REFS = {
 }
 
 for auth_file in AUTH_FILES:
+    auth_file["credential_ref"] = AUTH_FILE_CREDENTIAL_REFS.get(auth_file["auth_index"], "sha256:" + "9" * 64)
     auth_file["cache_revision"] = iso(NOW - timedelta(minutes=5))
 
 AUTH_CATEGORY_ORDER = {"claude": 0, "antigravity": 1, "codex": 2, "xai": 3, "kimi": 4}
@@ -452,16 +453,16 @@ AUTH_FILE_QUOTAS = {
         "plan": "pro-20x",
         "rate_limit_reset_credits_available_count": 1,
         "quota": [
-            quota_row("周限额", 62, 432000),
+            quota_row("周限额", 62, 432000, scope="account", window_seconds=604800),
             quota_row(
                 "GPT-5.3-Codex-Spark 5 小时限额",
                 100,
-                18000,
+                18000, scope="spark", window_seconds=18000,
             ),
             quota_row(
                 "GPT-5.3-Codex-Spark 周限额",
                 100,
-                604800,
+                604800, scope="spark", window_seconds=604800,
             ),
         ],
     },
@@ -469,15 +470,15 @@ AUTH_FILE_QUOTAS = {
         "plan": "plus",
         "rate_limit_reset_credits_available_count": 1,
         "quota": [
-            quota_row("5 小时限额", 35, 14400),
-            quota_row("周限额", 90, 518400),
+            quota_row("5 小时限额", 35, 14400, scope="account", window_seconds=18000),
+            quota_row("周限额", 90, 518400, scope="account", window_seconds=604800),
         ],
     },
     "auth-demo-claude": {
         "plan": "Team",
         "quota": [
-            quota_row("5 小时限额", 76, 12600),
-            quota_row("周限额", 59, 388800),
+            quota_row("5 小时限额", 76, 12600, scope="account", window_seconds=18000),
+            quota_row("周限额", 59, 388800, scope="account", window_seconds=604800),
             {
                 "label": "额外用量",
                 "used": 12.5,
@@ -1073,7 +1074,7 @@ PLUGIN_LOGS = [
         "at": iso(NOW - timedelta(minutes=11)),
         "level": "info",
         "message": (
-            "已加载计费数据库 /srv/cli-proxy-api/plugins/cpa-key-billing-state-v1.db："
+            "已加载计费数据库 /srv/cli-proxy-api/plugins/cpa-team-manager-state-v1.db："
             "8 个 API Key、3 个订阅计划、29 条请求事件。已启用。"
         ),
     },
@@ -1425,7 +1426,68 @@ def group_rows():
     return [group_row(group) for group in GROUPS]
 
 
+
+TEAM_ACCOUNT_SETTINGS = {"require_turn_state": True, "accounts": {}}
+TEAM_RISK = {"config": {"enabled": False, "mode": "observe", "blocked_keywords": [], "model_filter": {"mode": "all", "models": []}, "remember_hashes": True, "block_status": 403, "block_message": "Request blocked by configured risk policy", "retention_days": 30, "max_events": 500}, "status": {"observed": 3, "blocked": 0, "not_inspected": 2, "remembered_hashes": 1}, "events": [{"at": iso(NOW), "decision": "observed", "reason": "keyword", "model": "gpt-5.4", "caller_ref": "sha256:" + "a" * 64}, {"at": iso(NOW), "decision": "not_inspected", "reason": "payload_unavailable", "model": "gpt-5.4"}], "storage_error": ""}
+TEAM_INTEGRATIONS = []
+TEAM_CHANNELS = [{"name": "DeepSeek", "disabled": False, "api-key-entries": [{"api-key": "sk-dummy-deepseek"}], "extra-preserve": {"value": 42}}]
+TEAM_DEVICE_LOGINS = {}
+TEAM_NATIVE_CHANNELS = {"codex-api-key": [{"prefix": "other-codex", "api-key": "sk-dummy-codex", "extra-preserve": 123}], "claude-api-key": [{"prefix": "other-claude", "api-key": "sk-dummy-claude", "extra-preserve": 456}]}
+
+def team_account_runtime():
+    return {"accounts": [{"credential_ref": item["ref"], "auth_index": next((file["auth_index"] for file in AUTH_FILES if file["credential_ref"] == item["ref"]), ""), "name": item["display_name"], "provider": item["provider"], "disabled": item["disabled"], "concurrency_limit": TEAM_ACCOUNT_SETTINGS["accounts"].get(item["ref"], {}).get("concurrency_limit", 0), "current_concurrency": index % 3, "usage": {"requests": 80 + index, "successes": 76, "failures": 4 + index, "total_tokens": 82500, "amount_usd": 3.42, "last_used_at": iso(NOW)}} for index, item in enumerate(CREDENTIALS)], "settings": TEAM_ACCOUNT_SETTINGS, "usage_retention_days": 365, "host_schema": 6, "turn_state_host_supported": True}
+
+def team_channels(account):
+    descriptors = []
+    if account["kind"].startswith("opencode-"):
+        protocols = [("chat", "openai-compatibility", "name"), ("responses", "codex-api-key", "prefix"), ("anthropic", "claude-api-key", "prefix")]
+    else:
+        protocols = [("chat", "openai-compatibility", "name")]
+    for protocol, resource, field in protocols:
+        identity = account["channel_name"] + "-" + protocol
+        models = [name for name in account["models"] if ("anthropic" if name.startswith("claude") else "responses" if name.startswith("gpt") else "chat") == protocol] if account["kind"].startswith("opencode-") else account["models"]
+        config = {field: identity, "base-url": account["base_url"], "models": [{"name": name, "alias": ""} for name in models]}
+        if resource == "openai-compatibility":
+            config["api-key-entries"] = [{"api-key": "sk-dummy-integration-fixture"}]
+        else:
+            config["api-key"] = "sk-dummy-integration-fixture"
+        descriptors.append({"resource": resource, "identity_field": field, "identity": identity, "protocol": protocol, "models": models, "config": config if models else None})
+    account["channels"] = [{key: value for key, value in descriptor.items() if key != "config"} for descriptor in descriptors]
+    account["client_models"] = [descriptor["identity"] + "/" + model if descriptor["resource"] != "openai-compatibility" else model for descriptor in descriptors for model in descriptor["models"]]
+    return descriptors
+
+def team_response(account):
+    channels = team_channels(account)
+    return {"account": dict(account), "channels": channels, "migration_id": account.get("pending_migration", "")}
+
+def team_integration(body):
+    identity = body.get("id") or "demo-integration-" + str(len(TEAM_INTEGRATIONS) + 1)
+    account = next((item for item in TEAM_INTEGRATIONS if item["id"] == identity), None)
+    if account is None:
+        account = {"id": identity, "kind": body.get("kind", "cline-pass"), "channel_name": "team-" + identity, "base_url": "https://dummy.example/v1", "has_api_key": True, "has_auth_cookie": False, "has_refresh_token": body.get("kind") == "cline-pass", "models": ["gpt-5.4"]}
+        TEAM_INTEGRATIONS.append(account)
+    if body.get("id") and body.get("api_key"):
+        account["pending_migration"] = "demo-migration-" + identity
+    for key in ["name", "models", "workspace_id"]:
+        if key in body:
+            account[key] = body[key]
+    if body.get("auth_cookie"):
+        account["has_auth_cookie"] = True
+    return team_response(account)
+
 def payload_for(path, query):
+    if path == f"{API_BASE}/account-runtime":
+        return team_account_runtime()
+    if path == f"{API_BASE}/risk-center":
+        return TEAM_RISK
+    if path == f"{API_BASE}/integrations":
+        return {"accounts": TEAM_INTEGRATIONS, "providers": []}
+    if path == "/v0/management/openai-compatibility":
+        return {"openai-compatibility": TEAM_CHANNELS}
+    if path in {"/v0/management/codex-api-key", "/v0/management/claude-api-key"}:
+        resource = path.rsplit("/", 1)[-1]
+        return {resource: TEAM_NATIVE_CHANNELS[resource]}
+
     if path == f"{API_BASE}/persistence":
         return {"detected": True, "container": True, "at_risk": True, "can_configure": False,
                 "paths": [{"kind": "billing_database", "path": "/app/data/billing.db", "state": "container_layer"},
@@ -1494,13 +1556,9 @@ def payload_for(path, query):
                 "interactions-api-key": [],
                 "xai-api-key": [],
                 "vertex-api-key": [],
-                "codex-api-key": [{"api-key": "sk-dummy-codex", "prefix": "codex"}],
-                "claude-api-key": [{"api-key": "sk-dummy-claude", "prefix": "claude"}],
-                "openai-compatibility": [{
-                    "name": "DeepSeek",
-                    "disabled": False,
-                    "api-key-entries": [{"api-key": "sk-dummy-deepseek"}],
-                }],
+                "codex-api-key": TEAM_NATIVE_CHANNELS["codex-api-key"],
+                "claude-api-key": TEAM_NATIVE_CHANNELS["claude-api-key"],
+                "openai-compatibility": TEAM_CHANNELS,
             })
         return config
     if path == "/v1/models":
@@ -1666,6 +1724,78 @@ class Handler(BaseHTTPRequestHandler):
             self.mutation_view = json.loads(request_body or b"{}")
             request_body = json.dumps(self.mutation_view.get("data") or {}).encode()
         route = self.command, parsed.path
+        if self.command == "PUT" and parsed.path in {"/v0/management/openai-compatibility", "/v0/management/codex-api-key", "/v0/management/claude-api-key"}:
+            body = json.loads(request_body or b"[]")
+            if not isinstance(body, list):
+                self.send_json(400, {"error": {"message": "Expected a raw channel array"}})
+                return
+            if parsed.path.endswith("/openai-compatibility"):
+                TEAM_CHANNELS[:] = body
+            else:
+                TEAM_NATIVE_CHANNELS[parsed.path.rsplit("/", 1)[-1]][:] = body
+            self.send_json(200, {"status": "ok"})
+            return
+        if route == ("PUT", f"{API_BASE}/account-runtime/settings"):
+            body = json.loads(request_body or b"{}")
+            if "accounts" in body:
+                TEAM_ACCOUNT_SETTINGS["accounts"].update(body["accounts"])
+            if "require_turn_state" in body:
+                TEAM_ACCOUNT_SETTINGS["require_turn_state"] = body["require_turn_state"]
+            self.send_json(200, TEAM_ACCOUNT_SETTINGS)
+            return
+        if route == ("PUT", f"{API_BASE}/risk-center/config"):
+            TEAM_RISK["config"].update(json.loads(request_body or b"{}"))
+            self.send_json(200, TEAM_RISK)
+            return
+        if self.command == "DELETE" and parsed.path in {f"{API_BASE}/risk-center/events", f"{API_BASE}/risk-center/hashes"}:
+            if parsed.path.endswith("/events"):
+                TEAM_RISK["events"] = []
+            else:
+                TEAM_RISK["status"]["remembered_hashes"] = 0
+            self.send_json(200, TEAM_RISK)
+            return
+        if parsed.path.startswith(f"{API_BASE}/integrations"):
+            body = json.loads(request_body or b"{}")
+            account = next((item for item in TEAM_INTEGRATIONS if item["id"] == body.get("id")), None)
+            if route == ("POST", f"{API_BASE}/integrations"):
+                self.send_json(200, team_integration(body))
+            elif route == ("POST", f"{API_BASE}/integrations/cline/device"):
+                login_id = "demo-login-" + str(len(TEAM_DEVICE_LOGINS) + 1)
+                TEAM_DEVICE_LOGINS[login_id] = {"name": body["name"], "kind": "cline-pass", "polls": 0}
+                self.send_json(200, {"login_id": login_id, "user_code": "TEST-CODE", "verification_uri": "https://auth.cline.bot/device", "expires_at": iso(datetime.now(timezone.utc) + timedelta(minutes=10)), "interval": 5})
+            elif route == ("POST", f"{API_BASE}/integrations/commit"):
+                if not account or account.get("pending_migration") != body.get("migration_id"):
+                    self.send_json(409, {"error": {"message": "Migration not found"}})
+                else:
+                    account.pop("pending_migration", None)
+                    self.send_json(200, {"status": "complete"})
+            elif route == ("POST", f"{API_BASE}/integrations/cline/cancel"):
+                login = TEAM_DEVICE_LOGINS.get(body["login_id"], {})
+                if login.get("account"):
+                    self.send_json(200, {"status": "complete", **login["account"]})
+                else:
+                    login["cancelled"] = True
+                    self.send_json(200, {"status": "cancelled"})
+            elif route == ("POST", f"{API_BASE}/integrations/cline/poll"):
+                login = TEAM_DEVICE_LOGINS[body["login_id"]]
+                login["polls"] += 1
+                if login["polls"] < 2:
+                    self.send_json(200, {"status": "pending", "interval": 5})
+                else:
+                    login["account"] = team_integration(login)
+                    self.send_json(200, {"status": "complete", **login["account"]})
+            elif account and self.command == "DELETE":
+                TEAM_INTEGRATIONS.remove(account)
+                self.send_json(200, {"ok": True})
+            elif account and parsed.path.endswith(("/channel", "/refresh")):
+                if parsed.path.endswith("/refresh"):
+                    account["pending_migration"] = "demo-migration-" + account["id"]
+                self.send_json(200, team_response(account))
+            elif account and parsed.path.endswith("/query"):
+                self.send_json(200, {"account": account, "quota_supported": True, "models": ["gpt-5.4", "claude-opus-4.6"], "quota": {"plan": "Demo subscription", "fetched_at": iso(datetime.now(timezone.utc)), "quota": [quota_row("5-hour limit", 62, 18000, scope="account", window_seconds=18000), quota_row("Weekly limit", 43, 604800, scope="account", window_seconds=604800), {"label": "Credits", "remaining": 5.5, "currency": "USD"}]}})
+            else:
+                self.send_json(404, {"error": {"message": "Integration not found"}})
+            return
         if route == ("POST", f"{API_BASE}/turn-state/proxies/read"):
             body = json.loads(request_body or b"{}")
             pool, offset = body.get("pool"), body.get("offset", 0)

@@ -23,7 +23,7 @@ test("catalog keys and interpolation arguments match", () => {
 });
 
 test("visible HTML copy is localized, with English fallbacks matching the catalog", () => {
-  const technicalLabels = new Set(["API Key", "Claude", "Antigravity", "Codex", "xAI", "Kimi", "CPA Key Billing", "Codex Turn State", "cpa-plugin-codex-turn-state"]);
+  const technicalLabels = new Set(["API Key", "Claude", "Antigravity", "Codex", "xAI", "Kimi", "CPA Key Billing", "Codex Turn State", "cpa-plugin-codex-turn-state", "OpenCode Go", "OpenCode Zen", "CommandCode", "Cline Pass"]);
   const visit = (node, translated = false) => {
     if (["script", "style", "svg"].includes(node.tagName)) return;
     const attrs = Object.fromEntries((node.attrs || []).map(attr => [attr.name, attr.value]));
@@ -68,7 +68,7 @@ test("all literal UI message references exist and scripts parse", () => {
 function environment(stored, hostLanguage, { crossOrigin = false, search = "" } = {}) {
   const listeners = {}, root = { lang: "" };
   const document = { documentElement: root, createTreeWalker: () => ({ currentNode: root, nextNode: () => false }), querySelectorAll: () => [] };
-  const storage = new Map(stored ? [["cpa-key-billing:language", stored]] : []);
+  const storage = new Map(stored ? [["cpa-team-manager:language", stored]] : []);
   const window = { addEventListener: (name, fn) => { listeners[name] = fn; }, dispatchEvent: () => {} };
   window.parent = hostLanguage ? { document: { documentElement: { lang: hostLanguage } } } : window;
   const posted = [];
@@ -82,7 +82,7 @@ function environment(stored, hostLanguage, { crossOrigin = false, search = "" } 
     BILLING_MESSAGES: { en, "zh-CN": zh } });
   vm.runInContext(runtime, context);
   return { i18n: window.billingI18n, window, listeners, posted, storage, evaluate: source => vm.runInContext(source, context), change: (language) => {
-    storage.set("cpa-key-billing:language", language); listeners.storage({ key: "cpa-key-billing:language" });
+    storage.set("cpa-team-manager:language", language); listeners.storage({ key: "cpa-team-manager:language" });
   } };
 }
 
@@ -178,7 +178,7 @@ test("cross-origin language messages require the expected parent, origin, and ve
   assert.equal(env.i18n.current(), "en");
   env.listeners.message({ ...valid, data: { ...valid.data, language: "zh-TW" } });
   assert.equal(env.i18n.current(), "zh-CN");
-  assert.equal(env.storage.get("cpa-key-billing:language"), "en", "host language must not overwrite the standalone preference");
+  assert.equal(env.storage.get("cpa-team-manager:language"), "en", "host language must not overwrite the standalone preference");
   assert.equal(environment(undefined, undefined, { crossOrigin: true, search: "?parent_origin=data%3Atext%2Fhtml%2C" }).listeners.message, undefined);
 });
 

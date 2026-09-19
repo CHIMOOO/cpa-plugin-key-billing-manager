@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  const storageKey = "cpa-key-billing:language";
+  const storageKey = "cpa-team-manager:language";
   const embedded = window.parent !== window;
   const bindings = new WeakMap();
   const normalize = (value) => /^zh(?:-|$)/i.test(String(value || "")) ? "zh-CN" : "en";
