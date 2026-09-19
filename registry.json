@@ -3,13 +3,13 @@
   "plugins": [
     {
       "id": "cpa-key-billing",
-      "name": "CPA Key Billing Manager",
-      "description": "API Key 多分组访问控制、凭证白名单、用量计费与订阅额度管理",
+      "name": "API Key 团队管理",
+      "description": "团队 API Key 管理：密钥分组、权限控制、上游路由、独立模型订阅额度、用量计费与 Codex Turn State 采集注入",
       "author": "CHIMOOO",
       "version": "0.0.6",
       "repository": "https://github.com/CHIMOOO/cpa-plugin-key-billing-manager",
       "license": "MIT",
-      "tags": ["access-control", "billing", "routing"]
+      "tags": ["api-key", "apikey", "team", "团队", "密钥", "分组", "权限", "access-control", "billing", "计费", "quota", "额度", "subscription", "订阅", "routing", "路由", "codex", "turn-state", "采集", "代理"]
     }
   ]
 }

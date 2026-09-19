@@ -17,11 +17,11 @@ const (
 // `plugins.configs` key, and the Management/resource route segment.
 const (
 	PluginID   = "cpa-key-billing"
-	PluginName = "cpa-key-billing"
+	PluginName = "API Key 团队管理"
 	Version    = "0.0.6"
 
-	MenuLabel       = "API Key Manager"
-	MenuDescription = "Manage downstream API key routing, billing, concurrency limits, subscription quotas, and usage"
+	MenuLabel       = "API Key 团队管理"
+	MenuDescription = "API Key team management: groups, routing, billing, subscription quotas, and Codex Turn State"
 
 	GitHubRepository = "https://github.com/CHIMOOO/cpa-plugin-key-billing-manager"
 )

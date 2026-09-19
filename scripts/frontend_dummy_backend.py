@@ -26,7 +26,7 @@ HOST_SHELL = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>__HOST_LABEL__ · API Key 管理样式预览</title>
+<title>__HOST_LABEL__ · API Key 团队管理样式预览</title>
 <style>
 :root{
   --bg-secondary:#faf9f5;--bg-primary:#f0eee8;--bg-tertiary:#e9e6df;--bg-hover:var(--bg-tertiary);
@@ -146,10 +146,10 @@ html[data-host=cpamp] #plugin-frame{background:var(--bg-primary)}
 <body>
 <aside class="sidebar">
   <div class="brand"><span class="brand-mark">◈</span><span>__HOST_LABEL__</span></div>
-  <div class="nav-placeholder"><span>仪表盘</span><span>AI 提供商</span><span>插件管理</span><span class="active">API Key 管理</span></div>
+  <div class="nav-placeholder"><span>仪表盘</span><span>AI 提供商</span><span>插件管理</span><span class="active">API Key 团队管理</span></div>
 </aside>
 <header class="navbar">
-  <div class="navbar-left"><button class="mobile-menu" title="菜单">☰</button><span>API Key 管理</span></div>
+  <div class="navbar-left"><button class="mobile-menu" title="菜单">☰</button><span>API Key 团队管理</span></div>
   <div class="theme-controls" aria-label="预览主题">
     <select id="host-language" aria-label="Language"><option value="en">English</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="ru">Русский</option></select>
     <button type="button" data-action="refresh" title="刷新">↻</button>
@@ -158,7 +158,7 @@ html[data-host=cpamp] #plugin-frame{background:var(--bg-primary)}
     <button type="button" data-theme-choice="dark" title="深色主题">●</button>
   </div>
 </header>
-<main class="content"><iframe id="plugin-frame" src="/ui" title="API Key 管理插件"></iframe></main>
+<main class="content"><iframe id="plugin-frame" src="/ui" title="API Key 团队管理插件"></iframe></main>
 <script>
 "use strict";
 const HOST_MODE="__HOST_MODE__";
@@ -273,7 +273,7 @@ def refresh_key_quota(key):
     previous = QUOTA_CYCLES.get(key["scope"], {})
     cycles = {}
     now = datetime.now(timezone.utc)
-    key.update(plan_name=plan["name"] if plan else "", unlimited=plan is None, blocked=False, windows=[])
+    key.update(plan_name=plan["name"] if plan else "", unlimited=plan is None, blocked=False, partially_blocked=False, windows=[])
     key.pop("retry_at", None)
     for window in plan["windows"] if plan else []:
         cycle = previous.get(window["id"], {})
@@ -300,13 +300,18 @@ def refresh_key_quota(key):
         view = dict(id=window["id"], name=window["name"], period_seconds=window["period_seconds"],
                     started=started, blocked=any(dimension["blocked"] for dimension in dimensions),
                     dimensions=dimensions)
+        if window.get("scope"):
+            view["scope"] = window["scope"]
         if window.get("cycle_anchor_at"):
             view["cycle_anchor_at"] = window["cycle_anchor_at"]
         if started:
             view.update(start_at=cycle["start_at"], end_at=cycle["end_at"])
         if view["blocked"]:
-            key["blocked"] = True
-            key["retry_at"] = max(key.get("retry_at", ""), view["end_at"])
+            if window.get("scope"):
+                key["partially_blocked"] = True
+            else:
+                key["blocked"] = True
+                key["retry_at"] = max(key.get("retry_at", ""), view["end_at"])
         key["windows"].append(view)
     QUOTA_CYCLES[key["scope"]] = cycles
 
@@ -610,13 +615,14 @@ ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 TURN_STATE_CONFIG = {
     "enabled": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
     "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
-    "models": ["gpt6", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
+    "models": ["gpt-6-astra", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
 TURN_STATE_COUNTERS = {"injected": 0, "learned": 0, "passed": 0}
 TURN_STATE_LAST = {}
 TURN_STATE_UPLOADS = {}
 TURN_STATE_PROGRESS = {}
+TURN_STATE_PROBE_STATS = {"attempts": 0, "harvested": 0, "degraded": 0, "failed": 0, "unchanged": 0}
 
 
 def ui_message(key):
@@ -634,7 +640,9 @@ def turn_state_view():
     return {"config": config, "templates": templates, "counters": TURN_STATE_COUNTERS,
             "server_time": iso(now),
             "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
-            "last_decision": TURN_STATE_LAST, "probe_supported": True, "probe_unavailable_reason": "",
+            "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS,
+            "probe_progress": {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)},
+            "probe_supported": True, "probe_unavailable_reason": "",
             "host_requirement": ui_message("backend.turn_state_host_requirement")["message"],
             "host_requirement_message": {"message_key": "backend.turn_state_host_requirement"},
             "probe_accounts": [{"account": item["ref"], "label": item["display_name"],
@@ -1418,6 +1426,11 @@ def group_rows():
 
 
 def payload_for(path, query):
+    if path == f"{API_BASE}/persistence":
+        return {"detected": True, "container": True, "at_risk": True, "can_configure": False,
+                "paths": [{"kind": "billing_database", "path": "/app/data/billing.db", "state": "container_layer"},
+                          {"kind": "turn_state", "path": "/app/data/turn-state.json", "state": "container_layer"},
+                          {"kind": "plugin_library", "path": "/app/plugins/key-billing.so", "state": "mounted"}]}
     if path == f"{API_BASE}/turn-state":
         return turn_state_view()
     if path == f"{API_BASE}/turn-state/probe-progress":
@@ -1599,7 +1612,7 @@ class Handler(BaseHTTPRequestHandler):
             elif parsed.path.endswith("/subscription"):
                 key = LIVE_KEYS[index]
                 refresh_key_quota(key)
-                self.send_json(200, {"subscription": {"name": key["plan_name"], "unlimited": key["unlimited"], "blocked": key["blocked"], "windows": key["windows"], "retry_at": key.get("retry_at")}, "concurrency": {"limit": key["concurrency_limit"], "current": key["current_concurrency"]}})
+                self.send_json(200, {"subscription": {"name": key["plan_name"], "unlimited": key["unlimited"], "blocked": key["blocked"], "partially_blocked": key.get("partially_blocked", False), "windows": key["windows"], "retry_at": key.get("retry_at")}, "concurrency": {"limit": key["concurrency_limit"], "current": key["current_concurrency"]}})
             elif parsed.path.endswith("/routing"):
                 self.send_json(200, account_routing_view(index))
             elif parsed.path.endswith("/prices"):
@@ -1740,18 +1753,35 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 TURN_STATE_TEMPLATES.clear()
             self.send_json(200, turn_state_view())
+        elif route == ("POST", f"{API_BASE}/turn-state/cooldowns/clear"):
+            body = json.loads(request_body or b"{}")
+            if body.get("confirm") is not True:
+                self.send_json(400, {"error": "confirmation required"})
+                return
+            self.send_json(200, dict(turn_state_view(), cleared=2))
+        elif route == ("POST", f"{API_BASE}/turn-state/self-test"):
+            body = json.loads(request_body or b"{}")
+            if body.get("confirm") is not True or not body.get("account") or not body.get("model"):
+                self.send_json(400, {"error": "scope and confirmation required"})
+                return
+            self.send_json(200, {"account": body["account"], "model": body["model"], "status": 200,
+                                 "length": 312, "reached": True, "harvested": False})
         elif route == ("POST", f"{API_BASE}/turn-state/probe"):
-            accounts, models = TURN_STATE_CONFIG["probe_accounts"], TURN_STATE_CONFIG["models"]
+            body = json.loads(request_body or b"{}")
+            accounts = [body["account"]] if body.get("account") else TURN_STATE_CONFIG["probe_accounts"]
+            models = [body["model"]] if body.get("model") else TURN_STATE_CONFIG["models"]
             if not accounts or not models:
                 self.send_json(400, {"error": ui_message("backend.turn_state_scope_required")})
                 return
             now = datetime.now(timezone.utc)
-            fresh = bool(TURN_STATE_TEMPLATES)
+            fresh = any(item["account"] == accounts[0] and item["model"] == models[0] for item in TURN_STATE_TEMPLATES)
             reason = ui_message("backend.turn_state_fresh" if fresh else "backend.turn_state_harvested")
             result = {"action": "fresh" if fresh else "harvested", "reason": reason["message"],
                       "reason_message": {"message_key": reason["message_key"]},
                       "account": accounts[0], "model": models[0], "next_check_at": iso(now + timedelta(seconds=60))}
             if not fresh:
+                TURN_STATE_PROBE_STATS["attempts"] += 1
+                TURN_STATE_PROBE_STATS["harvested"] += 1
                 static, rotating = TURN_STATE_CONFIG["probe_proxies"], TURN_STATE_CONFIG["probe_proxies_rotating"]
                 proxy = next(iter(static or rotating), "")
                 result.update({"exit": masked_dummy_proxy(proxy), "proxy_index": 1, "proxy_total": len(static) + len(rotating) or 1,

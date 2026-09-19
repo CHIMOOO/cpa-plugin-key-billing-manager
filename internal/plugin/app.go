@@ -141,7 +141,7 @@ func registration() Registration {
 		Metadata: Metadata{
 			Name:             PluginName,
 			Version:          Version,
-			Author:           PluginName,
+			Author:           "CHIMOOO",
 			GitHubRepository: GitHubRepository,
 			ConfigFields: []ConfigField{
 				{
