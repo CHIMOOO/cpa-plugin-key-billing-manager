@@ -72,17 +72,6 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	scope := metadataString(req.Metadata, MetadataCallerScope)
 	endpoint := metadataString(req.Metadata, MetadataRequestPath)
 
-	// The X-Forwarded-For rule is read on every request, so saving it applies to
-	// the next one. It refuses before routing, pricing, slots and quota are touched.
-	if !helper && carriesForwardedFor(req.Headers) {
-		if match, blocked := a.store.MatchForwardedForBlock(req.RequestedModel, req.Model); blocked {
-			report := match
-			report.Model = forwardedForLogModel(match.Model)
-			a.store.ReportForwardedForBlock(scope, endpoint, report)
-			return OKEnvelope(accessDeniedResponse(req.SourceFormat, match.Message))
-		}
-	}
-
 	// Reject disallowed models before quota checks can open a subscription period.
 	if !helper {
 		routing := a.store.ResolveRouting(scope, req.Model, req.RequestedModel)
@@ -158,7 +147,11 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 			metadataString(req.Metadata, MetadataSelectedIndex),
 		)
 	}
-	return OKEnvelope(a.enforceSelectedCredential(req))
+	response := a.enforceSelectedCredential(req)
+	if !response.Terminate && a != nil && a.turnState != nil && a.store != nil && a.store.Enabled() {
+		response.Headers, response.ClearHeaders = a.turnStateRequest(req)
+	}
+	return OKEnvelope(response)
 }
 
 func (a *App) completeRequest(raw []byte) ([]byte, error) {
@@ -167,6 +160,9 @@ func (a *App) completeRequest(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("解析请求完成事件：%w", errUnmarshal)
 	}
 	if a != nil && a.store != nil {
+		if a.turnState != nil {
+			a.turnState.Complete(completion.RequestID)
+		}
 		func() {
 			a.admissionsMu.Lock()
 			defer a.admissionsMu.Unlock()

@@ -1472,15 +1472,18 @@
       .route-rule-list { margin-top: 16px; max-height: min(28dvh, 240px); }
       .access-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
       .access-help { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; }
-      .forwarded-for-fields { display: grid; gap: 12px; margin-top: 14px; }
-      .forwarded-for-field { display: grid; gap: 4px; min-width: 0; }
-      .forwarded-for-fields .field { min-width: 0; }
-      .forwarded-for-fields input, .forwarded-for-fields textarea { width: 100%; min-width: 0; }
-      .forwarded-for-fields textarea { resize: vertical; }
-      :root .forwarded-for-fields textarea[aria-invalid="true"] {
-        border-color: var(--error-color);
-        box-shadow: inset 0 0 0 1px var(--error-color);
+      .turn-state-fields {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+        gap: 12px;
+        margin: 14px 0;
       }
+      .turn-state-fields .field { min-width: 0; margin: 0; }
+      .turn-state-fields input, .turn-state-fields select, .turn-state-fields textarea { width: 100%; min-width: 0; }
+      .turn-state-fields textarea { resize: vertical; }
+      .turn-state-wide { grid-column: 1 / -1; }
+      .turn-state-probe-log { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+      .turn-state-accounts { max-height: 160px; }
       .group-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
       .group-toolbar input { flex: 1 1 160px; min-width: 0; }
       .group-toolbar .native-select { max-width: 100%; }
@@ -1502,10 +1505,10 @@
         color: var(--primary-contrast);
         border-color: var(--primary-color);
       }
+      .credential-selection-help { padding: 0 12px 10px; }
       .credential-filter { width: calc(100% - 24px); margin: 0 12px 10px; }
       @media (max-width: 768px) {
         .route-form-toolbar { grid-template-columns: 1fr; gap: 12px; }
-      .credential-selection-help { padding: 0 12px 10px; }
         .route-dialog .route-form-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .route-form-toolbar > .row { grid-column: 1 / -1; justify-content: flex-start; padding-bottom: 0; }
         .route-picker { width: calc(100vw - 32px); }
@@ -2253,21 +2256,39 @@
             </div>
             <p class="access-help">访问控制开启时执行分组和路由限制。开启「默认拒绝未分组 Key」后，未加入任何分组的新 Key 和现有 Key 均无法访问上游。关闭访问控制后不执行这些限制，订阅额度与并发限制仍然生效。</p>
           </div>
-          <div class="card">
-            <div class="row spread settings-section-header"><h2>X-Forwarded-For 拦截</h2><button id="forwarded-for-block-save" class="primary" type="button" disabled>保存</button></div>
-            <div id="forwarded-for-block-status" class="notice hidden" role="status"></div>
+          <div class="card" id="turn-state-card">
+            <div class="row spread settings-section-header"><h2>Codex Turn State</h2><button id="turn-state-save" class="primary" type="button" disabled>保存</button></div>
+            <div id="turn-state-status" class="notice hidden" role="status"></div>
             <div class="access-controls">
-              <label class="toggle-filter"><input id="forwarded-for-block-enabled" type="checkbox" role="switch" disabled /><span>启用拦截</span></label>
+              <label class="toggle-filter"><input id="turn-state-enabled" type="checkbox" role="switch" disabled /><span>启用</span></label>
+              <label class="toggle-filter"><input id="turn-state-dry-run" type="checkbox" role="switch" disabled /><span>仅观察，不修改请求</span></label>
+              <label class="toggle-filter"><input id="turn-state-learn-responses" type="checkbox" role="switch" disabled /><span>从上游响应采集</span></label>
             </div>
-            <div class="forwarded-for-fields">
-              <div class="forwarded-for-field">
-                <label class="field">模型关键词<textarea id="forwarded-for-block-keywords" rows="3" placeholder="gpt&#10;claude" aria-describedby="forwarded-for-block-keywords-hint forwarded-for-block-keywords-error" disabled></textarea></label>
-                <div id="forwarded-for-block-keywords-hint" class="small muted">多个关键词用换行或逗号分隔；模型名称包含任一关键词即命中，不区分大小写</div>
-                <div id="forwarded-for-block-keywords-error" class="field-error small" role="alert"></div>
+            <div class="turn-state-fields">
+              <label class="field">注入模式<span class="native-select"><select id="turn-state-inject-mode" disabled><option value="replace-only">replace-only：仅替换指定长度的状态</option><option value="always">always：有有效模板就注入</option></select></span></label>
+              <label class="field">模板有效期（秒）<input id="turn-state-ttl" type="number" min="60" max="3600" step="1" disabled /></label>
+              <label class="field">有效模板长度<input id="turn-state-template-length" type="number" min="100" max="8192" step="1" disabled /></label>
+              <label class="field">待替换状态长度<input id="turn-state-replace-length" type="number" min="100" max="8192" step="1" disabled /></label>
+              <label class="field turn-state-wide">探测模型（一行一个）<textarea id="turn-state-models" rows="2" placeholder="例如：gpt-6-astra" disabled></textarea></label>
+            </div>
+            <p class="access-help">replace-only 仅替换匹配长度的请求头；always 也会写入缺失或其他长度的请求头。两种模式都需要同一账号、同一模型的未过期模板，不能保证模型回答质量。设置保存后立即生效。</p>
+            <p id="turn-state-host-requirement" class="access-help">HTTP / SSE 注入需要 CLIProxyAPI v7.3.4 或包含 Turn State 请求头转发支持的版本。旧版即使显示已注入，也可能未传给上游。WebSocket 复用连接仅在新握手时携带请求头。</p>
+            <details>
+              <summary>采集账号与代理</summary>
+              <p class="access-help">选择参与主动探测的账号；未选择时不发起探测。业务响应采集按上面的开关运行。</p>
+              <div id="turn-state-accounts" class="selection-list turn-state-accounts"></div>
+              <div class="turn-state-fields">
+                <div class="field"><label for="turn-state-proxies">静态代理（一行一个）</label><textarea id="turn-state-proxies" rows="4" placeholder="http://用户名:密码@主机:端口" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-proxy-count" class="small muted"></span><label class="toggle-filter"><input id="turn-state-clear-proxies" type="checkbox" disabled /><span>清空已保存的静态代理</span></label></div>
+                <div class="field"><label for="turn-state-rotating">轮换代理（一行一个）</label><textarea id="turn-state-rotating" rows="4" placeholder="http://用户名:密码@轮换入口:端口" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-rotating-count" class="small muted"></span><label class="toggle-filter"><input id="turn-state-clear-rotating" type="checkbox" disabled /><span>清空已保存的轮换代理</span></label></div>
               </div>
-              <label class="field">提示语<textarea id="forwarded-for-block-message" rows="2" placeholder="当前禁止模型混用，请联系相关管理员了解详情。" disabled></textarea></label>
-            </div>
-            <p class="access-help">开启后，模型名称包含任一关键词且请求头携带 X-Forwarded-For 的请求会被拒绝，返回 HTTP 403 和上面的提示语；提示语留空时使用默认提示语。保存后立即生效，无需重启。通过 WebSocket 调用 Responses API 的客户端（如 Codex CLI）只会看到连接被关闭，收不到提示语。注意：如果 CPA 部署在会自动添加 X-Forwarded-For 的反向代理之后，所有命中关键词的模型请求都会被拦截。</p>
+              <p class="access-help">代理留空会保留原值；输入新列表会整体替换对应池。支持 HTTP、HTTPS、SOCKS5、SOCKS5H URL。静态池失败后冷却 55 分钟，成功采集后按模板实际有效期续采；轮换池允许多次尝试，失败后冷却 10 分钟。</p>
+            </details>
+            <div class="row spread"><h3>探测与模板</h3><div class="row"><button id="turn-state-probe-start" type="button" disabled>开始探测</button><button id="turn-state-probe-stop" type="button" disabled>停止</button><button id="turn-state-refresh" type="button" disabled>刷新状态</button><button id="turn-state-clear-templates" class="danger" type="button" disabled>清空模板</button></div></div>
+            <p class="access-help">主动探测会直接请求上游并消耗账号额度，不计入下游 CPA 计费。保存采集范围后再开始；离开设置页或关闭页面会停止后续探测，已发出的请求会完成。</p>
+            <div id="turn-state-summary" class="small muted"></div>
+            <div id="turn-state-probe-status" class="small muted" role="status"></div>
+            <pre id="turn-state-probe-log" class="small turn-state-probe-log"></pre>
+            <div id="turn-state-templates"></div>
           </div>
           <div class="card">
             <div class="row spread settings-section-header"><h2>API Key 分组</h2><button id="group-new" type="button">新建分组</button></div>
@@ -2279,6 +2300,7 @@
             <div class="editor-state notice hidden"></div>
             <input id="group-id" type="hidden" />
             <label class="field">分组名称<input id="group-name" placeholder="例如：Codex 团队" /></label>
+            <label class="toggle-filter"><input id="group-enabled" type="checkbox" role="switch" checked /><span>启用分组</span></label>
             <div class="selection-section">
               <div class="small muted">绑定路由规则或直接选择上游凭证、模型</div>
               <p class="access-help">路由规则与直接选择合并生效，黑名单优先；仅授权白名单中的上游凭证，未选择的凭证不允许访问。</p>
@@ -2300,7 +2322,6 @@
                 <button id="group-key-all" class="link" type="button">全选筛选结果</button>
                 <button id="group-key-none" class="link" type="button">取消筛选结果</button>
               </div>
-            <label class="toggle-filter"><input id="group-enabled" type="checkbox" role="switch" checked /><span>启用分组</span></label>
               <div id="group-key-count" class="small muted"></div>
               <div id="group-key-list" class="selection-list"></div>
             </div>
@@ -2884,7 +2905,7 @@
           routes: "路由规则",
           groups: "API Key 分组",
           accessControl: "访问控制",
-          forwardedForBlock: "X-Forwarded-For 拦截",
+          turnState: "Codex Turn State",
           credentials: "凭证目录",
           models: "模型目录",
           catalog: "模型价格",
@@ -2933,7 +2954,7 @@
       const resourceGroups = {
         admin: {
           configuration: {
-            names: ["keys", "plans", "routes", "groups", "accessControl", "forwardedForBlock", "credentials", "models"],
+            names: ["keys", "plans", "routes", "groups", "accessControl", "turnState", "credentials", "models"],
             syncErrors: []
           },
           pricing: { names: ["catalog", "priceStatus"], after: "configuration" },
@@ -3360,6 +3381,7 @@
       }
 
       function resetRoleData(role) {
+        if (role === "admin") stopTurnStateProbe();
         const account = role === "account";
         destroyAnalysisCharts(account);
         if (role === "account") accountUIState = emptyAuthQuotaState();
@@ -3892,6 +3914,9 @@
         }
 
         for (const entry of configuredCredentialEntries(config, "openai-compatibility")) {
+          // CPA omits disabled parent providers before allocating stable IDs.
+          // Counting them would shift duplicate enabled credentials to the wrong ref.
+          if (entry.disabled === true) continue;
           const providerName = (entry.name || "").trim().toLowerCase() || "openai-compatibility";
           const provider =
             providerName === "openai-compatibility" || providerName.startsWith("openai-compatible-")
@@ -3914,9 +3939,6 @@
               ref: await configuredCredentialRef(
                 "openai-compatibility:" + providerName,
                 [apiKey, entry["base-url"], apiKeyEntry["proxy-url"]],
-          // CPA omits disabled parent providers before allocating stable IDs.
-          // Counting them would shift duplicate enabled credentials to the wrong ref.
-          if (entry.disabled === true) continue;
                 counters
               ),
               provider,
@@ -3980,9 +4002,7 @@
         await settleLoads([
           read("plans", () => fetchAdminCollection("plans")),
           read("accessControl", async () => validateAccessControl((await plugin("GET", "/access-control"))?.access_control)),
-          read("forwardedForBlock", async () =>
-            validateForwardedForBlock((await plugin("GET", "/forwarded-for-block"))?.forwarded_for_block)
-          ),
+          read("turnState", async () => validateTurnState(await plugin("GET", "/turn-state"))),
           read("models", async () => fetchModels(false, (await configuredKeys).find((key) => key.trim())?.trim() || "")),
           synced.then(() =>
             settleLoads(["keys", "routes", "groups", "credentials"].map((name) => read(name, () => fetchAdminCollection(name))))
@@ -4018,9 +4038,6 @@
         }
         if (Object.hasOwn(view, "access_control")) {
           Object.assign(resources.admin.accessControl, { value: validateAccessControl(view.access_control), error: "" });
-        }
-        if (Object.hasOwn(view, "forwarded_for_block")) {
-          Object.assign(resources.admin.forwardedForBlock, { value: validateForwardedForBlock(view.forwarded_for_block), error: "" });
         }
         const catalog = resources.admin.catalog;
         if (Object.hasOwn(view, "prices")) {
@@ -4393,7 +4410,7 @@
             query: "logs",
             sections: [
               section(["accessControl"], renderAccessControl),
-              section(["forwardedForBlock"], renderForwardedForBlock),
+              section(["turnState"], renderTurnState),
               keyedSection(["groups", "keys", "routes", "credentials"], renderGroups),
               keyedSection(["plans", "keys"], renderPlans),
               keyedSection(["routes", "keys", "credentials"], renderRoutes),
@@ -6554,23 +6571,6 @@
                       }
                     })
                   : null,
-                ...(options.length ? options : [el("div", { class: "routing-empty", text: "没有匹配的" + title })])
-              )
-            : null
-        );
-      }
-
-      function compactEnabledToggle(checked, onChange, title) {
-        return el(
-          "label",
-          { class: "toggle-filter compact-toggle", title },
-          switchControl({
-            input: el("input", {
-              type: "checkbox",
-              role: "switch",
-              "data-routing-focus": "enabled-only",
-              checked,
-              onchange: (event) => onChange(event.target.checked)
                 kind === "credentials"
                   ? el("p", {
                       class: "access-help credential-selection-help",
@@ -6595,6 +6595,23 @@
                       )
                     )
                   : null,
+                ...(options.length ? options : [el("div", { class: "routing-empty", text: "没有匹配的" + title })])
+              )
+            : null
+        );
+      }
+
+      function compactEnabledToggle(checked, onChange, title) {
+        return el(
+          "label",
+          { class: "toggle-filter compact-toggle", title },
+          switchControl({
+            input: el("input", {
+              type: "checkbox",
+              role: "switch",
+              "data-routing-focus": "enabled-only",
+              checked,
+              onchange: (event) => onChange(event.target.checked)
             })
           }),
           el("span", { text: "仅启用" })
@@ -6664,6 +6681,7 @@
             el(
               "div",
               { class: "row settings-entry-actions" },
+              control,
               el("button", { class: "link", text: "编辑", onclick: onEdit }),
               el("button", { class: "link danger", text: "删除", onclick: onDelete })
             )
@@ -6681,7 +6699,6 @@
         const deleted = keys.filter((key) => key.deleted_at).length;
         return keys.length + " 个 API Key" + (deleted ? "（其中 " + deleted + " 个已删除）" : "");
       }
-              control,
 
       function validateAccessControl(value) {
         if (!value || typeof value.enabled !== "boolean" || typeof value.deny_ungrouped !== "boolean") throw new Error("访问控制响应格式无效");
@@ -6732,109 +6749,277 @@
         }
       }
 
-      const FORWARDED_FOR_BLOCK_CONTROLS = [
-        "forwarded-for-block-enabled",
-        "forwarded-for-block-keywords",
-        "forwarded-for-block-message",
-        "forwarded-for-block-save"
+      const TURN_STATE_FIELDS = [
+        "enabled",
+        "dry-run",
+        "learn-responses",
+        "inject-mode",
+        "ttl",
+        "template-length",
+        "replace-length",
+        "models",
+        "proxies",
+        "rotating",
+        "clear-proxies",
+        "clear-rotating",
+        "save"
       ];
+      let turnStateProbe = { running: false, timer: 0, generation: 0, inFlight: false };
 
-      function validateForwardedForBlock(value) {
-        const keywords = value?.model_keywords;
-        if (
-          !value || typeof value.enabled !== "boolean" || typeof value.message !== "string" || !Array.isArray(keywords) ||
-          keywords.some((keyword) => typeof keyword !== "string")
-        )
-          throw new Error("X-Forwarded-For 拦截响应格式无效");
+      function validateTurnState(value) {
+        if (!value?.config || typeof value.config.enabled !== "boolean" || !["always", "replace-only"].includes(value.config.inject_mode))
+          throw new Error("Turn State 响应格式无效");
+        requireArray(value.templates, "Turn State 模板");
+        requireArray(value.probe_accounts, "Turn State 账号");
         return value;
       }
 
-      // Mirrors the server: trimmed, non-empty, case-insensitively unique, first spelling kept.
-      function forwardedForBlockKeywords(text) {
-        const seen = new Set();
-        return text.split(/[\n,，]/).map((keyword) => keyword.trim()).filter((keyword) => {
-          const folded = keyword.toLowerCase();
-          if (!keyword || seen.has(folded)) return false;
-          seen.add(folded);
-          return true;
-        });
-      }
+      function turnStateLines(value) { return [...new Set(value.split(/[\n,，]/).map((line) => line.trim()).filter(Boolean))]; }
 
-      function sameForwardedForBlock(left, right) {
-        return (
-          left.enabled === right.enabled && left.message === right.message && left.model_keywords.length === right.model_keywords.length &&
-          left.model_keywords.every((keyword, index) => keyword === right.model_keywords[index])
+      function renderTurnState() {
+        const resource = resources.admin.turnState;
+        const state = resource.value;
+        const saving = !!adminUIState.turnStateSaving;
+        for (const field of TURN_STATE_FIELDS) $("turn-state-" + field).disabled = !state || saving;
+        $("turn-state-save").textContent = saving ? "正在保存…" : "保存";
+        $("turn-state-refresh").disabled = !state || saving;
+        $("turn-state-clear-templates").disabled =
+          !state || saving || turnStateProbe.running || turnStateProbe.inFlight || !state.templates.length;
+        const status = $("turn-state-status");
+        status.className = resource.error ? "notice err show" : state ? "notice hidden" : "notice show";
+        status.textContent = resource.error || (state ? "" : "正在读取 Turn State 设置…");
+        if (!state) return;
+        const config = state.config;
+        if (state.host_requirement) $("turn-state-host-requirement").textContent = state.host_requirement;
+        // Status polling must not replace unsaved settings or typed proxy credentials.
+        const signature = JSON.stringify(config);
+        if (adminUIState.turnStateShown !== signature) {
+          for (const [field, value] of [
+            ["enabled", config.enabled],
+            ["dry-run", config.dry_run],
+            ["learn-responses", config.learn_responses]
+          ])
+            $("turn-state-" + field).checked = !!value;
+          for (const [field, value] of [
+            ["inject-mode", config.inject_mode],
+            ["ttl", config.ttl_seconds],
+            ["template-length", config.template_length],
+            ["replace-length", config.replace_length]
+          ])
+            $("turn-state-" + field).value = value;
+          $("turn-state-models").value = (config.models || []).join("\n");
+          $("turn-state-proxies").value = "";
+          $("turn-state-rotating").value = "";
+          $("turn-state-clear-proxies").checked = false;
+          $("turn-state-clear-rotating").checked = false;
+          adminUIState.turnStateShown = signature;
+          adminUIState.turnStateAccounts = new Set(config.probe_accounts || []);
+        }
+        const selected = adminUIState.turnStateAccounts;
+        const accounts = [...state.probe_accounts];
+        // Keep saved accounts that the host no longer advertises visible so an
+        // operator can remove stale/disabled IDs instead of sending them back
+        // on every save. The backend still owns availability and probing rules.
+        for (const account of selected) {
+          if (!accounts.some((item) => item.account === account)) { accounts.push({ account, label: "已保存但当前不可用 · " + account }); }
+        }
+        $("turn-state-accounts").replaceChildren(
+          ...(accounts.length
+            ? accounts.map((account) =>
+                el(
+                  "label",
+                  {},
+                  checkboxControl({
+                    input: el("input", {
+                      type: "checkbox",
+                      value: account.account,
+                      checked: selected.has(account.account),
+                      disabled: saving,
+                      onchange: (event) => {
+                        if (event.target.checked) selected.add(account.account); else selected.delete(account.account);
+                      }
+                    })
+                  }),
+                  el("span", { text: account.label || account.account })
+                )
+              )
+            : [el("div", { class: "empty", text: "暂无可探测的 Codex 账号" })])
+        );
+        $("turn-state-proxy-count").textContent = "已保存 " + (state.proxy_counts?.static || 0) + " 条；留空保留";
+        $("turn-state-rotating-count").textContent = "已保存 " + (state.proxy_counts?.rotating || 0) + " 条；留空保留";
+        $("turn-state-probe-start").disabled = saving || turnStateProbe.running || turnStateProbe.inFlight || !state.probe_supported;
+        $("turn-state-probe-stop").disabled = !turnStateProbe.running;
+        $("turn-state-probe-start").title = state.probe_unavailable_reason || "";
+        const counters = state.counters || {};
+        $("turn-state-summary").textContent =
+          "已注入 " + (counters.injected || 0) + " · 已采集 " + (counters.learned || 0) + " · 直通 " + (counters.passed || 0) +
+          (state.last_decision?.reason ? " · 最近：" + state.last_decision.reason : "");
+        if (!state.probe_supported) $("turn-state-probe-status").textContent = state.probe_unavailable_reason || "当前宿主不支持主动探测";
+        $("turn-state-templates").replaceChildren(
+          ...(state.templates.length
+            ? state.templates.map((template) =>
+                el(
+                  "div",
+                  { class: "settings-entry-field" },
+                  el("span", {
+                    class: "small",
+                    text:
+                      (state.probe_accounts.find((account) => account.account === template.account)?.label || template.account) + " · " +
+                      template.model
+                  }),
+                  el("span", {
+                    class: "small muted",
+                    text: "长度 " + template.length + " · 到期 " + new Date(template.expires_at).toLocaleString()
+                  })
+                )
+              )
+            : [el("div", { class: "empty", text: "暂无有效模板，请先选择账号和模型并开始探测，或等待正常业务响应采集。" })])
         );
       }
 
-      function setForwardedForBlockKeywordsError(message) {
-        const input = $("forwarded-for-block-keywords");
-        if (message) input.setAttribute("aria-invalid", "true"); else input.removeAttribute("aria-invalid");
-        $("forwarded-for-block-keywords-error").textContent = message;
-      }
-
-      // Refreshes replace the resource object; only a changed saved value may replace unsaved input.
-      function fillForwardedForBlock(value) {
-        $("forwarded-for-block-enabled").checked = value.enabled;
-        $("forwarded-for-block-keywords").value = value.model_keywords.join("\n");
-        $("forwarded-for-block-message").value = value.message;
-        setForwardedForBlockKeywordsError("");
-        adminUIState.forwardedForBlockShown = value;
-      }
-
-      function renderForwardedForBlock() {
-        const resource = resources.admin.forwardedForBlock;
-        const value = resource.value;
-        for (const id of FORWARDED_FOR_BLOCK_CONTROLS) $(id).disabled = !value || !!adminUIState.forwardedForBlockSaving;
-        $("forwarded-for-block-save").textContent = adminUIState.forwardedForBlockSaving ? "正在保存…" : "保存";
-        const shown = adminUIState.forwardedForBlockShown;
-        if (value && !(shown && sameForwardedForBlock(shown, value))) fillForwardedForBlock(value);
-        const status = $("forwarded-for-block-status");
-        status.className = resource.error ? "notice err show" : value ? "notice hidden" : "notice show";
-        status.textContent = resource.error || (value ? "" : "正在读取已保存的 X-Forwarded-For 拦截设置…");
-      }
-
-      async function saveForwardedForBlock() {
-        const owner = adminUIState;
-        if (owner.forwardedForBlockSaving || !resources.admin.forwardedForBlock.value) return;
-        // A new attempt supersedes the previous save failure.
-        Object.assign($("forwarded-for-block-status"), { className: "notice hidden", textContent: "" });
-        const payload = {
-          enabled: $("forwarded-for-block-enabled").checked,
-          model_keywords: forwardedForBlockKeywords($("forwarded-for-block-keywords").value),
-          message: $("forwarded-for-block-message").value.trim()
-        };
-        if (payload.enabled && !payload.model_keywords.length) {
-          setForwardedForBlockKeywordsError("启用 X-Forwarded-For 拦截时至少填写一个模型关键词");
-          $("forwarded-for-block-keywords").focus();
-          return;
-        }
-        setForwardedForBlockKeywordsError("");
-        owner.forwardedForBlockSaving = true;
-        for (const id of FORWARDED_FOR_BLOCK_CONTROLS) $(id).disabled = true;
-        $("forwarded-for-block-save").textContent = "正在保存…";
+      async function readTurnStateNow(current) {
         try {
-          const result = await writeAdmin("PUT", "/forwarded-for-block", payload);
-          const saved = validateForwardedForBlock(result.view?.forwarded_for_block);
-          if (!sameForwardedForBlock(saved, { ...payload, message: saved.message })) throw new Error("保存后的设置与请求不一致，请刷新确认");
-          Object.assign(resources.admin.forwardedForBlock, { value: saved, error: "" });
-          // Show the normalized values even when they equal the previously displayed ones.
-          if (owner === adminUIState) fillForwardedForBlock(saved);
-          notify("X-Forwarded-For 拦截设置已保存");
-          renderPage();
+          const state = validateTurnState(await plugin("GET", "/turn-state"));
+          current?.();
+          Object.assign(resources.admin.turnState, { value: state, error: "" });
+          renderTurnState();
+          return state;
         } catch (error) {
-          if (error instanceof AuthError || error instanceof StaleRequestError) return fail(error);
-          if (owner === adminUIState) {
-            $("forwarded-for-block-status").className = "notice err show";
-            $("forwarded-for-block-status").textContent = "保存失败：" + (error.message || error);
+          if (!(error instanceof AuthError) && !(error instanceof StaleRequestError)) {
+            resources.admin.turnState.error = error.message || String(error);
+            renderTurnState();
+          }
+          throw error;
+        }
+      }
+
+      function refreshTurnState() { return queueAdminData("configuration", (current) => readTurnStateNow(current)); }
+
+      function writeTurnState(method, path, payload, message, resetDraft = false) {
+        return queueAdminData("configuration", async (current) => {
+          const result = await plugin(method, path, payload, { command: true, timeoutMS: 45000 });
+          current();
+          try {
+            const saved = validateTurnState(result);
+            Object.assign(resources.admin.turnState, { value: saved, error: "" });
+            if (resetDraft) adminUIState.turnStateShown = null;
+            renderTurnState();
+            await readTurnStateNow(current);
+          } catch (error) {
+            if (error instanceof AuthError || error instanceof StaleRequestError) throw error;
+            resources.admin.turnState.error = message + "，但更新显示失败：" + (error.message || error);
+            renderTurnState();
+            notify(message + "，但更新显示失败，请稍后刷新", "err");
+            return;
+          }
+          notify(message);
+        });
+      }
+
+      async function saveTurnState() {
+        const owner = adminUIState;
+        if (owner.turnStateSaving || !resources.admin.turnState.value) return;
+        const payload = {
+          enabled: $("turn-state-enabled").checked,
+          dry_run: $("turn-state-dry-run").checked,
+          learn_responses: $("turn-state-learn-responses").checked,
+          inject_mode: $("turn-state-inject-mode").value,
+          models: turnStateLines($("turn-state-models").value),
+          probe_accounts: [...owner.turnStateAccounts]
+        };
+        for (const [field, key] of [["ttl", "ttl_seconds"], ["template-length", "template_length"], ["replace-length", "replace_length"]]) {
+          const input = $("turn-state-" + field);
+          if (!input.value || !input.reportValidity()) return;
+          payload[key] = Number(input.value);
+        }
+        for (const [field, key] of [["proxies", "probe_proxies"], ["rotating", "probe_proxies_rotating"]]) {
+          const input = $("turn-state-" + field);
+          if ($("turn-state-clear-" + field).checked) payload[key] = [];
+          else if (input.value.trim()) payload[key] = input.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        }
+        stopTurnStateProbe();
+        owner.turnStateSaving = true;
+        renderTurnState();
+        try { await writeTurnState("PUT", "/turn-state", payload, "Turn State 设置已保存", true); } finally {
+          owner.turnStateSaving = false;
+          if (owner === adminUIState) renderTurnState();
+        }
+      }
+
+      function stopTurnStateProbe() {
+        turnStateProbe.running = false;
+        turnStateProbe.generation++;
+        clearTimeout(turnStateProbe.timer);
+        turnStateProbe.timer = 0;
+        $("turn-state-probe-stop").disabled = true;
+        $("turn-state-probe-status").textContent = turnStateProbe.inFlight ? "已停止安排后续探测，正在等待当前请求完成…" : "探测已停止";
+        if (currentRole === "admin") renderTurnState();
+      }
+
+      function appendTurnStateProbeLog(result) {
+        const labels = {
+          harvested: "采集成功",
+          unchanged: "未获得新模板",
+          degraded: "状态不合格",
+          cooling: "出口冷却中",
+          fresh: "模板仍有效",
+          busy: "其他探测正在执行",
+          error: "探测失败"
+        };
+        const line =
+          new Date().toLocaleTimeString() + " " + (labels[result.action] || result.action || "探测") +
+          (result.model ? " · " + result.model : "") +
+          (result.reason ? " · " + result.reason : "");
+        const log = $("turn-state-probe-log");
+        log.textContent = log.textContent.split("\n").filter(Boolean).concat(line).slice(-50).join("\n");
+        log.scrollTop = log.scrollHeight;
+      }
+
+      async function runTurnStateProbe(generation) {
+        if (
+          !turnStateProbe.running || generation !== turnStateProbe.generation || currentRole !== "admin" || activeTab(false) !== "settings"
+        )
+          return;
+        turnStateProbe.inFlight = true;
+        $("turn-state-probe-status").textContent = "正在探测…";
+        renderTurnState();
+        let delay = 1500;
+        try {
+          const result = await queueAdminData("configuration", async (current) => {
+            if (!turnStateProbe.running || generation !== turnStateProbe.generation) throw new StaleRequestError();
+            const response = await plugin("POST", "/turn-state/probe", {}, { command: true, timeoutMS: 45000 });
+            current();
+            return response;
+          });
+          if (currentRole !== "admin") return;
+          appendTurnStateProbeLog(result);
+          if (result.next_check_at) delay = Math.max(1500, Math.min(60000, new Date(result.next_check_at).getTime() - Date.now()) || 1500);
+          await refreshTurnState();
+        } catch (error) {
+          stopTurnStateProbe();
+          if (!(error instanceof StaleRequestError)) {
+            appendTurnStateProbeLog({ action: "error", reason: error.message || String(error) });
+            if (error instanceof AuthError) await fail(error);
           }
         } finally {
-          owner.forwardedForBlockSaving = false;
-          if (owner === adminUIState) {
-            for (const id of FORWARDED_FOR_BLOCK_CONTROLS) $(id).disabled = false;
-            $("forwarded-for-block-save").textContent = "保存";
-          }
+          turnStateProbe.inFlight = false;
+          if (currentRole === "admin") renderTurnState();
         }
+        if (!turnStateProbe.running || generation !== turnStateProbe.generation) {
+          $("turn-state-probe-status").textContent = "探测已停止";
+          return;
+        }
+        $("turn-state-probe-status").textContent = "探测进行中，" + Math.ceil(delay / 1000) + " 秒后检查下一桶；保持此页面打开。";
+        turnStateProbe.timer = setTimeout(() => runTurnStateProbe(generation), delay);
+      }
+
+      function startTurnStateProbe() {
+        if (turnStateProbe.running || turnStateProbe.inFlight) return;
+        const config = resources.admin.turnState.value?.config;
+        if (!config?.probe_accounts?.length || !config?.models?.length) throw new Error("请先选择采集账号、填写探测模型并保存");
+        turnStateProbe.running = true;
+        const generation = ++turnStateProbe.generation;
+        runTurnStateProbe(generation);
       }
 
       function keyMatchesGroup(key, id) {
@@ -6916,9 +7101,38 @@
                     await mutateAdmin("DELETE", "/groups?id=" + encodeURIComponent(group.id));
                     notify("分组已删除");
                   }
-                )
+                ),
+              el(
+                "label",
+                { class: "toggle-filter", title: "停用后保留规则与成员，但不再提供授权" },
+                switchControl({
+                  input: el("input", {
+                    type: "checkbox",
+                    role: "switch",
+                    checked: !group.disabled,
+                    "aria-label": "启用分组「" + (group.name || group.id) + "」",
+                    disabled: adminUIState.groupSubmissions.has(group.id),
+                    onchange: (event) => guard(() => setGroupEnabled(group, event.target.checked))
+                  })
+                }),
+                el("span", { text: group.disabled ? "已停用" : "已启用" })
+              )
             )
         });
+      }
+
+      async function setGroupEnabled(group, enabled) {
+        const owner = adminUIState;
+        if (owner.groupSubmissions.has(group.id)) return;
+        owner.groupSubmissions.add(group.id);
+        renderGroups();
+        try {
+          await mutateAdmin("PATCH", "/groups", { id: group.id, disabled: !enabled });
+          notify("分组已" + (enabled ? "启用" : "停用"));
+        } finally {
+          owner.groupSubmissions.delete(group.id);
+          if (owner === adminUIState) renderGroups();
+        }
       }
 
       let groupSelection;
@@ -6971,6 +7185,7 @@
           if (group && !current) throw new Error("分组已不存在，请刷新列表");
           $("group-id").value = current?.id || "";
           $("group-name").value = current?.name || "";
+          $("group-enabled").checked = !current?.disabled;
           $("group-dialog-title").textContent = current ? "编辑分组" : "新建分组";
           groupSelection = {
             routeIDs: new Set(current?.route_ids || []),
@@ -7108,38 +7323,9 @@
                   undefined,
                   async () => {
                     await mutateAdmin("DELETE", "/routes?id=" + encodeURIComponent(route.id));
-      async function setGroupEnabled(group, enabled) {
-        const owner = adminUIState;
-        if (owner.groupSubmissions.has(group.id)) return;
-        owner.groupSubmissions.add(group.id);
-        renderGroups();
-        try {
-          await mutateAdmin("PATCH", "/groups", { id: group.id, disabled: !enabled });
-          notify("分组已" + (enabled ? "启用" : "停用"));
-        } finally {
-          owner.groupSubmissions.delete(group.id);
-          if (owner === adminUIState) renderGroups();
-        }
-      }
-
                     notify("路由规则已删除");
                   }
-                ),
-              el(
-                "label",
-                { class: "toggle-filter", title: "停用后保留规则与成员，但不再提供授权" },
-                switchControl({
-                  input: el("input", {
-                    type: "checkbox",
-                    role: "switch",
-                    checked: !group.disabled,
-                    "aria-label": "启用分组「" + (group.name || group.id) + "」",
-                    disabled: adminUIState.groupSubmissions.has(group.id),
-                    onchange: (event) => guard(() => setGroupEnabled(group, event.target.checked))
-                  })
-                }),
-                el("span", { text: group.disabled ? "已停用" : "已启用" })
-              )
+                )
             );
           }
         });
@@ -7172,7 +7358,6 @@
           }
         }
         return selection;
-          $("group-enabled").checked = !current?.disabled;
       }
 
       function routingPayload(selection) {
@@ -9305,6 +9490,7 @@
       function setAdminTab(name) {
         if (editors.get($("route-picker"))?.saving) return;
         const selected = ADMIN_TAB_IDS.includes(name) ? name : "keys";
+        if (selected !== "settings") stopTurnStateProbe();
         if (selected !== "keys") $("route-picker").close();
         writePageRoute("admin", selected);
         for (const tab of TABS) {
@@ -9352,9 +9538,15 @@
       };
       $("keys-edit-groups").onclick = () => editKeyGroups([...adminUIState.selectedKeys]);
       $("access-control-save").onclick = saveAccessControl;
-      $("forwarded-for-block-save").onclick = saveForwardedForBlock;
-      $("forwarded-for-block-enabled").addEventListener("change", () => setForwardedForBlockKeywordsError(""));
-      $("forwarded-for-block-keywords").addEventListener("input", () => setForwardedForBlockKeywordsError(""));
+      $("turn-state-save").onclick = () => guard(saveTurnState);
+      $("turn-state-refresh").onclick = () => guard(refreshTurnState);
+      $("turn-state-probe-start").onclick = () => guard(startTurnStateProbe);
+      $("turn-state-probe-stop").onclick = stopTurnStateProbe;
+      $("turn-state-clear-templates").onclick = () =>
+        openActionDialog("清空 Turn State 模板？", "清空后需重新采集有效模板才能注入。", undefined, async () => {
+          await writeTurnState("DELETE", "/turn-state/templates", {}, "Turn State 模板已清空");
+        });
+      addEventListener("pagehide", stopTurnStateProbe);
       $("group-new").onclick = () => editGroup();
       $("group-rule-search").addEventListener("input", renderGroupRuleList);
       $("group-rule-all").onclick = () => setVisibleRouteChoices("group-dialog", groupSelection, "allow", renderGroupRuleList);
@@ -9382,6 +9574,7 @@
           const id = $("group-id").value;
           const data = {
             name,
+            disabled: !$("group-enabled").checked,
             route_ids: [...groupSelection.routeIDs],
             rule: routingPayload(groupSelection),
             scopes: [...groupSelection.scopes]
@@ -9478,6 +9671,9 @@
         for (const [kind, , choices] of routingChoiceGroups(selection, data, term)) {
           if (credentialsOnly && kind !== "credentials") continue;
           for (const item of choices) {
+            // Bulk selection targets the visible concrete credentials. A provider selector
+            // would also authorize hidden, disabled, and future credentials of that type.
+            if (item.kind === "provider") continue;
             if (item.kind === "route") selection.routeIDs.add(item.value); else setRouteChoice(selection, item.kind, item.value, state);
           }
         }
@@ -9565,7 +9761,6 @@
           }
         },
         true
-            disabled: !$("group-enabled").checked,
       );
       addEventListener("keydown", (event) => {
         if (event.key !== "Escape") return;
@@ -9660,9 +9855,6 @@
           .forEach((placeholder) => placeholder.replaceWith(actionIcon(placeholder.dataset.lucideIcon, placeholder.className)));
         updateThemeButtons();
         try {
-            // Bulk selection targets the visible concrete credentials. A provider selector
-            // would also authorize hidden, disabled, and future credentials of that type.
-            if (item.kind === "provider") continue;
           if (embedded && panelKey && initialRoute.role !== "account") {
             await startAdmin(panelKey);
             return;

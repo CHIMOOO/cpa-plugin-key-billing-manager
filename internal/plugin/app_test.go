@@ -30,6 +30,9 @@ func TestRegisterDeclaresExpectedCapabilities(t *testing.T) {
 	if !caps.RequestInterceptor || !caps.RequestLifecyclePlugin || !caps.UsagePlugin || !caps.ManagementAPI || !caps.Scheduler {
 		t.Fatalf("capabilities = %+v, want every hook billing depends on", caps)
 	}
+	if !caps.ResponseInterceptor || !caps.StreamChunkInterceptor {
+		t.Fatalf("turn-state response capabilities missing: %+v", caps)
+	}
 	if registration.Metadata.Name != PluginName || registration.Metadata.Version != Version {
 		t.Fatalf("metadata = %+v", registration.Metadata)
 	}
@@ -99,7 +102,7 @@ func TestManagementRegistrationExposesOnlyCurrentEndpoints(t *testing.T) {
 		"POST /routes", "PATCH /routes", "DELETE /routes", "PUT /keys/routes",
 		"GET /groups", "POST /groups", "PATCH /groups", "DELETE /groups", "PUT /keys/groups",
 		"GET /access-control", "PUT /access-control",
-		"GET /forwarded-for-block", "PUT /forwarded-for-block",
+		"GET /turn-state", "PUT /turn-state", "DELETE /turn-state/templates", "POST /turn-state/probe",
 		"POST /keys/bind", "POST /keys/unbind", "POST /keys/reset",
 		"POST /keys/label", "POST /keys/concurrency", "POST /keys/sync",
 		"POST /credentials/sync",

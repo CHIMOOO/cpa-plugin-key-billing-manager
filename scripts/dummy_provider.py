@@ -19,10 +19,12 @@ Any API key is accepted.
 """
 
 import argparse
+import base64
 import json
 import random
 import re
 import time
+import threading
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import unquote, urlparse
@@ -40,6 +42,9 @@ TOKEN_INTERVAL_SECONDS = 1 / 200
 JITTER_RATIO = 0.1
 HOLD_PROMPT = "E2E HOLD CONCURRENCY SLOT"
 HOLD_SECONDS = 2.0
+TURN_STATE_LEARN_PROMPT = "E2E TURN STATE LEARN"
+TURN_STATE_CHECK_PROMPT = "E2E TURN STATE CHECK"
+TURN_STATE_HEADER = "X-Codex-Turn-State"
 
 PATHS = {
     "/v1/chat/completions": "chat",
@@ -113,6 +118,12 @@ class DummyProviderHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if urlparse(self.path).path in ("/health", "/healthz"):
             self.send_json(200, {"status": "ok"})
+        elif urlparse(self.path).path == "/e2e/turn-state":
+            # A test-only observation endpoint, containing no auth headers or
+            # upstream/downstream API keys. Tokens here are synthetic fixtures.
+            with self.server.turn_state_lock:
+                snapshot = dict(self.server.turn_state_observation)
+            self.send_json(200, snapshot)
         else:
             self.send_error_body(404, f"no route for {self.path}")
 
@@ -139,15 +150,31 @@ class DummyProviderHandler(BaseHTTPRequestHandler):
         if HOLD_PROMPT in json.dumps(body, ensure_ascii=False):
             self.pause(HOLD_SECONDS)
 
+        response_headers = {}
+        prompt = json.dumps(body, ensure_ascii=False)
+        if protocol == "responses" and (TURN_STATE_LEARN_PROMPT in prompt or TURN_STATE_CHECK_PROMPT in prompt):
+            with self.server.turn_state_lock:
+                if TURN_STATE_LEARN_PROMPT in prompt:
+                    # Fernet wire layout and timestamp, deliberately unsigned:
+                    # this fixture is valid only for plugin parser tests.
+                    raw = b"\x80" + int(time.time()).to_bytes(8, "big") + bytes(208)
+                    self.server.turn_state_observation = {"template": base64.urlsafe_b64encode(raw).decode("ascii")}
+                    response_headers[TURN_STATE_HEADER] = self.server.turn_state_observation["template"]
+                self.server.turn_state_observation.update({
+                    "model": model,
+                    "received": self.headers.get(TURN_STATE_HEADER, ""),
+                    "phase": "learn" if TURN_STATE_LEARN_PROMPT in prompt else "check",
+                })
+
         turn = Turn(model)
         if not stream:
             self.pause(TTFT_SECONDS)
             for _ in turn.tokens[1:]:
                 self.pause(TOKEN_INTERVAL_SECONDS)
-            self.send_json(200, self.non_stream_payload(protocol, turn))
+            self.send_json(200, self.non_stream_payload(protocol, turn), response_headers)
             return
         stream_options = body.get("stream_options") or {}
-        self.send_stream(protocol, turn, bool(stream_options.get("include_usage")))
+        self.send_stream(protocol, turn, bool(stream_options.get("include_usage")), response_headers)
 
     def non_stream_payload(self, protocol, turn):
         if protocol == "chat":
@@ -211,7 +238,7 @@ class DummyProviderHandler(BaseHTTPRequestHandler):
             "usage": usage,
         }
 
-    def send_stream(self, protocol, turn, include_usage):
+    def send_stream(self, protocol, turn, include_usage, response_headers=None):
         emitters = {
             "chat": lambda: self.stream_chat(turn, include_usage),
             "responses": lambda: self.stream_responses(turn),
@@ -219,7 +246,7 @@ class DummyProviderHandler(BaseHTTPRequestHandler):
             "gemini": lambda: self.stream_gemini(turn),
         }
         self.pause(TTFT_SECONDS)
-        self.start_stream()
+        self.start_stream(response_headers)
         try:
             first_event = True
             for event, payload in emitters[protocol]():
@@ -351,22 +378,26 @@ class DummyProviderHandler(BaseHTTPRequestHandler):
     def send_error_body(self, status, message):
         self.send_json(status, {"error": {"message": f"dummy provider: {message}", "code": status}})
 
-    def send_json(self, status, payload):
+    def send_json(self, status, payload, response_headers=None):
         body = self.encode(payload)
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        for name, value in (response_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
         try:
             self.wfile.write(body)
         except (BrokenPipeError, ConnectionResetError):
             self.close_connection = True
 
-    def start_stream(self):
+    def start_stream(self, response_headers=None):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Transfer-Encoding", "chunked")
+        for name, value in (response_headers or {}).items():
+            self.send_header(name, value)
         self.end_headers()
 
     def write_event(self, event, payload):
@@ -392,6 +423,8 @@ def main():
     options = parser.parse_args()
 
     server = ThreadingHTTPServer((options.host, options.port), DummyProviderHandler)
+    server.turn_state_lock = threading.Lock()
+    server.turn_state_observation = {}
     server.daemon_threads = True
     print(f"dummy provider: http://{options.host}:{server.server_port}", flush=True)
     try:

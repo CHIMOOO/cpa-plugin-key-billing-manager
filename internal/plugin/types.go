@@ -34,6 +34,8 @@ const (
 	MethodRequestInterceptAfter  = "request.intercept_after"
 	MethodRequestComplete        = "request.complete"
 	MethodSchedulerPick          = "scheduler.pick"
+	MethodResponseInterceptAfter = "response.intercept_after"
+	MethodResponseStreamChunk    = "response.intercept_stream_chunk"
 
 	MethodUsageHandle = "usage.handle"
 
@@ -96,6 +98,8 @@ type ConfigField struct {
 type Capabilities struct {
 	RequestInterceptor     bool `json:"request_interceptor"`
 	RequestLifecyclePlugin bool `json:"request_lifecycle_plugin"`
+	ResponseInterceptor    bool `json:"response_interceptor"`
+	StreamChunkInterceptor bool `json:"response_stream_interceptor"`
 	UsagePlugin            bool `json:"usage_plugin"`
 	ManagementAPI          bool `json:"management_api"`
 	Scheduler              bool `json:"scheduler"`
@@ -131,6 +135,7 @@ type RequestCompletion struct {
 type RequestInterceptRequest struct {
 	RequestID      string         `json:"RequestID"`
 	SourceFormat   string         `json:"SourceFormat"`
+	ToFormat       string         `json:"ToFormat"`
 	Model          string         `json:"Model"`
 	RequestedModel string         `json:"RequestedModel"`
 	Headers        http.Header    `json:"Headers"`
@@ -138,6 +143,8 @@ type RequestInterceptRequest struct {
 }
 
 type RequestInterceptResponse struct {
+	Headers         http.Header `json:"Headers,omitempty"`
+	ClearHeaders    []string    `json:"ClearHeaders,omitempty"`
 	Terminate       bool        `json:"Terminate,omitempty"`
 	StatusCode      int         `json:"StatusCode,omitempty"`
 	ResponseHeaders http.Header `json:"ResponseHeaders,omitempty"`

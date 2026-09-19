@@ -10,6 +10,8 @@ set -euo pipefail
 #	7.2.136             GitHub 上的该发布版
 #	../CLIProxyAPI      代码目录，现场构建
 #	../cli-proxy-api    可执行文件，直接使用
+# CPA_E2E_TURN_STATE_ONLY=1 runs only the bounded turn-state integration checks.
+# CPA_E2E_GROUP_FALLBACK_ONLY=1 runs only real upstream enable/disable checks.
 readonly github_repo="router-for-me/CLIProxyAPI"
 # The upstream is scripts/dummy_provider.py: it answers all four protocols this
 # suite routes to, so model requests need no real credentials and return fixed
@@ -1394,56 +1396,295 @@ assert_group_direct_credentials() {
     return 1
   fi
 
+  management_call PATCH "$port" "$base/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg id "$group" '{id:$id,disabled:true}')" >"$group_file"
+  management_call GET "$port" "$base/groups" >"$runtime_dir/group-disabled-list.json"
+  if ! jq -e --arg id "$group" --arg scope "$scope" --arg ref "$allowed_ref" \
+      'first(.groups[] | select(.id == $id)) | .disabled == true and .scopes == [$scope] and .rule.credential_ids == [$ref]' \
+      "$runtime_dir/group-disabled-list.json" >/dev/null; then
+    echo "停用分组未保存状态或改变了原有成员、凭证选择。" >&2
+    return 1
+  fi
+  # The Key's direct selection must not bypass its only disabled group.
+  management_call PUT "$port" "$base/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" --arg ref "$allowed_ref" '{scope:$scope,bindings:{credential_ids:[$ref]}}')" >/dev/null
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "403" ]] || ! jq -e '.error.code == "access_denied" and (.error.message | contains("所属分组均已禁用"))' "$response_file" >/dev/null; then
+    echo "停用分组没有即时拒绝请求，或被 Key 的直接选择绕过：HTTP ${http_status}" >&2
+    return 1
+  fi
+  management_call GET "$port" "$base/events?limit=100" >"$events_file"
+  if [[ "$(jq -er '.entries | length' "$events_file")" != "$((count + 2))" ]]; then
+    echo "停用分组拒绝的请求产生了用量。" >&2
+    return 1
+  fi
+  management_call PUT "$port" "$base/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" >/dev/null
+  management_call PATCH "$port" "$base/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg id "$group" '{id:$id,disabled:false}')" >"$group_file"
+  if ! jq -e --arg scope "$scope" --arg ref "$allowed_ref" \
+      '.group | .disabled == false and .scopes == [$scope] and .rule.credential_ids == [$ref]' "$group_file" >/dev/null; then
+    echo "重新启用分组没有恢复原有授权配置。" >&2
+    return 1
+  fi
+  api_call "$port" "重新启用分组：恢复原指定凭证" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 3))" "$events_file"
+  if ! jq -e '.entries[0].provider == "openai-compatible-route-allowed-e2e" and .entries[0].failed == false' "$events_file" >/dev/null; then
+    echo "重新启用分组后没有使用原指定凭证。" >&2
+    return 1
+  fi
+
   management_call PUT "$port" "$base/keys/groups" -H "Content-Type: application/json" \
     --data "$(jq -nc --arg scope "$scope" '{scopes:[$scope],group_ids:[]}')" >/dev/null
   management_call DELETE "$port" "$base/groups?id=$group" >/dev/null
   allow_all_test_credentials "$port" "$scope"
-  log_step "分组直选凭证已验证：空分组拒绝、失效凭证拒绝保存、不绑定路由仅用选中凭证、范围外凭证与模型均被拒绝"
+  log_step "分组直选凭证及开关已验证：空分组拒绝、直选生效、范围外拒绝、停用即时拒绝且不能被直接绑定绕过、启用恢复原授权"
 }
 
-# The rule is off by default and read on every request: once saved, only a model
-# matching a keyword that arrives with X-Forwarded-For is refused, and neither a
-# refusal nor the forwarded address may reach usage, the response or the logs.
-assert_forwarded_for_block() {
-  local port="$1" runtime_dir="$2" client body endpoint header_line http_status count
-  local route="/v0/management/plugins/cpa-key-billing/forwarded-for-block"
-  local settings_file="$runtime_dir/forwarded-for-block.json"
-  local events_file="$runtime_dir/forwarded-for-events.json"
-  local logs_file="$runtime_dir/forwarded-for-plugin-logs.json"
-  local response_file="$runtime_dir/responses/forwarded-for.json"
-  local forwarded_ip="203.0.113.7"
-  local default_message="当前禁止模型混用，请联系相关管理员了解详情。"
-  local custom_message="e2e：经代理转发的请求禁止使用该模型"
-  local -a headers
+set_group_fallback_upstream_disabled() {
+  local port="$1" name="$2" disabled="$3"
+  management_call PATCH "$port" "/v0/management/openai-compatibility" \
+    -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg name "$name" --argjson disabled "$disabled" '{name:$name,value:{disabled:$disabled}}')" >/dev/null
+  # The management mutation persists configuration; the host watcher then
+  # updates auths and model registration. All requests still go only to dummy.
+  sleep "$usage_settle_seconds"
+}
 
-  management_call GET "$port" "$route" >"$settings_file"
-  if ! jq -e --arg message "$default_message" \
-      '.forwarded_for_block == {enabled: false, model_keywords: [], message: $message}' "$settings_file" >/dev/null; then
-    echo "X-Forwarded-For 拦截的默认设置不正确：$(jq -c '.' "$settings_file")" >&2
+assert_group_upstream_fallback() {
+  local port="$1" runtime_dir="$2" scope ref_a ref_b group_a group_b body count http_status attempt
+  local base="/v0/management/plugins/cpa-key-billing"
+  local events_file="$runtime_dir/group-fallback-events.json"
+  local response_file="$runtime_dir/responses/group-fallback.json"
+  management_call POST "$port" "$base/keys/sync" -H "Content-Type: application/json" \
+    --data '{"keys":["e2e-downstream-key"]}' >/dev/null
+  management_call GET "$port" "$base/keys" >"$runtime_dir/group-fallback-keys.json"
+  scope="$(jq -er 'first(.keys[] | select(.in_config)).scope' "$runtime_dir/group-fallback-keys.json")"
+  management_call PUT "$port" "$base/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" >/dev/null
+  management_call PUT "$port" "$base/prices" -H "Content-Type: application/json" \
+    --data '{"model_id":"e2e-group-fallback","input_per_1m":1,"output_per_1m":2,"cache_read_per_1m":0.1,"cache_write_per_1m":1.25}' >/dev/null
+  # Config credentials are learned from real scheduler candidates, so prime
+  # the new model while allowing A alone before creating its exact-ID grants.
+  management_call PUT "$port" "$base/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{credential_providers:[{source:"ai-providers",provider:"openai-compatible-group-fallback-a-e2e"}]}}')" >/dev/null
+  management_call GET "$port" "$base/events?limit=100" >"$events_file"
+  count="$(jq -er '.entries | length' "$events_file")"
+  body="$(request_body chat "e2e-group-fallback" false "Reply with exactly OK.")"
+  api_call "$port" "多分组上游：初始化宿主候选，只允许 A" "/v1/chat/completions" "$body" chat "$response_file"
+  wait_for_event_count "$port" "$((count + 1))" "$events_file"
+  management_call PUT "$port" "$base/keys/routes" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scope:$scope,bindings:{}}')" >/dev/null
+  management_call GET "$port" "$base/credentials" >"$runtime_dir/group-fallback-credentials.json"
+  ref_a="$(jq -er 'first(.credentials[] | select(.provider == "openai-compatible-group-fallback-a-e2e")).ref' "$runtime_dir/group-fallback-credentials.json")"
+  ref_b="$(jq -er 'first(.credentials[] | select(.provider == "openai-compatible-group-fallback-b-e2e")).ref' "$runtime_dir/group-fallback-credentials.json")"
+  management_call POST "$port" "$base/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg ref "$ref_a" '{name:"e2e-故障切换组A",rule:{credential_ids:[$ref]}}')" >"$runtime_dir/group-fallback-a.json"
+  group_a="$(jq -er '.group.id' "$runtime_dir/group-fallback-a.json")"
+  management_call POST "$port" "$base/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg ref "$ref_b" '{name:"e2e-故障切换组B",rule:{credential_ids:[$ref]}}')" >"$runtime_dir/group-fallback-b.json"
+  group_b="$(jq -er '.group.id' "$runtime_dir/group-fallback-b.json")"
+  management_call PUT "$port" "$base/keys/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" --arg a "$group_a" --arg b "$group_b" '{scopes:[$scope],group_ids:[$a,$b]}')" >/dev/null
+  management_call GET "$port" "$base/events?limit=100" >"$events_file"
+  count="$(jq -er '.entries | length' "$events_file")"
+  body="$(request_body chat "e2e-group-fallback" false "Reply with exactly OK.")"
+
+  # Both groups must contribute candidates; a third matching credential is
+  # deliberately present to detect fallback outside the union of both grants.
+  for attempt in 1 2 3 4; do
+    api_call "$port" "多分组上游：A、B 均启用，第 ${attempt} 次" "/v1/chat/completions" "$body" chat "$response_file"
+    count=$((count + 1))
+    wait_for_event_count "$port" "$count" "$events_file"
+  done
+  if ! jq -e '.entries[0:4] |
+      length == 4 and all(.[]; .failed == false) and
+      ([.[].provider] | unique | sort) == ["openai-compatible-group-fallback-a-e2e","openai-compatible-group-fallback-b-e2e"]' "$events_file" >/dev/null; then
+    echo "同 Key 的两个分组未共同参与调度，或请求越权使用第三个凭证。" >&2
     return 1
   fi
+
+  set_group_fallback_upstream_disabled "$port" "group-fallback-a-e2e" true
+  api_call "$port" "多分组上游：停用 A 后使用 B" "/v1/chat/completions" "$body" chat "$response_file"
+  count=$((count + 1))
+  wait_for_event_count "$port" "$count" "$events_file"
+  if ! jq -e '.entries[0] | .provider == "openai-compatible-group-fallback-b-e2e" and .failed == false' "$events_file" >/dev/null; then
+    echo "停用组 A 的上游后，没有使用组 B 的可用上游。" >&2
+    return 1
+  fi
+
+  set_group_fallback_upstream_disabled "$port" "group-fallback-a-e2e" false
+  set_group_fallback_upstream_disabled "$port" "group-fallback-b-e2e" true
+  api_call "$port" "多分组上游：恢复 A、停用 B 后使用 A" "/v1/chat/completions" "$body" chat "$response_file"
+  count=$((count + 1))
+  wait_for_event_count "$port" "$count" "$events_file"
+  if ! jq -e '.entries[0] | .provider == "openai-compatible-group-fallback-a-e2e" and .failed == false' "$events_file" >/dev/null; then
+    echo "上游 A 恢复启用后仍被旧状态排除，或误选了其他凭证。" >&2
+    return 1
+  fi
+
+  set_group_fallback_upstream_disabled "$port" "group-fallback-a-e2e" true
+  http_status="$(curl -sS --max-time 30 -H "Content-Type: application/json" -H "Authorization: Bearer e2e-downstream-key" \
+    --data "$body" --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
+  if [[ "$http_status" != "503" ]] || ! jq -e '.error != null' "$response_file" >/dev/null; then
+    echo "两个授权上游均停用后未拒绝请求：HTTP ${http_status} $(jq -c '.' "$response_file")" >&2
+    return 1
+  fi
+  sleep "$usage_settle_seconds"
+  wait_for_event_count "$port" "$count" "$events_file"
+  if ! jq -e '[.entries[] | select(.billing_model == "e2e-group-fallback")] |
+      all(.[]; .provider != "openai-compatible-group-fallback-unauthorized-e2e")' "$events_file" >/dev/null; then
+    echo "两个授权上游均停用时，错误使用了未授权的替补凭证。" >&2
+    return 1
+  fi
+  log_step "两个授权上游均停用：HTTP ${http_status}；未授权上游保持启用但未收到请求"
+
+  set_group_fallback_upstream_disabled "$port" "group-fallback-a-e2e" false
+  api_call "$port" "多分组上游：全部停用后重新启用 A" "/v1/chat/completions" "$body" chat "$response_file"
+  count=$((count + 1))
+  wait_for_event_count "$port" "$count" "$events_file"
+  if ! jq -e '.entries[0] | .provider == "openai-compatible-group-fallback-a-e2e" and .failed == false' "$events_file" >/dev/null; then
+    echo "全部停用后重新启用 A，没有恢复正常请求。" >&2
+    return 1
+  fi
+  set_group_fallback_upstream_disabled "$port" "group-fallback-b-e2e" false
+  management_call PUT "$port" "$base/keys/groups" -H "Content-Type: application/json" \
+    --data "$(jq -nc --arg scope "$scope" '{scopes:[$scope],group_ids:[]}')" >/dev/null
+  management_call DELETE "$port" "$base/groups?id=$group_a" >/dev/null
+  management_call DELETE "$port" "$base/groups?id=$group_b" >/dev/null
+  allow_all_test_credentials "$port" "$scope"
+  log_step "同 Key 多分组真实上游启停已验证：共同调度、A 停转 B、B 停转 A、全部停用拒绝、重新启用恢复且不越权"
+}
+
+assert_turn_state_round_trip() {
+  local port="$1" runtime_dir="$2" body model count
+  local base="/v0/management/plugins/cpa-key-billing"
+  local settings_file="$runtime_dir/turn-state-round-trip.json"
+  local events_file="$runtime_dir/turn-state-events.json"
+  local observed_file="$runtime_dir/turn-state-observed.json"
+  local response_file="$runtime_dir/responses/turn-state-round-trip.json"
+  management_call GET "$port" "$base/events?limit=100" >"$events_file"
+  count="$(jq -er '.entries | length' "$events_file")"
+  management_call DELETE "$port" "$base/turn-state/templates" -H "Content-Type: application/json" --data '{}' >/dev/null
+  management_call PUT "$port" "$base/turn-state" -H "Content-Type: application/json" \
+    --data '{"enabled":true,"inject_mode":"always","learn_responses":true,"dry_run":false}' >/dev/null
+
+  body="$(request_body chat "codex/gpt-5.6-sol" false "E2E TURN STATE LEARN")"
+  api_call "$port" "turn-state：从 dummy Codex 响应头采集模板" "/v1/chat/completions" "$body" chat "$response_file"
+  count=$((count + 1))
+  wait_for_event_count "$port" "$count" "$events_file"
+  management_call GET "$port" "$base/turn-state" >"$settings_file"
+  if ! jq -e '.templates | length == 1 and .[0].model == "gpt-5.6-sol" and .[0].length == 292 and (.[0].account | length) > 0' "$settings_file" >/dev/null; then
+    echo "真实宿主没有将响应头采集到确切账号和上游模型的模板桶。" >&2
+    return 1
+  fi
+
+  # No request contains a turn-state header. The learned base-model bucket must
+  # also match CPA's thinking suffix before the executor strips that suffix.
+  for model in "codex/gpt-5.6-sol(high)" "codex/gpt-5.6-sol"; do
+    body="$(request_body responses "$model" true "E2E TURN STATE CHECK")"
+    api_call "$port" "turn-state：实际上游头校验 $model" "/v1/responses" "$body" responses "$response_file"
+    count=$((count + 1))
+    wait_for_event_count "$port" "$count" "$events_file"
+    curl -fsS --max-time 10 "http://127.0.0.1:$upstream_port/e2e/turn-state" >"$observed_file"
+    if ! jq -e '.phase == "check" and .model == "gpt-5.6-sol" and (.template | length) == 292' "$observed_file" >/dev/null; then
+      echo "dummy Codex 未收到指定测试模型，无法验证请求头。" >&2
+      return 1
+    fi
+    if [[ "$host_label" == "v7.2.143" ]]; then
+      if ! jq -e '.received == ""' "$observed_file" >/dev/null; then
+        echo "v7.2.143 的请求头转发行为已改变，请更新兼容性用例。" >&2
+        return 1
+      fi
+    elif ! jq -e '.received == .template' "$observed_file" >/dev/null; then
+      echo "真实宿主未将同账号、同模型模板转发给 dummy Codex 上游（$model）。" >&2
+      return 1
+    fi
+  done
+  management_call GET "$port" "$base/turn-state" >"$settings_file"
+  if ! jq -e '.counters.injected >= 2 and .last_decision.action == "inject" and .last_decision.model == "gpt-5.6-sol"' "$settings_file" >/dev/null; then
+    echo "插件没有为普通及 thinking 后缀模型执行模板注入。" >&2
+    return 1
+  fi
+  if ! jq -e '.entries[0:3] | length == 3 and all(.[]; .provider == "codex" and .failed == false and
+      .cost.uncached_input_tokens == 80 and .cost.cache_read_tokens == 32 and
+      .cost.cache_write_tokens == 16 and .cost.billed_output_tokens == 8)' "$events_file" >/dev/null; then
+    echo "turn-state 学习和注入改变了正常的 usage.handle 用量记录。" >&2
+    return 1
+  fi
+  management_call PUT "$port" "$base/turn-state" -H "Content-Type: application/json" \
+    --data '{"enabled":false,"inject_mode":"replace-only"}' >/dev/null
+  management_call DELETE "$port" "$base/turn-state/templates" -H "Content-Type: application/json" --data '{}' >/dev/null
+  if [[ "$host_label" == "v7.2.143" ]]; then
+    log_step "turn-state 兼容性证据：插件已学习并注入，v7.2.143 HTTP executor 丢弃请求头；(high) 归属与正常用量已验证"
+  else
+    log_step "turn-state 真实链路已验证：响应头学习、无请求头时注入、(high) 归一化、dummy 上游收到相同模板、用量保持正确"
+  fi
+}
+
+assert_turn_state_settings() {
+  local port="$1" runtime_dir="$2" http_status
+  local route="/v0/management/plugins/cpa-key-billing/turn-state"
+  local settings_file="$runtime_dir/turn-state-settings.json"
+  local response_file="$runtime_dir/responses/turn-state-settings.json"
+  management_call GET "$port" "$route" >"$settings_file"
+  if ! jq -e '.config.enabled == false and .config.inject_mode == "replace-only" and
+      .config.template_length == 292 and .config.replace_length == 312 and .templates == []' "$settings_file" >/dev/null; then
+    echo "Codex turn-state 默认设置不正确。" >&2
+    return 1
+  fi
+  # Test configuration only; no probe or upstream request runs while enabled.
+  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
+    --data '{"enabled":true,"inject_mode":"always"}' >/dev/null
+  management_call GET "$port" "$route" >"$settings_file"
+  if ! jq -e '.config.enabled == true and .config.inject_mode == "always" and
+      .config.template_length == 292 and .config.replace_length == 312 and .templates == []' "$settings_file" >/dev/null; then
+    echo "Codex turn-state 注入模式未保存或改变了未提交的配置。" >&2
+    return 1
+  fi
+  http_status="$(curl -sS --max-time 30 -X PUT -H "Authorization: Bearer e2e-management-key" \
+    -H "Content-Type: application/json" --data '{"inject_mode":"invalid-mode"}' \
+    --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port$route")"
+  if [[ "$http_status" != "400" ]]; then
+    echo "Codex turn-state 非法注入模式未返回 400：HTTP ${http_status}。" >&2
+    return 1
+  fi
+  management_call GET "$port" "$route" >"$settings_file"
+  if ! jq -e '.config.enabled == true and .config.inject_mode == "always"' "$settings_file" >/dev/null; then
+    echo "Codex turn-state 非法配置改变了此前保存的设置。" >&2
+    return 1
+  fi
+  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
+    --data '{"enabled":false,"inject_mode":"replace-only"}' >/dev/null
+  management_call GET "$port" "$route" >"$settings_file"
+  if ! jq -e '.config.enabled == false and .config.inject_mode == "replace-only" and .templates == []' "$settings_file" >/dev/null; then
+    echo "Codex turn-state 设置未恢复默认关闭状态。" >&2
+    return 1
+  fi
+  log_step "Codex turn-state 配置已验证：默认关闭、always 保存读取、非法模式拒绝且保留原设置、恢复默认"
+}
+
+# Removing the feature also removes its management API. Forwarded requests
+# follow normal routing and record the usage reported by the dummy upstream.
+assert_forwarded_for_removed() {
+  local port="$1" runtime_dir="$2" method client body endpoint header_line http_status count
+  local route="/v0/management/plugins/cpa-key-billing/forwarded-for-block"
+  local events_file="$runtime_dir/forwarded-for-events.json"
+  local response_file="$runtime_dir/responses/forwarded-for.json"
+  local -a headers
+  for method in GET PUT; do
+    http_status="$(curl -sS --max-time 30 -X "$method" -H "Authorization: Bearer e2e-management-key" \
+      -H "Content-Type: application/json" --data '{"enabled":true,"model_keywords":["gpt"]}' \
+      --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port$route")"
+    if [[ "$http_status" != "404" ]]; then
+      echo "已移除的 X-Forwarded-For 设置接口仍可访问：${method} HTTP ${http_status}。" >&2
+      return 1
+    fi
+  done
   management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
   count="$(jq -er '.entries | length' "$events_file")"
-
-  http_status="$(curl -sS --max-time 30 -X PUT -H "Authorization: Bearer e2e-management-key" -H "Content-Type: application/json" \
-    --data '{"enabled":true,"model_keywords":[" "]}' --output "$response_file" --write-out '%{http_code}' "http://127.0.0.1:$port$route")"
-  if [[ "$http_status" != "400" ]] || ! jq -e '.error.code == "invalid"' "$response_file" >/dev/null; then
-    echo "启用 X-Forwarded-For 拦截但未填写关键词时没有返回 400。" >&2
-    return 1
-  fi
-
-  # A request the suite already routes: gpt-5.6-sol on the chat provider.
-  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
-    --data "$(jq -nc --arg message "$custom_message" '{enabled:true,model_keywords:["  GPT-5.6 ","gpt-5.6",""],message:$message}')" \
-    >"$settings_file"
-  if ! jq -e --arg message "$custom_message" \
-      '.forwarded_for_block == {enabled: true, model_keywords: ["GPT-5.6"], message: $message}' "$settings_file" >/dev/null; then
-    echo "X-Forwarded-For 拦截设置没有按规范保存：$(jq -c '.' "$settings_file")" >&2
-    return 1
-  fi
-
   for client in chat anthropic; do
-    headers=(-H "X-Forwarded-For: $forwarded_ip")
+    headers=(-H "X-Forwarded-For: 203.0.113.7")
     while IFS= read -r header_line; do
       headers+=(-H "$header_line")
     done < <(client_headers "$client")
@@ -1451,80 +1692,20 @@ assert_forwarded_for_block() {
     endpoint="$(client_endpoint "$client" "gpt-5.6-sol" false)"
     http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" --output "$response_file" \
       --write-out '%{http_code}' "http://127.0.0.1:$port$endpoint")"
-    if [[ "$http_status" != "403" ]]; then
-      echo "携带 X-Forwarded-For 的 ${client} 请求返回 HTTP ${http_status}，预期 403。" >&2
+    if [[ "$http_status" != "200" ]] || jq -e '.error? != null' "$response_file" >/dev/null 2>&1; then
+      echo "携带 X-Forwarded-For 的 ${client} 请求未正常放行：HTTP ${http_status}。" >&2
       return 1
     fi
-    if ! jq -e --arg client "$client" --arg message "$custom_message" '
-        (if $client == "anthropic" then .type == "error" else true end) and
-        .error.type == "permission_error" and .error.code == "access_denied" and .error.message == $message
-      ' "$response_file" >/dev/null || grep -Fq "$forwarded_ip" "$response_file"; then
-      echo "X-Forwarded-For 拦截 ${client} 的错误内容不正确：$(jq -c '.' "$response_file")" >&2
+    count=$((count + 1))
+    wait_for_event_count "$port" "$count" "$events_file"
+    if ! jq -e '.entries[0] | .billing_model == "gpt-5.6-sol" and .failed == false and
+        .cost.uncached_input_tokens == 80 and .cost.cache_read_tokens == 32 and
+        .cost.cache_write_tokens == 16 and .cost.billed_output_tokens == 8 and .cost.total_usd > 0' "$events_file" >/dev/null; then
+      echo "携带 X-Forwarded-For 的 ${client} 请求未正常记录上游用量。" >&2
       return 1
     fi
   done
-
-  body="$(request_body chat "gpt-5.6-sol" false "Reply with exactly OK.")"
-  api_call "$port" "X-Forwarded-For 拦截启用：不携带请求头的同一模型" "/v1/chat/completions" "$body" chat "$response_file"
-  wait_for_event_count "$port" "$((count + 1))" "$events_file"
-
-  headers=(-H "X-Forwarded-For: $forwarded_ip")
-  while IFS= read -r header_line; do
-    headers+=(-H "$header_line")
-  done < <(client_headers chat)
-  body="$(request_body chat "gpt-4o" false "Reply with exactly OK.")"
-  http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" --output "$response_file" \
-    --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "200" ]] || jq -e '.error? != null' "$response_file" >/dev/null 2>&1; then
-    echo "未命中关键词的模型携带 X-Forwarded-For 时被拦截：HTTP ${http_status}。" >&2
-    return 1
-  fi
-  wait_for_event_count "$port" "$((count + 2))" "$events_file"
-
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/plugin-logs" >"$logs_file"
-  if ! jq -e --arg ip "$forwarded_ip" '
-      [.entries[] | select(.message | startswith("X-Forwarded-For 拦截："))] as $blocked |
-      ($blocked | length) == 1 and $blocked[0].level == "info" and
-      ($blocked[0].message | contains("模型 gpt-5.6-sol") and contains("命中关键词 GPT-5.6") and (contains($ip) | not))
-    ' "$logs_file" >/dev/null; then
-    echo "插件日志的 X-Forwarded-For 拦截记录不正确：$(jq -c '[.entries[] | select(.message | startswith("X-Forwarded-For"))]' "$logs_file")" >&2
-    return 1
-  fi
-
-  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
-    --data "$(jq -nc --arg message "$custom_message" '{enabled:false,model_keywords:["GPT-5.6"],message:$message}')" >/dev/null
-  management_call GET "$port" "$route" >"$settings_file"
-  if ! jq -e '.forwarded_for_block.enabled == false and .forwarded_for_block.model_keywords == ["GPT-5.6"]' "$settings_file" >/dev/null; then
-    echo "关闭 X-Forwarded-For 拦截的设置没有保存。" >&2
-    return 1
-  fi
-  headers=(-H "X-Forwarded-For: $forwarded_ip")
-  while IFS= read -r header_line; do
-    headers+=(-H "$header_line")
-  done < <(client_headers chat)
-  body="$(request_body chat "gpt-5.6-sol" false "Reply with exactly OK.")"
-  http_status="$(curl -sS --max-time 30 "${headers[@]}" --data "$body" --output "$response_file" \
-    --write-out '%{http_code}' "http://127.0.0.1:$port/v1/chat/completions")"
-  if [[ "$http_status" != "200" ]] || jq -e '.error? != null' "$response_file" >/dev/null 2>&1; then
-    echo "关闭 X-Forwarded-For 拦截后，携带请求头的请求没有恢复：HTTP ${http_status}。" >&2
-    return 1
-  fi
-  wait_for_event_count "$port" "$((count + 3))" "$events_file"
-
-  management_call PUT "$port" "$route" -H "Content-Type: application/json" \
-    --data '{"enabled":false,"model_keywords":[],"message":""}' >/dev/null
-  management_call GET "$port" "$route" >"$settings_file"
-  if ! jq -e --arg message "$default_message" \
-      '.forwarded_for_block == {enabled: false, model_keywords: [], message: $message}' "$settings_file" >/dev/null; then
-    echo "X-Forwarded-For 拦截设置没有恢复默认值。" >&2
-    return 1
-  fi
-  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=100" >"$events_file"
-  if [[ "$(jq -er '.entries | length' "$events_file")" != "$((count + 3))" ]]; then
-    echo "X-Forwarded-For 拦截产生了额外用量。" >&2
-    return 1
-  fi
-  log_step "X-Forwarded-For 拦截已验证：默认关闭、关键词规范化、2 种协议拦截、无请求头及未命中模型放行、即时关闭与恢复默认"
+  log_step "X-Forwarded-For 拦截移除已验证：旧接口返回 404，2 种协议携带请求头均正常放行、记账"
 }
 
 run_target() {
@@ -1586,6 +1767,25 @@ run_target() {
     return 1
   fi
   log_step "插件已注册并启用"
+
+  if [[ "${CPA_E2E_GROUP_FALLBACK_ONLY:-0}" == "1" ]]; then
+    assert_group_upstream_fallback "$port" "$runtime_dir"
+    kill "$active_pid" >/dev/null 2>&1 || true
+    wait "$active_pid" >/dev/null 2>&1 || true
+    active_pid=""
+    log_ok "${host_label}：同 Key 多分组真实上游启停回归完成"
+    return
+  fi
+
+  if [[ "${CPA_E2E_TURN_STATE_ONLY:-0}" == "1" ]]; then
+    assert_turn_state_settings "$port" "$runtime_dir"
+    assert_turn_state_round_trip "$port" "$runtime_dir"
+    kill "$active_pid" >/dev/null 2>&1 || true
+    wait "$active_pid" >/dev/null 2>&1 || true
+    active_pid=""
+    log_ok "${host_label}：turn-state 配置和真实上游请求头回归完成"
+    return
+  fi
 
   assert_headless_price_admission "$port" "$runtime_dir"
   account_call "$port" "/v1/models" >"$runtime_dir/models.json"
@@ -1881,12 +2081,18 @@ run_target() {
   assert_reference_price_billing "$port" "$runtime_dir"
   assert_group_access_control "$port" "$runtime_dir"
   assert_group_direct_credentials "$port" "$runtime_dir"
-  assert_forwarded_for_block "$port" "$runtime_dir"
+  assert_group_upstream_fallback "$port" "$runtime_dir"
+  assert_forwarded_for_removed "$port" "$runtime_dir"
+  assert_turn_state_settings "$port" "$runtime_dir"
+  assert_turn_state_round_trip "$port" "$runtime_dir"
+
+  management_call GET "$port" "/v0/management/plugins/cpa-key-billing/events?limit=1" >"$runtime_dir/final-events.json"
+  actual_requests="$(jq -er '.total' "$runtime_dir/final-events.json")"
 
   kill "$active_pid" >/dev/null 2>&1 || true
   wait "$active_pid" >/dev/null 2>&1 || true
   active_pid=""
-  log_ok "${host_label}：64 个上游请求（含 4 个参考价、4 个未定价、4 个分组开关、2 个分组直选凭证及 3 个 X-Forwarded-For 规则请求），1 次并发拦截，7 次模型拦截，6 次凭证拦截，2 次未分组拦截，1 次空分组拦截，2 次 X-Forwarded-For 拦截，12 次额度拦截"
+  log_ok "${host_label}：已记录 ${actual_requests} 条上游用量；协议转换、计费、权限、并发与额度、分组启停、X-Forwarded-For 放行、turn-state 配置全部通过"
 }
 
 log_stage "启动 dummy provider"

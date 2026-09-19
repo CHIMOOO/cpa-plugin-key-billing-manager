@@ -590,8 +590,29 @@ KEYS[-1]["deleted_at"] = iso(NOW - timedelta(days=1))
 KEYS[-1]["route_bindings"]["route_ids"] = ["economy"]
 LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
-DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE = "当前禁止模型混用，请联系相关管理员了解详情。"
-FORWARDED_FOR_BLOCK = {"enabled": False, "model_keywords": [], "message": DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE}
+
+TURN_STATE_CONFIG = {
+    "enabled": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
+    "template_length": 292, "replace_length": 312, "ttl_seconds": 3600,
+    "models": ["gpt-6-astra"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
+}
+TURN_STATE_TEMPLATES = []
+TURN_STATE_COUNTERS = {"injected": 0, "learned": 0, "passed": 0}
+TURN_STATE_LAST = {}
+
+
+def turn_state_view():
+    config = dict(TURN_STATE_CONFIG)
+    for field in ("probe_proxies", "probe_proxies_rotating"):
+        config[field] = ["http://***@proxy.example:10000" for _ in config[field]]
+    return {"config": config, "templates": TURN_STATE_TEMPLATES, "counters": TURN_STATE_COUNTERS,
+            "last_decision": TURN_STATE_LAST, "probe_supported": True, "probe_unavailable_reason": "",
+            "probe_accounts": [{"account": item["ref"], "label": item["display_name"]}
+                               for item in CREDENTIALS if item["provider"] == "codex" and item["source"] == "auth-files"
+                               and not item.get("disabled") and item.get("status", "").lower() != "disabled"],
+            "proxy_counts": {"static": len(TURN_STATE_CONFIG["probe_proxies"]),
+                             "rotating": len(TURN_STATE_CONFIG["probe_proxies_rotating"])}}
+
 ROUTE_RULE_FIELDS = ("models", "credential_ids", "credential_providers", "denied_models", "denied_credential_ids", "denied_credential_providers")
 
 
@@ -1355,43 +1376,11 @@ def group_rows():
     return [group_row(group) for group in GROUPS]
 
 
-def normalize_forwarded_for_block(body):
-    if not isinstance(body, dict):
-        raise ValueError("请求格式无效")
-    unknown = set(body) - {"enabled", "model_keywords", "message"}
-    if unknown:
-        raise ValueError("未知字段：" + ", ".join(sorted(unknown)))
-    if type(body.get("enabled")) is not bool:
-        raise ValueError("enabled 必须是布尔值")
-    keywords = body.get("model_keywords")
-    if not isinstance(keywords, list) or any(not isinstance(keyword, str) for keyword in keywords):
-        raise ValueError("model_keywords 必须是字符串数组")
-    message = body.get("message", "")
-    if not isinstance(message, str):
-        raise ValueError("message 必须是字符串")
-    normalized, seen = [], set()
-    for keyword in keywords:
-        keyword = keyword.strip()
-        if len(keyword.encode()) > 512:
-            raise ValueError("模型关键词过长")
-        if keyword and keyword.lower() not in seen:
-            seen.add(keyword.lower())
-            normalized.append(keyword)
-    if len(normalized) > 100:
-        raise ValueError("模型关键词不能超过 100 个")
-    if body["enabled"] and not normalized:
-        raise ValueError("启用 X-Forwarded-For 拦截时至少填写一个模型关键词")
-    message = message.strip()
-    if len(message.encode()) > 1024:
-        raise ValueError("提示语过长")
-    return {"enabled": body["enabled"], "model_keywords": normalized, "message": message or DEFAULT_FORWARDED_FOR_BLOCK_MESSAGE}
-
-
 def payload_for(path, query):
+    if path == f"{API_BASE}/turn-state":
+        return turn_state_view()
     if path == f"{API_BASE}/access-control":
         return {"access_control": ACCESS_CONTROL}
-    if path == f"{API_BASE}/forwarded-for-block":
-        return {"forwarded_for_block": FORWARDED_FOR_BLOCK}
     if path == f"{API_BASE}/groups":
         return {"groups": group_rows()}
     if path == f"{API_BASE}/keys":
@@ -1498,8 +1487,6 @@ class Handler(BaseHTTPRequestHandler):
             elif path in {f"{API_BASE}/prices", f"{API_BASE}/prices/reference/refresh"}:
                 view["prices"] = model_prices({"model": self.mutation_view.get("models", [])}, include_custom=True)
                 view["metadata"] = price_status()["metadata"]
-            elif path == f"{API_BASE}/forwarded-for-block":
-                view["forwarded_for_block"] = FORWARDED_FOR_BLOCK
             elif path == f"{API_BASE}/plugin-logs":
                 view["logs_cleared"] = True
             payload = dict(payload, view=view)
@@ -1618,21 +1605,38 @@ class Handler(BaseHTTPRequestHandler):
             self.mutation_view = json.loads(request_body or b"{}")
             request_body = json.dumps(self.mutation_view.get("data") or {}).encode()
         route = self.command, parsed.path
-        if route == ("PUT", f"{API_BASE}/access-control"):
+        if route == ("PUT", f"{API_BASE}/turn-state"):
+            body = json.loads(request_body or b"{}")
+            if body.get("inject_mode") not in {"always", "replace-only"}:
+                self.send_json(400, {"error": {"message": "invalid inject mode"}})
+                return
+            TURN_STATE_CONFIG.update(body)
+            self.send_json(200, turn_state_view())
+        elif route == ("DELETE", f"{API_BASE}/turn-state/templates"):
+            TURN_STATE_TEMPLATES.clear()
+            self.send_json(200, turn_state_view())
+        elif route == ("POST", f"{API_BASE}/turn-state/probe"):
+            accounts, models = TURN_STATE_CONFIG["probe_accounts"], TURN_STATE_CONFIG["models"]
+            if not accounts or not models:
+                self.send_json(400, {"error": {"message": "select account and model"}})
+                return
+            now = datetime.now(timezone.utc)
+            fresh = bool(TURN_STATE_TEMPLATES)
+            result = {"action": "fresh" if fresh else "harvested", "reason": "模板仍有效" if fresh else "已采集有效模板",
+                      "account": accounts[0], "model": models[0], "next_check_at": iso(now + timedelta(seconds=60))}
+            if not fresh:
+                TURN_STATE_TEMPLATES.append({"account": accounts[0], "model": models[0], "length": 292,
+                                             "issued_at": iso(now), "expires_at": iso(now + timedelta(hours=1))})
+                TURN_STATE_COUNTERS["learned"] += 1
+            TURN_STATE_LAST.update(result)
+            self.send_json(200, result)
+        elif route == ("PUT", f"{API_BASE}/access-control"):
             body = json.loads(request_body or b"{}")
             if any(type(body.get(field)) is not bool for field in ("enabled", "deny_ungrouped")):
                 self.send_json(400, {"error": {"message": "invalid access control settings"}})
                 return
             ACCESS_CONTROL.update(body)
             self.send_json(200, {"access_control": ACCESS_CONTROL})
-        elif route == ("PUT", f"{API_BASE}/forwarded-for-block"):
-            try:
-                value = normalize_forwarded_for_block(json.loads(request_body or b"{}"))
-            except ValueError as error:
-                self.send_json(400, {"error": {"code": "invalid", "message": str(error)}})
-                return
-            FORWARDED_FOR_BLOCK.update(value)
-            self.send_json(200, {"forwarded_for_block": FORWARDED_FOR_BLOCK})
         elif route in {("POST", f"{API_BASE}/groups"), ("PATCH", f"{API_BASE}/groups")}:
             body = json.loads(request_body or b"{}")
             group_id = body.get("id") or "group-" + str(time.time_ns())

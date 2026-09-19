@@ -9,10 +9,12 @@ import (
 
 	"cpa-key-billing/internal/billing"
 	"cpa-key-billing/internal/sqlite"
+	"cpa-key-billing/internal/turnstate"
 )
 
 type App struct {
 	store                 *billing.Store
+	turnState             *turnstate.Manager
 	hostCaller            HostCaller
 	admissionsMu          sync.Mutex
 	admissions            map[string]*requestAdmission
@@ -36,6 +38,7 @@ func NewApp() *App {
 func newApp(store *billing.Store) *App {
 	return &App{
 		store:                 store,
+		turnState:             turnstate.New(),
 		admissions:            make(map[string]*requestAdmission),
 		credentials:           make(map[string]credentialView),
 		credentialsByRawID:    make(map[string]string),
@@ -78,6 +81,10 @@ func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 		return a.interceptAfterAuth(request)
 	case MethodRequestComplete:
 		return a.completeRequest(request)
+	case MethodResponseInterceptAfter:
+		return a.handleTurnStateResponse(request, false)
+	case MethodResponseStreamChunk:
+		return a.handleTurnStateResponse(request, true)
 	case MethodSchedulerPick:
 		return a.pickCredential(request)
 	case MethodUsageHandle:
@@ -109,7 +116,7 @@ func (a *App) configure(raw []byte) error {
 	if errDecode != nil {
 		return errDecode
 	}
-	if errConfigure := func() error {
+	if errConfigure := a.turnState.ConfigureWith(cfg.StateFile, func() error {
 		a.routingMu.Lock()
 		defer a.routingMu.Unlock()
 		previous := a.store.ConfigCredentials()
@@ -120,7 +127,7 @@ func (a *App) configure(raw []byte) error {
 			a.replaceSyncedCredentials(previous, loaded)
 		}
 		return nil
-	}(); errConfigure != nil {
+	}); errConfigure != nil {
 		return errConfigure
 	}
 	// Refresh records its result; a download failure does not disable custom prices.
@@ -157,6 +164,8 @@ func registration() Registration {
 		Capabilities: Capabilities{
 			RequestInterceptor:     true,
 			RequestLifecyclePlugin: true,
+			ResponseInterceptor:    true,
+			StreamChunkInterceptor: true,
 			UsagePlugin:            true,
 			ManagementAPI:          true,
 			Scheduler:              true,

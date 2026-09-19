@@ -34,7 +34,9 @@ const (
 	routeGroups                 = "/groups"
 	routeKeysGroups             = "/keys/groups"
 	routeAccessControl          = "/access-control"
-	routeForwardedForBlock      = "/forwarded-for-block"
+	routeTurnState              = "/turn-state"
+	routeTurnStateTemplates     = "/turn-state/templates"
+	routeTurnStateProbe         = "/turn-state/probe"
 	routeKeysRoutes             = "/keys/routes"
 	routeKeysBind               = "/keys/bind"
 	routeKeysUnbind             = "/keys/unbind"
@@ -68,10 +70,10 @@ var managementEndpoints = []managementEndpoint{
 		return JSONResponse(http.StatusOK, map[string]any{"access_control": a.store.AccessControl()})
 	}},
 	{http.MethodPut, routeAccessControl, "保存访问控制设置", (*App).setAccessControl},
-	{http.MethodGet, routeForwardedForBlock, "查看 X-Forwarded-For 拦截设置", func(a *App, _ ManagementRequest) ManagementResponse {
-		return JSONResponse(http.StatusOK, map[string]any{"forwarded_for_block": a.store.ForwardedForBlock()})
-	}},
-	{http.MethodPut, routeForwardedForBlock, "保存 X-Forwarded-For 拦截设置", (*App).setForwardedForBlock},
+	{http.MethodGet, routeTurnState, "查看 Codex turn-state 设置和模板状态", (*App).getTurnState},
+	{http.MethodPut, routeTurnState, "保存 Codex turn-state 设置", (*App).setTurnState},
+	{http.MethodDelete, routeTurnStateTemplates, "清理 Codex turn-state 模板", (*App).clearTurnState},
+	{http.MethodPost, routeTurnStateProbe, "执行一次 Codex turn-state 探测", (*App).probeTurnState},
 	{http.MethodPost, routeGroups, "新建 API Key 分组", (*App).createGroup},
 	{http.MethodPatch, routeGroups, "更新 API Key 分组", (*App).updateGroup},
 	{http.MethodDelete, routeGroups, "删除 API Key 分组", (*App).deleteGroup},
