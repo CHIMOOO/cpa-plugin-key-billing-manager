@@ -168,12 +168,13 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	if decision.ConfigurationError != "" {
 		return ErrorEnvelope("routing_configuration_error", decision.ConfigurationError, http.StatusServiceUnavailable), nil
 	}
-	if !decision.RestrictsCredentials() {
+	protectAccounts := a.accountRuntime != nil && a.accountRuntime.requiresTurnState() && a.turnState.HasProtectedAccounts()
+	if !decision.RestrictsCredentials() && !protectAccounts {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}
 	allowed := make([]SchedulerAuthCandidate, 0, len(req.Candidates))
 	for _, candidate := range req.Candidates {
-		if candidateAllowed(candidate, decision) {
+		if candidateAllowed(candidate, decision) && (!protectAccounts || !a.turnState.AccountProtected(candidate.ID) || a.hostSchema.Load() >= 6 && a.turnState.BusinessReady(candidate.ID, req.Model)) {
 			allowed = append(allowed, candidate)
 		}
 	}

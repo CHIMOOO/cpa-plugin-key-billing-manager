@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"cpa-key-billing/internal/billing"
 	"cpa-key-billing/internal/sqlite"
@@ -15,7 +16,12 @@ import (
 type App struct {
 	store                 *billing.Store
 	turnState             *turnstate.Manager
+	accountRuntime        *accountRuntime
+	hostSchema            atomic.Uint32
 	hostCaller            HostCaller
+	integrationsMu        sync.Mutex
+	integrationLogins     map[string]*integrationLogin
+	integrationUnsaved    map[string]integrationAccount
 	admissionsMu          sync.Mutex
 	admissions            map[string]*requestAdmission
 	routingMu             sync.Mutex
@@ -39,6 +45,7 @@ func newApp(store *billing.Store) *App {
 	return &App{
 		store:                 store,
 		turnState:             turnstate.New(),
+		accountRuntime:        newAccountRuntime(),
 		admissions:            make(map[string]*requestAdmission),
 		credentials:           make(map[string]credentialView),
 		credentialsByRawID:    make(map[string]string),
@@ -116,6 +123,11 @@ func (a *App) configure(raw []byte) error {
 	if errDecode != nil {
 		return errDecode
 	}
+	runtimePath := cfg.StateFile + ".account-runtime.json"
+	runtimeSettings, errRuntime := loadAccountRuntimeSettings(runtimePath)
+	if errRuntime != nil {
+		return errRuntime
+	}
 	if errConfigure := a.turnState.ConfigureWith(cfg.StateFile, func() error {
 		a.routingMu.Lock()
 		defer a.routingMu.Unlock()
@@ -130,6 +142,10 @@ func (a *App) configure(raw []byte) error {
 	}); errConfigure != nil {
 		return errConfigure
 	}
+	a.accountRuntime.mu.Lock()
+	a.accountRuntime.path, a.accountRuntime.settings = runtimePath, runtimeSettings
+	a.accountRuntime.mu.Unlock()
+	a.hostSchema.Store(req.SchemaVersion)
 	// Refresh records its result; a download failure does not disable custom prices.
 	_, _ = a.store.EnsureReferencePrices()
 	return nil

@@ -96,6 +96,10 @@ func TestManagementRegistrationExposesOnlyCurrentEndpoints(t *testing.T) {
 	registration := managementRegistration()
 	wantRoutes := map[string]bool{}
 	for _, value := range []string{
+		"GET /account-runtime", "GET /account-runtime/settings", "PUT /account-runtime/settings",
+		"GET /integrations", "POST /integrations", "DELETE /integrations", "POST /integrations/query", "POST /integrations/channel",
+		"POST /integrations/cline/device", "POST /integrations/cline/poll", "POST /integrations/refresh",
+		"POST /integrations/commit", "POST /integrations/cline/cancel",
 		"GET /keys", "GET /plans", "GET /routes", "GET /credentials", "GET /prices", "GET /prices/reference",
 		"POST /prices/reference/refresh", "PUT /prices", "DELETE /prices", "GET /prices/reference/status",
 		"POST /plans", "PATCH /plans", "DELETE /plans",

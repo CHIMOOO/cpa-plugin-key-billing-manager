@@ -498,10 +498,17 @@ func (m *Manager) pruneLocked(now time.Time) {
 func (m *Manager) Before(requestID, account, model string, headers http.Header) (http.Header, []string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.beforeLocked(requestID, account, model, headers)
+}
+
+func (m *Manager) beforeLocked(requestID, account, model string, headers http.Header) (http.Header, []string) {
+	return m.beforeAtLocked(requestID, account, model, headers, m.now())
+}
+
+func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.Header, now time.Time) (http.Header, []string) {
 	if !m.state.Config.Enabled {
 		return nil, nil
 	}
-	now := m.now()
 	model = ModelName(model)
 	m.pruneLocked(now)
 	if !validBucket(account, model) {

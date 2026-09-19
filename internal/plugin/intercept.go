@@ -154,9 +154,34 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 			metadataString(req.Metadata, MetadataSelectedIndex),
 		)
 	}
+	var admission *requestAdmission
+	if a != nil && metadataString(req.Metadata, MetadataSource) != SourcePluginHostModelCallback {
+		admission = a.beginAdmission(req.RequestID)
+		defer a.endAdmission(req.RequestID, admission)
+		a.admissionsMu.Lock()
+		defer a.admissionsMu.Unlock()
+		if admission != nil && admission.completed {
+			return OKEnvelope(priceRefusal(req.SourceFormat, "request_completed", "The request has already completed"))
+		}
+	}
 	response := a.enforceSelectedCredential(req)
+	if !response.Terminate {
+		response = a.enforceAccountRuntime(req)
+	}
 	if !response.Terminate && a != nil && a.turnState != nil && a.store != nil && a.store.Enabled() {
-		response.Headers, response.ClearHeaders = a.turnStateRequest(req)
+		account := metadataString(req.Metadata, MetadataSelectedAuth)
+		if metadataString(req.Metadata, MetadataSource) != SourcePluginHostModelCallback && a.accountRuntime.requiresTurnState() && a.turnState.AccountProtected(account) {
+			var reason string
+			response.Headers, response.ClearHeaders, reason = a.turnState.BeforeRequired(req.RequestID, account, req.Model, req.Headers)
+			if reason != "" {
+				response = priceRefusal(req.SourceFormat, "turn_state_required", reason)
+			}
+		} else {
+			response.Headers, response.ClearHeaders = a.turnStateRequest(req)
+		}
+	}
+	if response.Terminate && a != nil && a.accountRuntime != nil {
+		a.accountRuntime.release(req.RequestID)
 	}
 	return OKEnvelope(response)
 }
@@ -177,6 +202,9 @@ func (a *App) completeRequest(raw []byte) ([]byte, error) {
 				admission.completed = true
 			}
 			a.store.ReleaseSlot(completion.RequestID)
+			if a.accountRuntime != nil {
+				a.accountRuntime.release(completion.RequestID)
+			}
 		}()
 		a.finishRouteLog(completion)
 	}

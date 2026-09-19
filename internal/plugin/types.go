@@ -72,7 +72,8 @@ type EnvelopeError struct {
 }
 
 type LifecycleRequest struct {
-	ConfigYAML []byte `json:"config_yaml"`
+	ConfigYAML    []byte `json:"config_yaml"`
+	SchemaVersion uint32 `json:"schema_version"`
 }
 
 type Registration struct {

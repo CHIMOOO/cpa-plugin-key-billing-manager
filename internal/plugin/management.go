@@ -57,6 +57,14 @@ const (
 	routePluginLogs             = "/plugin-logs"
 	routeAuthFiles              = "/auth-files"
 	routeAuthQuota              = "/auth-files/quota"
+	routeIntegrations           = "/integrations"
+	routeIntegrationsQuery      = "/integrations/query"
+	routeIntegrationsChannel    = "/integrations/channel"
+	routeIntegrationsDevice     = "/integrations/cline/device"
+	routeIntegrationsPoll       = "/integrations/cline/poll"
+	routeIntegrationsRefresh    = "/integrations/refresh"
+	routeIntegrationsCommit     = "/integrations/commit"
+	routeIntegrationsCancel     = "/integrations/cline/cancel"
 )
 
 type managementEndpoint struct {
@@ -65,6 +73,9 @@ type managementEndpoint struct {
 }
 
 var managementEndpoints = []managementEndpoint{
+	{http.MethodGet, "/account-runtime", "View upstream account usage and concurrency", (*App).getAccountRuntime},
+	{http.MethodGet, "/account-runtime/settings", "View account runtime settings", (*App).getAccountRuntimeSettings},
+	{http.MethodPut, "/account-runtime/settings", "Save account runtime settings", (*App).setAccountRuntimeSettings},
 	{http.MethodGet, routeKeys, "View API key status", func(a *App, _ ManagementRequest) ManagementResponse {
 		return JSONResponse(http.StatusOK, map[string]any{"keys": a.keyRows()})
 	}},
@@ -132,6 +143,16 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodDelete, routePluginLogs, "Clear plugin logs", func(a *App, _ ManagementRequest) ManagementResponse { return a.clearPluginLogs() }},
 	{http.MethodGet, routeAuthFiles, "View auth files", func(a *App, _ ManagementRequest) ManagementResponse { return a.authFiles(viewAccess{}) }},
 	{http.MethodGet, routeAuthQuota, "Query auth file quotas", func(a *App, req ManagementRequest) ManagementResponse { return a.authQuota(req, viewAccess{}) }},
+	{http.MethodGet, routeIntegrations, "List host-managed provider integrations", (*App).listIntegrations},
+	{http.MethodPost, routeIntegrations, "Save a host-managed provider integration", (*App).saveIntegration},
+	{http.MethodDelete, routeIntegrations, "Retire a host-managed provider integration", (*App).deleteIntegration},
+	{http.MethodPost, routeIntegrationsQuery, "Query provider models and subscription quotas", (*App).queryIntegration},
+	{http.MethodPost, routeIntegrationsChannel, "Prepare the host channel for an integration", (*App).channelIntegration},
+	{http.MethodPost, routeIntegrationsDevice, "Start Cline device sign-in", (*App).startIntegrationCline},
+	{http.MethodPost, routeIntegrationsPoll, "Poll one Cline device sign-in", (*App).pollIntegrationCline},
+	{http.MethodPost, routeIntegrationsRefresh, "Refresh a Cline OAuth credential", (*App).refreshIntegration},
+	{http.MethodPost, routeIntegrationsCommit, "Commit a prepared credential replacement after publishing channels", (*App).commitIntegrationReplacement},
+	{http.MethodPost, routeIntegrationsCancel, "Cancel pending Cline device sign-in or report its completion", (*App).cancelIntegrationCline},
 }
 
 type resourceEndpoint struct {

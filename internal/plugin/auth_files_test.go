@@ -359,6 +359,9 @@ func TestCodexQuotaPreservesAdditionalDynamicWindows(t *testing.T) {
 	if result.Quota[0].RemainingPercent == nil || *result.Quota[0].RemainingPercent != 62 {
 		t.Fatalf("remaining percent = %+v", result.Quota[0].RemainingPercent)
 	}
+	if result.Quota[0].Scope != "account" || result.Quota[0].WindowSeconds != 604800 || result.Quota[1].Scope == "account" || result.Quota[1].WindowSeconds != 18000 {
+		t.Fatalf("overall and additional quota scopes are not distinguishable: %+v", result.Quota)
+	}
 	wantLabels := []string{"Weekly limit", "GPT-5.3-Codex-Spark 5-hour limit", "GPT-5.3-Codex-Spark Weekly limit"}
 	for index, want := range wantLabels {
 		if result.Quota[index].Label != want {
@@ -405,6 +408,9 @@ func TestClaudeQuotaUsesFableLimitAndCanonicalTeamPlan(t *testing.T) {
 	}
 	if result.Plan != "Team" {
 		t.Fatalf("plan = %q", result.Plan)
+	}
+	if result.Quota[0].Scope != "account" || result.Quota[0].WindowSeconds != 18000 || result.Quota[1].Scope == "account" || result.Quota[1].WindowSeconds != 604800 || result.Quota[2].Scope == "account" {
+		t.Fatalf("overall and model quota scopes are not distinguishable: %+v", result.Quota)
 	}
 }
 

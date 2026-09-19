@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"cpa-key-billing/internal/billing"
 	"cpa-key-billing/internal/messages"
 )
 
@@ -44,6 +45,7 @@ type hostAuthFile struct {
 
 type authFileView struct {
 	AuthIndex          string           `json:"auth_index"`
+	CredentialRef      string           `json:"credential_ref,omitempty"`
 	Name               string           `json:"name"`
 	Category           string           `json:"category"`
 	Email              string           `json:"email,omitempty"`
@@ -88,16 +90,20 @@ type quotaRow struct {
 	LabelPrefix      string           `json:"label_prefix,omitempty"`
 	RemainingPercent *float64         `json:"remaining_percent,omitempty"`
 	Used             *float64         `json:"used,omitempty"`
+	Remaining        *float64         `json:"remaining,omitempty"`
 	Limit            *float64         `json:"limit,omitempty"`
 	Currency         string           `json:"currency,omitempty"`
 	ResetAt          string           `json:"reset_at,omitempty"`
-	windowSeconds    int64
+	WindowSeconds    int64            `json:"window_seconds,omitempty"`
+	Scope            string           `json:"scope,omitempty"`
 }
 
 type authQuotaResponse struct {
 	AuthRevision                        string     `json:"auth_revision,omitempty"`
 	FetchedAt                           time.Time  `json:"fetched_at"`
 	Plan                                string     `json:"plan,omitempty"`
+	SubscriptionStatus                  string     `json:"subscription_status,omitempty"`
+	SubscriptionEndsAt                  string     `json:"subscription_ends_at,omitempty"`
 	RateLimitResetCreditsAvailableCount *int       `json:"rate_limit_reset_credits_available_count,omitempty"`
 	Quota                               []quotaRow `json:"quota"`
 }
@@ -135,7 +141,7 @@ func (a *App) authQuota(req ManagementRequest, access viewAccess) ManagementResp
 	if selected == nil {
 		return viewJSONError(access, http.StatusNotFound, "not_found", "Auth file does not exist")
 	}
-	if strings.EqualFold(strings.TrimSpace(selected.AccountType), "api_key") {
+	if selected.Type == integrationAuthType || strings.EqualFold(strings.TrimSpace(selected.AccountType), "api_key") {
 		return viewJSONError(access, http.StatusNotFound, "not_found", "Auth file does not exist")
 	}
 	if access.APIKey {
@@ -182,13 +188,17 @@ func (a *App) listAuthFiles(access viewAccess) ([]authFileView, error) {
 	}
 	views := make([]authFileView, 0, len(files))
 	for _, file := range files {
-		if strings.TrimSpace(file.AuthIndex) == "" || strings.EqualFold(strings.TrimSpace(file.AccountType), "api_key") {
+		if file.Type == integrationAuthType || strings.TrimSpace(file.AuthIndex) == "" || strings.EqualFold(strings.TrimSpace(file.AccountType), "api_key") {
 			continue
 		}
 		category := authCategory(file.Type)
 		quotaSupported, quotaReason := authQuotaAvailability(file, category)
+		ref := ""
+		if strings.TrimSpace(file.ID) != "" {
+			ref = billing.CredentialFingerprint(file.ID)
+		}
 		views = append(views, authFileView{
-			AuthIndex: file.AuthIndex, Name: file.Name, Category: category, Email: cleanText(file.Email),
+			AuthIndex: file.AuthIndex, CredentialRef: ref, Name: file.Name, Category: category, Email: cleanText(file.Email),
 			Disabled: file.Disabled, Unavailable: file.Unavailable,
 			QuotaSupported: quotaSupported, QuotaReason: quotaReason, CacheRevision: authFileRevision(file),
 			QuotaReasonMessage: messages.Literal(quotaReason),
@@ -467,7 +477,11 @@ func appendCodexRateLimit(result *authQuotaResponse, labelPrefix string, info ma
 		case seconds >= 28*24*60*60 && seconds <= 31*24*60*60:
 			label = "Monthly limit"
 		}
-		row := quotaRow{Label: labelPrefix + label, LabelMessage: messages.Literal(label), LabelPrefix: labelPrefix}
+		row := quotaRow{Label: labelPrefix + label, LabelMessage: messages.Literal(label), LabelPrefix: labelPrefix,
+			WindowSeconds: seconds, Scope: strings.TrimSpace(labelPrefix)}
+		if row.Scope == "" {
+			row.Scope = "account"
+		}
 		if used, ok := floatValue(value, "used_percent", "usedPercent"); ok {
 			row.RemainingPercent = remainingPercent(100 - used)
 		} else if hasReached && reached || hasAllowed && !allowed {
@@ -540,7 +554,15 @@ func (a *App) fetchClaudeQuota(callbackID, token string, result *authQuotaRespon
 		if value == nil {
 			continue
 		}
-		row := quotaRow{Label: window.label, LabelMessage: messages.Literal(window.label), ResetAt: quotaResetAt(firstString(value, "resets_at", "resetsAt"))}
+		row := quotaRow{Label: window.label, LabelMessage: messages.Literal(window.label), ResetAt: quotaResetAt(firstString(value, "resets_at", "resetsAt")), Scope: window.key}
+		if window.key == "five_hour" {
+			row.WindowSeconds, row.Scope = 18000, "account"
+		} else if strings.HasPrefix(window.key, "seven_day") {
+			row.WindowSeconds = 604800
+			if window.key == "seven_day" {
+				row.Scope = "account"
+			}
+		}
 		if percent, ok := floatValue(value, "utilization"); ok {
 			row.RemainingPercent = remainingPercent(100 - percent)
 		}
@@ -548,7 +570,7 @@ func (a *App) fetchClaudeQuota(callbackID, token string, result *authQuotaRespon
 	}
 	if fable != nil {
 		percent, _ := floatValue(fable, "percent")
-		result.Quota = append(result.Quota, quotaRow{Label: "Fable weekly limit", LabelMessage: messages.New("Fable weekly limit"), RemainingPercent: remainingPercent(100 - percent), ResetAt: quotaResetAt(firstString(fable, "resets_at", "resetsAt"))})
+		result.Quota = append(result.Quota, quotaRow{Label: "Fable weekly limit", LabelMessage: messages.New("Fable weekly limit"), RemainingPercent: remainingPercent(100 - percent), ResetAt: quotaResetAt(firstString(fable, "resets_at", "resetsAt")), WindowSeconds: 604800, Scope: "fable"})
 	}
 	if extra := objectMap(usage, "extra_usage", "extraUsage"); extra != nil {
 		enabled, hasEnabled := boolValue(extra, "is_enabled", "isEnabled")
@@ -604,7 +626,7 @@ func (a *App) fetchKimiQuota(callbackID, token string, result *authQuotaResponse
 		}
 		windowSeconds := kimiWindowSeconds(limit)
 		label := firstNonEmptyString(firstString(limit, "name", "title"), firstString(detail, "name", "title"), windowLabel(windowSeconds), "Quota")
-		row := quotaRow{Label: label,
+		row := quotaRow{Label: label, WindowSeconds: windowSeconds, Scope: "account",
 			ResetAt: quotaResetAt(firstString(limit, "reset_at", "resetAt", "resetTime"), firstString(detail, "reset_at", "resetAt", "resetTime"))}
 		if firstNonEmptyString(firstString(limit, "name", "title"), firstString(detail, "name", "title")) == "" {
 			row.LabelMessage = messages.Literal(label)
@@ -618,7 +640,7 @@ func (a *App) fetchKimiQuota(callbackID, token string, result *authQuotaResponse
 		result.Quota = append(result.Quota, row)
 	}
 	if summary := objectMap(usage, "usage"); meaningfulQuotaValues(summary) {
-		row := quotaRow{Label: firstNonEmptyString(firstString(summary, "title"), "Weekly limit"), ResetAt: quotaResetAt(firstString(summary, "reset_at", "resetAt", "resetTime"))}
+		row := quotaRow{Label: firstNonEmptyString(firstString(summary, "title"), "Weekly limit"), ResetAt: quotaResetAt(firstString(summary, "reset_at", "resetAt", "resetTime")), WindowSeconds: kimiWindowSeconds(summary), Scope: "account"}
 		if firstString(summary, "title") == "" {
 			row.LabelMessage = messages.New("Weekly limit")
 		}
@@ -651,7 +673,7 @@ func (a *App) fetchXAIQuota(callbackID, token, userID string, result *authQuotaR
 		monthlyConfig = objectMap(objectMap(monthly, "body"), "config")
 	}
 	if percent, ok := floatValue(weeklyConfig, "creditUsagePercent", "credit_usage_percent"); ok {
-		row := quotaRow{Label: "Weekly limit", LabelMessage: messages.New("Weekly limit"), RemainingPercent: remainingPercent(100 - percent), ResetAt: xaiResetAt(weeklyConfig)}
+		row := quotaRow{Label: "Weekly limit", LabelMessage: messages.New("Weekly limit"), RemainingPercent: remainingPercent(100 - percent), ResetAt: xaiResetAt(weeklyConfig), WindowSeconds: 604800, Scope: "account"}
 		result.Quota = append(result.Quota, row)
 	}
 	monthlyLimit, hasLimit := usdValue(monthlyConfig, "monthlyLimit", "monthly_limit")
@@ -778,10 +800,10 @@ func (a *App) fetchAntigravityQuota(callbackID, token, projectID string, result 
 			if windowSeconds > 0 || firstString(bucket, "displayName", "display_name") == "" {
 				labelMessage = messages.Literal(label)
 			}
-			groupRows = append(groupRows, quotaRow{Label: label, GroupLabel: groupLabel, LabelMessage: labelMessage, GroupMessage: groupMessage, RemainingPercent: remainingPercent(remaining * 100), windowSeconds: windowSeconds, ResetAt: quotaResetAt(firstString(bucket, "resetTime", "reset_time"))})
+			groupRows = append(groupRows, quotaRow{Label: label, GroupLabel: groupLabel, LabelMessage: labelMessage, GroupMessage: groupMessage, RemainingPercent: remainingPercent(remaining * 100), WindowSeconds: windowSeconds, Scope: groupLabel, ResetAt: quotaResetAt(firstString(bucket, "resetTime", "reset_time"))})
 		}
 		sort.SliceStable(groupRows, func(i, j int) bool {
-			return quotaWindowOrder(groupRows[i].windowSeconds) < quotaWindowOrder(groupRows[j].windowSeconds)
+			return quotaWindowOrder(groupRows[i].WindowSeconds) < quotaWindowOrder(groupRows[j].WindowSeconds)
 		})
 		result.Quota = append(result.Quota, groupRows...)
 	}
