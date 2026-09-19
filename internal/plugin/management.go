@@ -36,6 +36,9 @@ const (
 	routeTurnStateProbe         = "/turn-state/probe"
 	routeTurnStateUpload        = "/turn-state/config-upload"
 	routeTurnStateUploadCommit  = "/turn-state/config-upload/commit"
+	routeTurnStateProxiesRead   = "/turn-state/proxies/read"
+	routeTurnStateProxiesTest   = "/turn-state/proxies/test"
+	routeTurnStateProbeProgress = "/turn-state/probe-progress"
 	routeKeysRoutes             = "/keys/routes"
 	routeKeysBind               = "/keys/bind"
 	routeKeysUnbind             = "/keys/unbind"
@@ -77,6 +80,9 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodPost, routeTurnStateUploadCommit, "Apply complete staged Codex turn-state settings", (*App).commitTurnStateUpload},
 	{http.MethodDelete, routeTurnStateTemplates, "Clear Codex turn-state templates", (*App).clearTurnState},
 	{http.MethodPost, routeTurnStateProbe, "Run one Codex turn-state probe", (*App).probeTurnState},
+	{http.MethodPost, routeTurnStateProxiesRead, "Read a page of saved proxy URLs for editing", (*App).readTurnStateProxies},
+	{http.MethodPost, routeTurnStateProxiesTest, "Test one proxy connection without using an account", (*App).testTurnStateProxy},
+	{http.MethodGet, routeTurnStateProbeProgress, "View the active Codex turn-state probe exit", (*App).getTurnStateProbeProgress},
 	{http.MethodPost, routeGroups, "Create API key group", (*App).createGroup},
 	{http.MethodPatch, routeGroups, "Update API key group", (*App).updateGroup},
 	{http.MethodDelete, routeGroups, "Delete API key group", (*App).deleteGroup},

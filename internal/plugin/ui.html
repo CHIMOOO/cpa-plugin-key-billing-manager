@@ -1503,6 +1503,9 @@
       .turn-state-probe-log { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
       .turn-state-accounts { max-height: 160px; }
       .turn-state-attribution { overflow-wrap: anywhere; }
+      .turn-state-table { margin-top: 12px; min-width: 0; }
+      .turn-state-table td { max-width: 280px; overflow-wrap: anywhere; white-space: normal; }
+      .turn-state-proxy-results { max-height: 280px; overflow: auto; }
       .group-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
       .group-toolbar input { flex: 1 1 160px; min-width: 0; }
       .group-toolbar .native-select { max-width: 100%; }
@@ -2337,29 +2340,32 @@
             <div class="turn-state-fields">
               <label class="field"><span data-i18n="ui.fork_injection_mode">Injection mode</span><span class="native-select"><select id="turn-state-inject-mode" disabled><option value="replace-only" data-i18n="ui.fork_replace_only_replace_states_of_the_specified_length">replace-only: replace states of the specified length</option><option value="always" data-i18n="ui.fork_always_inject_whenever_a_valid_template_exists">always: inject whenever a valid template exists</option></select></span></label>
               <label class="field"><span data-i18n="ui.fork_template_lifetime_seconds">Template lifetime (seconds)</span><input id="turn-state-ttl" type="number" min="60" max="3600" step="1" disabled /></label>
+              <label class="field"><span data-i18n="ui.turn_state_renew_before">Renew before expiry (minutes)</span><input id="turn-state-renew-before" type="number" min="0" max="59" step="1" disabled /><span id="turn-state-renew-help" class="small muted"></span></label>
               <label class="field"><span data-i18n="ui.fork_valid_template_length">Valid template length</span><input id="turn-state-template-length" type="number" min="100" max="8192" step="1" disabled /></label>
               <label class="field"><span data-i18n="ui.fork_state_length_to_replace">State length to replace</span><input id="turn-state-replace-length" type="number" min="100" max="8192" step="1" disabled /></label>
               <label class="field turn-state-wide"><span data-i18n="ui.fork_probe_models_one_per_line">Probe models (one per line)</span><textarea id="turn-state-models" rows="2" placeholder="For example: gpt6, gpt-5.6-sol" data-i18n-placeholder="ui.probe_models_example" disabled></textarea></label>
             </div>
             <p class="access-help" data-i18n="ui.fork_replace_only_replaces_headers_with_the_specified_length_always_also_inject">replace-only replaces headers with the specified length. always also injects missing headers or those of other lengths. Both modes require an unexpired template for the same account and model; neither guarantees answer quality. Saved settings take effect immediately.</p>
             <p id="turn-state-host-requirement" class="access-help" data-i18n="ui.fork_http_sse_injection_requires_cliproxyapi_v7_3_4_or_a_version_that_forwards">HTTP / SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards Turn State request headers. Older versions may report injection without forwarding it upstream. Reused WebSocket connections carry headers only at a new handshake.</p>
-            <details>
-              <summary data-i18n="ui.fork_probe_accounts_and_proxies">Probe accounts and proxies</summary>
+            <div>
+              <h3 data-i18n="ui.fork_probe_accounts_and_proxies">Probe accounts and proxies</h3>
               <p class="access-help" data-i18n="ui.fork_select_accounts_for_active_probing_including_disabled_codex_accounts_probi">Select accounts for active probing, including disabled Codex accounts. Probing does not change account enablement. No selection means no active probes; learning from normal responses follows the switch above.</p>
               <div id="turn-state-accounts" class="selection-list turn-state-accounts"></div>
               <div class="turn-state-fields">
-                <div class="field"><label for="turn-state-proxies" data-i18n="ui.fork_static_proxies_one_per_line">Static proxies (one per line)</label><textarea id="turn-state-proxies" rows="4" placeholder="http://username:password@host:port" data-i18n-placeholder="ui.fork_http_username_password_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-proxy-count" class="small muted"></span><label class="toggle-filter"><input id="turn-state-clear-proxies" type="checkbox" disabled /><span data-i18n="ui.fork_clear_saved_static_proxies">Clear saved static proxies</span></label></div>
-                <div class="field"><label for="turn-state-rotating" data-i18n="ui.fork_rotating_proxies_one_per_line">Rotating proxies (one per line)</label><textarea id="turn-state-rotating" rows="4" placeholder="http://username:password@rotating-host:port" data-i18n-placeholder="ui.fork_http_username_password_rotating_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-rotating-count" class="small muted"></span><label class="toggle-filter"><input id="turn-state-clear-rotating" type="checkbox" disabled /><span data-i18n="ui.fork_clear_saved_rotating_proxies">Clear saved rotating proxies</span></label></div>
+                <div class="field"><label for="turn-state-proxies" data-i18n="ui.fork_static_proxies_one_per_line">Static proxies (one per line)</label><textarea id="turn-state-proxies" rows="6" placeholder="http://username:password@host:port" data-i18n-placeholder="ui.fork_http_username_password_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-proxy-count" class="small muted"></span><div class="row"><button id="turn-state-static-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-static-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-static-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-static-test-status" class="small muted" role="status"></div><div id="turn-state-static-results" class="turn-state-table turn-state-proxy-results"></div></div>
+                <div class="field"><label for="turn-state-rotating" data-i18n="ui.fork_rotating_proxies_one_per_line">Rotating proxies (one per line)</label><textarea id="turn-state-rotating" rows="6" placeholder="http://username:password@rotating-host:port" data-i18n-placeholder="ui.fork_http_username_password_rotating_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-rotating-count" class="small muted"></span><div class="row"><button id="turn-state-rotating-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-rotating-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-rotating-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-rotating-test-status" class="small muted" role="status"></div><div id="turn-state-rotating-results" class="turn-state-table turn-state-proxy-results"></div></div>
               </div>
+              <div id="turn-state-proxy-load-status" class="small muted" role="status"></div><button id="turn-state-proxy-reload" type="button" class="hidden" data-i18n="ui.turn_state_reload_proxies">Reload saved proxies (replace proxy drafts)</button>
               <p class="access-help" data-i18n="ui.turn_state_pool_limits">Each pool supports up to 20,000 proxies; total settings size is limited to 16 MiB. Failed uploads keep the previous settings.</p>
-              <p class="access-help" data-i18n="ui.fork_leave_proxy_fields_blank_to_keep_saved_values_a_new_list_replaces_the_enti">Leave proxy fields blank to keep saved values. A new list replaces the entire pool. HTTP, HTTPS, SOCKS5, and SOCKS5H URLs are supported. Static exits cool down for 55 minutes after failure and renew successful templates based on expiry. Rotating exits allow repeated attempts and cool down for 10 minutes after failure.</p>
-            </details>
+              <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes; rotating exits retry up to 10 times and cool down for 10 minutes. Connectivity testing checks the current editor; removal takes effect after saving. IP is the address observed during the connectivity test; rotating proxies may use another IP for collection. Upstream 403/429 or degraded states do not count as invalid proxies.</p>
+            </div>
             <div class="row spread"><h3 data-i18n="ui.fork_probing_and_templates">Probing and templates</h3><div class="row"><button id="turn-state-probe-start" type="button" disabled data-i18n="ui.fork_start_probing">Start probing</button><button id="turn-state-probe-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-refresh" type="button" disabled data-i18n="ui.fork_refresh_status">Refresh status</button><button id="turn-state-clear-templates" class="danger" type="button" disabled data-i18n="ui.fork_clear_templates">Clear templates</button></div></div>
             <p class="access-help" data-i18n="ui.fork_active_probes_request_the_upstream_directly_and_consume_account_quota_with">Active probes request the upstream directly and consume account quota without downstream CPA billing. Save the probe scope first. Leaving the Codex Turn State tab or closing the page stops future probes; in-flight requests finish.</p>
             <div id="turn-state-summary" class="small muted"></div>
             <div id="turn-state-probe-status" class="small muted" role="status"></div>
             <pre id="turn-state-probe-log" class="small turn-state-probe-log"></pre>
-            <div id="turn-state-templates"></div>
+            <div id="turn-state-template-summary" class="small muted"></div>
+            <div id="turn-state-templates" class="turn-state-table"></div>
           </div>
           <p class="small muted turn-state-attribution"><span data-i18n="ui.fork_based_on">Based on</span> <a href="https://github.com/arden-aaai/cpa-plugin-codex-turn-state" target="_blank" rel="noopener noreferrer">cpa-plugin-codex-turn-state</a></p>
         </section>
@@ -2679,7 +2685,7 @@
     <footer class="page-footer">
       <span>© 2026 <a href="https://github.com/haowang02/cpa-plugin-key-billing" target="_blank" rel="noopener noreferrer">CPA Key Billing</a></span>
       <span>&thinsp;·&thinsp;<a href="https://github.com/haowang02/cpa-plugin-key-billing/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" data-i18n="ui.license">License</a></span>
-      <span>&thinsp;·&thinsp;<span data-i18n="ui.version">Version</span>: v0.0.5</span>
+      <span>&thinsp;·&thinsp;<span data-i18n="ui.version">Version</span>: v0.0.6</span>
     </footer>
 
     <div id="notice" class="notice" popover="manual"></div>
@@ -3455,7 +3461,20 @@
       }
 
       function resetRoleData(role) {
-        if (role === "admin") stopTurnStateProbe();
+        if (role === "admin") {
+          stopTurnStateWork();
+          turnStateDiagnostics = {
+            running: false,
+            inFlight: false,
+            generation: 0,
+            pool: "",
+            index: 0,
+            total: 0,
+            results: { static: [], rotating: [] }
+          };
+          $("turn-state-proxies").value = "";
+          $("turn-state-rotating").value = "";
+        }
         const account = role === "account";
         destroyAnalysisCharts(account);
         if (role === "account") accountUIState = emptyAuthQuotaState();
@@ -7007,36 +7026,357 @@
         "learn-responses",
         "inject-mode",
         "ttl",
+        "renew-before",
         "template-length",
         "replace-length",
         "models",
         "proxies",
         "rotating",
-        "clear-proxies",
-        "clear-rotating",
         "save"
       ];
-      let turnStateProbe = { running: false, timer: 0, generation: 0, inFlight: false };
+      const TURN_STATE_POOLS = { static: "proxies", rotating: "rotating" };
+      let turnStateProbe = { running: false, timer: 0, progressTimer: 0, generation: 0, inFlight: false };
+      let turnStateClockTimer = 0;
+      let turnStateDiagnostics = {
+        running: false,
+        inFlight: false,
+        generation: 0,
+        pool: "",
+        index: 0,
+        total: 0,
+        results: { static: [], rotating: [] }
+      };
 
       function validateTurnState(value) {
         if (!value?.config || typeof value.config.enabled !== "boolean" || !["always", "replace-only"].includes(value.config.inject_mode))
           throw new UIError(m("ui.fork_invalid_turn_state_response"));
         requireArray(value.templates, m("ui.fork_turn_state_templates"));
         requireArray(value.probe_accounts, m("ui.fork_turn_state_accounts"));
+        value.received_at = Date.now();
         return value;
       }
 
       function turnStateLines(value) { return [...new Set(value.split(/[\n,，]/).map((line) => line.trim()).filter(Boolean))]; }
+      function turnStateProxyLines(value) { return [...new Set(value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean))]; }
+      function turnStatePoolState() {
+        return (adminUIState.turnStatePools ||= {
+          loaded: false,
+          loading: false,
+          error: "",
+          revision: "",
+          baseline: { static: "", rotating: "" }
+        });
+      }
+      function turnStateProxyDraftChanged(pool) {
+        return (
+          turnStatePoolState().loaded &&
+          JSON.stringify(turnStateProxyLines($("turn-state-" + TURN_STATE_POOLS[pool]).value)) !==
+            JSON.stringify(turnStateProxyLines(turnStatePoolState().baseline[pool]))
+        );
+      }
+      function turnStateProxyDisplay(value) {
+        if (!value || value === "(direct)" || value === "direct") return m("ui.turn_state_direct");
+        try {
+          const url = new URL(value);
+          return ["http:", "https:", "socks5:", "socks5h:"].includes(url.protocol)
+            ? url.protocol + "//" + (url.username || url.password ? "***@" : "") + url.host
+            : m("ui.turn_state_invalid_proxy");
+        } catch (_) { return m("ui.turn_state_invalid_proxy"); }
+      }
+      function turnStateNow(state) {
+        const serverTime = Date.parse(state.server_time);
+        return Number.isFinite(serverTime) ? serverTime + Date.now() - state.received_at : Date.now();
+      }
+      function turnStateMinutes(value) {
+        return new Intl.NumberFormat(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Math.max(0, value));
+      }
+      function renderTurnStateRenewHelp() {
+        const ttl = Number($("turn-state-ttl").value) || 3600;
+        const lead = Number($("turn-state-renew-before").value) || 0;
+        setText(
+          $("turn-state-renew-help"),
+          m("ui.turn_state_renew_help", { minutes: turnStateMinutes(lead || Math.min(ttl / 4, 300) / 60) })
+        );
+      }
+      async function loadTurnStateProxies({ discard = false } = {}) {
+        const owner = adminUIState, pools = turnStatePoolState(), generation = sessionGeneration;
+        if (pools.loading || turnStateDiagnostics.running || turnStateDiagnostics.inFlight || owner.turnStateSaving) return;
+        pools.loading = true;
+        pools.error = "";
+        renderTurnState();
+        const current = () => {
+          if (owner !== adminUIState || generation !== sessionGeneration || currentRole !== "admin") throw new StaleRequestError();
+        };
+        try {
+          const values = { static: [], rotating: [] };
+          let revision = "";
+          for (const pool of Object.keys(TURN_STATE_POOLS)) {
+            let offset = 0;
+            for (;;) {
+              current();
+              const page = await plugin("POST", "/turn-state/proxies/read", { pool, offset, ...(revision ? { revision } : {}) });
+              current();
+              if (
+                !page || page.pool !== pool || page.offset !== offset || !Array.isArray(page.proxies) ||
+                page.proxies.some((proxy) => typeof proxy !== "string") ||
+                typeof page.revision !== "string" ||
+                !page.revision ||
+                (revision && page.revision !== revision) ||
+                !Number.isInteger(page.total) ||
+                page.total > 20000 ||
+                page.next_offset !== offset + page.proxies.length ||
+                page.next_offset > page.total ||
+                (page.done ? page.next_offset !== page.total : page.next_offset <= offset)
+              )
+                throw new UIError(m("ui.invalid_server_response"));
+              revision = page.revision;
+              values[pool].push(...page.proxies);
+              offset = page.next_offset;
+              if (page.done) break;
+            }
+          }
+          // Publish both complete pools together. Never expose/save a partial download.
+          for (const pool of Object.keys(TURN_STATE_POOLS)) {
+            const changed = turnStateProxyDraftChanged(pool);
+            const text = values[pool].join("\n");
+            if (!changed || discard) $("turn-state-" + TURN_STATE_POOLS[pool]).value = text;
+            pools.baseline[pool] = text;
+          }
+          pools.loaded = true;
+          pools.revision = revision;
+          if (discard) turnStateDiagnostics.results = { static: [], rotating: [] };
+        } catch (error) {
+          if (error instanceof AuthError) await fail(error);
+          else if (!(error instanceof StaleRequestError)) pools.error = error.message || String(error);
+        } finally {
+          pools.loading = false;
+          if (owner === adminUIState) renderTurnState();
+        }
+      }
+
+      function renderTurnStateTemplates() {
+        clearTimeout(turnStateClockTimer);
+        const state = resources.admin.turnState.value;
+        if (!state) return;
+        const now = turnStateNow(state);
+        const templates = state.templates.filter((template) => Date.parse(template.expires_at) > now);
+        const accounts = [...new Set([...(state.config.probe_accounts || []), ...templates.map((template) => template.account)])];
+        const models = [...new Set([...(state.config.models || []), ...templates.map((template) => template.model)])];
+        const busy =
+          !!adminUIState.turnStateSaving || turnStateProbe.running || turnStateProbe.inFlight || turnStateDiagnostics.running ||
+          turnStateDiagnostics.inFlight;
+        const buckets = new Map(templates.map((template) => [JSON.stringify([template.account, template.model]), template]));
+        const ready = templates.filter(
+          (template) => state.config.probe_accounts?.includes(template.account) && state.config.models?.includes(template.model)
+        ).length;
+        setText(
+          $("turn-state-template-summary"),
+          m("ui.turn_state_template_summary", {
+            ready,
+            total: (state.config.probe_accounts?.length || 0) * (state.config.models?.length || 0)
+          })
+        );
+        renderCollection($("turn-state-templates"), models.length ? accounts : [], {
+          headers: [m("ui.turn_state_account"), ...models],
+          empty: m("ui.fork_no_valid_templates_select_accounts_and_models_and_start_probing_or_wait_fo"),
+          render: (account) =>
+            el(
+              "tr",
+              {},
+              el("td", {}, state.probe_accounts.find((item) => item.account === account)?.label || account),
+              ...models.map((model) => {
+                const template = buckets.get(JSON.stringify([account, model]));
+                const inScope = state.config.probe_accounts?.includes(account) && state.config.models?.includes(model);
+                if (!template) return el("td", { class: "muted", text: inScope ? m("ui.turn_state_bucket_empty") : "—" });
+                const source =
+                  template.source === "probe"
+                    ? m("ui.turn_state_source_probe")
+                    : template.source === "response" ? m("ui.turn_state_source_response") : m("ui.turn_state_source_legacy");
+                return el(
+                  "td",
+                  {},
+                  el("strong", {
+                    class: Date.parse(template.expires_at) - now <= (state.renewal_lead_seconds || 0) * 1000 ? "tag warn" : "",
+                    text: m("ui.turn_state_remaining_minutes", {
+                      minutes: turnStateMinutes((Date.parse(template.expires_at) - now) / 60000)
+                    })
+                  }),
+                  el("div", { class: "small muted", text: m("ui.turn_state_template_detail", { length: template.length, source }) }),
+                  template.exit ? el("div", { class: "small muted", text: turnStateProxyDisplay(template.exit) }) : null,
+                  !inScope ? el("div", { class: "small muted", text: m("ui.turn_state_outside_scope") }) : null,
+                  el("button", {
+                    type: "button",
+                    class: "danger small",
+                    disabled: busy,
+                    text: m("ui.turn_state_clear_bucket"),
+                    onclick: () => guard(() => clearTurnStateBucket(account, model))
+                  })
+                );
+              })
+            )
+        });
+        if (currentRole === "admin" && activeTab(false) === "turn-state" && templates.length) {
+          const nextExpiry = Math.min(...templates.map((template) => Date.parse(template.expires_at) - now));
+          turnStateClockTimer = setTimeout(renderTurnStateTemplates, Math.max(50, Math.min(5000, nextExpiry + 25)));
+        }
+      }
+
+      async function clearTurnStateBucket(account, model) {
+        if (
+          adminUIState.turnStateSaving || turnStateProbe.running || turnStateProbe.inFlight || turnStateDiagnostics.running ||
+          turnStateDiagnostics.inFlight
+        )
+          return;
+        await writeTurnState("DELETE", "/turn-state/templates", { account, model }, m("ui.turn_state_bucket_cleared"));
+      }
+
+      function renderTurnStateDiagnostics() {
+        const diagnostic = turnStateDiagnostics, pools = turnStatePoolState();
+        const busy =
+          !!adminUIState.turnStateSaving || pools.loading || turnStateProbe.running || turnStateProbe.inFlight || diagnostic.running ||
+          diagnostic.inFlight;
+        for (const pool of Object.keys(TURN_STATE_POOLS)) {
+          const results = diagnostic.results[pool];
+          const lines = new Set(turnStateProxyLines($("turn-state-" + TURN_STATE_POOLS[pool]).value));
+          setText(
+            $("turn-state-" + (pool === "static" ? "proxy" : "rotating") + "-count"),
+            m("ui.turn_state_proxy_count", {
+              saved: resources.admin.turnState.value?.proxy_counts?.[pool] || 0,
+              draft: pools.loaded ? lines.size : "—"
+            })
+          );
+          $("turn-state-" + pool + "-test").disabled = busy || !pools.loaded || !lines.size;
+          $("turn-state-" + pool + "-stop").disabled = !diagnostic.running || diagnostic.pool !== pool;
+          $("turn-state-" + pool + "-remove").disabled =
+            busy || !results.some((result) => result.deletable === true && lines.has(result.input));
+          const status = $("turn-state-" + pool + "-test-status");
+          if (diagnostic.pool === pool && (diagnostic.running || diagnostic.inFlight)) {
+            setText(
+              status,
+              m(diagnostic.running ? "ui.turn_state_testing_progress" : "ui.turn_state_test_stopping", {
+                index: diagnostic.index,
+                total: diagnostic.total,
+                proxy: turnStateProxyDisplay(diagnostic.current)
+              })
+            );
+          } else
+            setText(
+              status,
+              results.length
+                ? m("ui.turn_state_test_summary", {
+                    count: results.length,
+                    failed: results.filter((result) => result.deletable === true).length,
+                    shown: Math.min(100, results.length)
+                  })
+                : ""
+            );
+          renderCollection($("turn-state-" + pool + "-results"), results.slice(-100), {
+            headers: [
+              m("ui.turn_state_progress"),
+              m("ui.turn_state_proxy_endpoint"),
+              "IP",
+              m("ui.turn_state_latency"),
+              m("ui.turn_state_test_status")
+            ],
+            empty: "",
+            render: (result) =>
+              el(
+                "tr",
+                {},
+                el("td", { text: result.index + "/" + result.total }),
+                el("td", { text: turnStateProxyDisplay(result.proxy || result.input) }),
+                el("td", { text: result.ip || "—" }),
+                el("td", { text: Number.isFinite(result.latency_ms) ? result.latency_ms + " ms" : "—" }),
+                el(
+                  "td",
+                  {},
+                  el("span", {
+                    text: m(
+                      "ui.turn_state_test_" +
+                        (["reachable", "failed", "inconclusive"].includes(result.status) ? result.status : "inconclusive")
+                    )
+                  }),
+                  el("div", { class: "small muted", text: window.billingI18n.serverMessage(result.reason_message, result.reason || "") })
+                )
+              )
+          });
+        }
+      }
+
+      function stopTurnStateDiagnostics() {
+        turnStateDiagnostics.running = false;
+        turnStateDiagnostics.generation++;
+        if (currentRole === "admin") renderTurnStateDiagnostics();
+      }
+
+      async function testTurnStateProxies(pool) {
+        const owner = adminUIState, diagnostic = turnStateDiagnostics, pools = turnStatePoolState();
+        if (
+          !pools.loaded || pools.loading || owner.turnStateSaving || turnStateProbe.running || turnStateProbe.inFlight ||
+          diagnostic.running ||
+          diagnostic.inFlight
+        )
+          return;
+        const proxies = turnStateProxyLines($("turn-state-" + TURN_STATE_POOLS[pool]).value);
+        if (proxies.length > 20000) throw new UIError(m("ui.turn_state_proxy_limit"));
+        if (!proxies.length) return;
+        diagnostic.results[pool] = [];
+        Object.assign(diagnostic, { running: true, pool, index: 0, total: proxies.length });
+        const generation = ++diagnostic.generation;
+        try {
+          for (let index = 0; index < proxies.length; index++) {
+            if (
+              !diagnostic.running || generation !== diagnostic.generation || owner !== adminUIState || currentRole !== "admin" ||
+              activeTab(false) !== "turn-state"
+            )
+              break;
+            Object.assign(diagnostic, { index: index + 1, current: proxies[index], inFlight: true });
+            renderTurnState();
+            const result = await plugin("POST", "/turn-state/proxies/test", { proxy: proxies[index] }, { command: true, timeoutMS: 45000 });
+            if (owner !== adminUIState) return;
+            if (!result || !["reachable", "failed", "inconclusive"].includes(result.status))
+              throw new UIError(m("ui.invalid_server_response"));
+            diagnostic.results[pool].push({ ...result, input: proxies[index], index: index + 1, total: proxies.length });
+            diagnostic.inFlight = false;
+          }
+        } finally {
+          diagnostic.running = false;
+          diagnostic.inFlight = false;
+          if (owner === adminUIState) renderTurnState();
+        }
+      }
+
+      function removeFailedTurnStateProxies(pool) {
+        if (
+          adminUIState.turnStateSaving || turnStateDiagnostics.running || turnStateDiagnostics.inFlight || turnStateProbe.running ||
+          turnStateProbe.inFlight
+        )
+          return;
+        const failed = new Set(
+          turnStateDiagnostics.results[pool].filter((result) => result.deletable === true).map((result) => result.input)
+        );
+        const input = $("turn-state-" + TURN_STATE_POOLS[pool]);
+        const before = turnStateProxyLines(input.value), after = before.filter((proxy) => !failed.has(proxy));
+        input.value = after.join("\n");
+        adminUIState.turnStateDirty = true;
+        renderTurnState();
+        notify(m("ui.turn_state_removed_failed", { count: before.length - after.length }));
+      }
 
       function renderTurnState() {
         const resource = resources.admin.turnState;
         const state = resource.value;
         const saving = !!adminUIState.turnStateSaving;
-        for (const field of TURN_STATE_FIELDS) $("turn-state-" + field).disabled = !state || saving;
+        const pools = turnStatePoolState();
+        const testing = turnStateDiagnostics.running || turnStateDiagnostics.inFlight;
+        const busy = saving || testing || turnStateProbe.inFlight;
+        for (const field of TURN_STATE_FIELDS) $("turn-state-" + field).disabled = !state || busy;
+        for (const field of Object.values(TURN_STATE_POOLS))
+          $("turn-state-" + field).disabled = !state || busy || !pools.loaded || pools.loading;
+        $("turn-state-save").disabled = !state || busy || pools.loading;
         setText($("turn-state-save"), saving ? m("ui.saving") : m("ui.save"));
-        $("turn-state-refresh").disabled = !state || saving;
-        $("turn-state-clear-templates").disabled =
-          !state || saving || turnStateProbe.running || turnStateProbe.inFlight || !state.templates.length;
+        $("turn-state-refresh").disabled = !state || busy;
+        $("turn-state-clear-templates").disabled = !state || busy || turnStateProbe.running || !state.templates.length;
         const status = $("turn-state-status");
         status.className = resource.error ? "notice err show" : state ? "notice hidden" : "notice show";
         setText(status, resource.error || (state ? "" : m("ui.fork_loading_turn_state_settings")));
@@ -7049,7 +7389,7 @@
           );
         // Status polling must not replace unsaved settings or typed proxy credentials.
         const signature = JSON.stringify(config);
-        if (adminUIState.turnStateShown !== signature) {
+        if (adminUIState.turnStateShown === undefined || (!adminUIState.turnStateDirty && adminUIState.turnStateShown !== signature)) {
           for (const [field, value] of [
             ["enabled", config.enabled],
             ["dry-run", config.dry_run],
@@ -7059,15 +7399,12 @@
           for (const [field, value] of [
             ["inject-mode", config.inject_mode],
             ["ttl", config.ttl_seconds],
+            ["renew-before", config.renew_before_minutes || 0],
             ["template-length", config.template_length],
             ["replace-length", config.replace_length]
           ])
             $("turn-state-" + field).value = value;
           $("turn-state-models").value = (config.models || []).join("\n");
-          $("turn-state-proxies").value = "";
-          $("turn-state-rotating").value = "";
-          $("turn-state-clear-proxies").checked = false;
-          $("turn-state-clear-rotating").checked = false;
           adminUIState.turnStateShown = signature;
           adminUIState.turnStateAccounts = new Set(config.probe_accounts || []);
         }
@@ -7092,9 +7429,10 @@
                       type: "checkbox",
                       value: account.account,
                       checked: selected.has(account.account),
-                      disabled: saving,
+                      disabled: busy,
                       onchange: (event) => {
                         if (event.target.checked) selected.add(account.account); else selected.delete(account.account);
+                        adminUIState.turnStateDirty = true;
                       }
                     })
                   }),
@@ -7108,9 +7446,15 @@
               )
             : [el("div", { class: "empty", text: m("ui.fork_no_codex_accounts_available_for_probing") })])
         );
-        setText($("turn-state-proxy-count"), m("ui.saved_proxy_count", { count: state.proxy_counts?.static || 0 }));
-        setText($("turn-state-rotating-count"), m("ui.saved_proxy_count", { count: state.proxy_counts?.rotating || 0 }));
-        $("turn-state-probe-start").disabled = saving || turnStateProbe.running || turnStateProbe.inFlight || !state.probe_supported;
+        setText(
+          $("turn-state-proxy-load-status"),
+          pools.loading
+            ? m("ui.turn_state_proxies_loading")
+            : pools.error ? m("ui.turn_state_proxies_load_failed", { reason: pools.error }) : ""
+        );
+        $("turn-state-proxy-reload").classList.toggle("hidden", !pools.error);
+        $("turn-state-proxy-reload").disabled = busy || pools.loading || turnStateProbe.running;
+        $("turn-state-probe-start").disabled = busy || turnStateProbe.running || pools.loading || !state.probe_supported;
         $("turn-state-probe-stop").disabled = !turnStateProbe.running;
         setTextAttribute(
           $("turn-state-probe-start"),
@@ -7137,31 +7481,11 @@
             window.billingI18n.serverMessage(state.probe_unavailable_message, state.probe_unavailable_reason) ||
               m("ui.fork_the_current_host_does_not_support_active_probing")
           );
-        $("turn-state-templates").replaceChildren(
-          ...(state.templates.length
-            ? state.templates.map((template) =>
-                el(
-                  "div",
-                  { class: "settings-entry-field" },
-                  el("span", {
-                    class: "small",
-                    text:
-                      (state.probe_accounts.find((account) => account.account === template.account)?.label || template.account) + " · " +
-                      template.model
-                  }),
-                  el("span", {
-                    class: "small muted",
-                    text: m("ui.template_expiry", {
-                      length: template.length,
-                      at: window.billingI18n.date(template.expires_at, { dateStyle: "short", timeStyle: "medium" })
-                    })
-                  })
-                )
-              )
-            : [
-                el("div", { class: "empty", text: m("ui.fork_no_valid_templates_select_accounts_and_models_and_start_probing_or_wait_fo") })
-              ])
-        );
+        renderTurnStateRenewHelp();
+        renderTurnStateTemplates();
+        renderTurnStateDiagnostics();
+        if (!pools.loaded && !pools.loading && !pools.error && currentRole === "admin" && activeTab(false) === "turn-state")
+          loadTurnStateProxies();
       }
 
       async function readTurnStateNow(current) {
@@ -7224,7 +7548,15 @@
           try {
             const saved = validateTurnState(result);
             Object.assign(resources.admin.turnState, { value: saved, error: "" });
-            if (resetDraft) adminUIState.turnStateShown = null;
+            if (resetDraft) {
+              adminUIState.turnStateShown = undefined;
+              adminUIState.turnStateDirty = false;
+              const pools = turnStatePoolState();
+              for (const [pool, key] of [["static", "probe_proxies"], ["rotating", "probe_proxies_rotating"]]) {
+                if (Array.isArray(payload[key])) pools.baseline[pool] = payload[key].join("\n");
+              }
+              pools.reloadAfterSave = true;
+            }
             renderTurnState();
             await readTurnStateNow(current);
           } catch (error) {
@@ -7240,7 +7572,13 @@
 
       async function saveTurnState() {
         const owner = adminUIState;
-        if (owner.turnStateSaving || !resources.admin.turnState.value) return;
+        const pools = turnStatePoolState();
+        if (
+          owner.turnStateSaving || pools.loading || turnStateDiagnostics.running || turnStateDiagnostics.inFlight ||
+          turnStateProbe.inFlight ||
+          !resources.admin.turnState.value
+        )
+          return;
         const payload = {
           enabled: $("turn-state-enabled").checked,
           dry_run: $("turn-state-dry-run").checked,
@@ -7249,22 +7587,39 @@
           models: turnStateLines($("turn-state-models").value),
           probe_accounts: [...owner.turnStateAccounts]
         };
-        for (const [field, key] of [["ttl", "ttl_seconds"], ["template-length", "template_length"], ["replace-length", "replace_length"]]) {
+        for (const [field, key] of [
+          ["ttl", "ttl_seconds"],
+          ["renew-before", "renew_before_minutes"],
+          ["template-length", "template_length"],
+          ["replace-length", "replace_length"]
+        ]) {
           const input = $("turn-state-" + field);
           if (!input.value || !input.reportValidity()) return;
           payload[key] = Number(input.value);
         }
-        for (const [field, key] of [["proxies", "probe_proxies"], ["rotating", "probe_proxies_rotating"]]) {
-          const input = $("turn-state-" + field);
-          if ($("turn-state-clear-" + field).checked) payload[key] = [];
-          else if (input.value.trim()) payload[key] = input.value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        if (payload.renew_before_minutes * 60 >= payload.ttl_seconds) throw new UIError(m("ui.turn_state_renew_invalid"));
+        for (const [pool, key] of [["static", "probe_proxies"], ["rotating", "probe_proxies_rotating"]]) {
+          if (turnStateProxyDraftChanged(pool)) {
+            payload[key] = turnStateProxyLines($("turn-state-" + TURN_STATE_POOLS[pool]).value);
+            payload.expected_revision = pools.revision;
+          }
         }
         stopTurnStateProbe();
         owner.turnStateSaving = true;
         renderTurnState();
-        try { await writeTurnState("PUT", "/turn-state", payload, m("ui.fork_turn_state_settings_saved"), true); } finally {
+        try { await writeTurnState("PUT", "/turn-state", payload, m("ui.fork_turn_state_settings_saved"), true); } catch (error) {
+          if (payload.expected_revision && !(error instanceof AuthError) && !(error instanceof StaleRequestError))
+            pools.error = error.message || String(error);
+          throw error;
+        } finally {
           owner.turnStateSaving = false;
-          if (owner === adminUIState) renderTurnState();
+          if (owner === adminUIState) {
+            if (pools.reloadAfterSave) {
+              pools.reloadAfterSave = false;
+              await loadTurnStateProxies();
+            }
+            renderTurnState();
+          }
         }
       }
 
@@ -7272,7 +7627,9 @@
         turnStateProbe.running = false;
         turnStateProbe.generation++;
         clearTimeout(turnStateProbe.timer);
+        clearTimeout(turnStateProbe.progressTimer);
         turnStateProbe.timer = 0;
+        turnStateProbe.progressTimer = 0;
         $("turn-state-probe-stop").disabled = true;
         setText(
           $("turn-state-probe-status"),
@@ -7296,7 +7653,24 @@
         const line = m("ui.turn_state_probe_line", {
           at: window.billingI18n.date(new Date(), { timeStyle: "medium" }),
           action: labels[result.action] || result.action || m("ui.fork_probe"),
-          model: result.model ? " · " + result.model : "",
+          model: result.model
+            ? " · " +
+              (resources.admin.turnState.value?.probe_accounts.find((account) => account.account === result.account)?.label ||
+                result.account ||
+                "") +
+              " · " +
+              result.model
+            : "",
+          proxy:
+            result.proxy_index || result.exit
+              ? m("ui.turn_state_probe_proxy_suffix", {
+                  index: result.proxy_index || 1,
+                  total: result.proxy_total || 1,
+                  proxy: turnStateProxyDisplay(result.exit),
+                  attempt: result.proxy_pool === "rotating" ? m("ui.turn_state_probe_attempt", { attempt: result.proxy_attempt || 1 }) : ""
+                })
+              : "",
+          length: result.length ? m("ui.turn_state_probe_length", { length: result.length }) : "",
           reason: result.reason
             ? m("ui.turn_state_reason_suffix", { reason: window.billingI18n.serverMessage(result.reason_message, result.reason) })
             : ""
@@ -7307,12 +7681,63 @@
         log.scrollTop = log.scrollHeight;
       }
 
+      async function pollTurnStateProbeProgress(generation) {
+        if (
+          !turnStateProbe.running || !turnStateProbe.inFlight || generation !== turnStateProbe.generation || currentRole !== "admin" ||
+          activeTab(false) !== "turn-state"
+        )
+          return;
+        try {
+          // This read must bypass the serialized configuration queue: the probe
+          // itself holds that queue while its upstream request is in flight.
+          const progress = await plugin("GET", "/turn-state/probe-progress", null, { timeoutMS: 5000 });
+          if (
+            !turnStateProbe.running || !turnStateProbe.inFlight || generation !== turnStateProbe.generation || currentRole !== "admin" ||
+            activeTab(false) !== "turn-state"
+          )
+            return;
+          if (progress?.active && progress.result) {
+            const result = progress.result;
+            setText(
+              $("turn-state-probe-status"),
+              m("ui.turn_state_live_probe", {
+                account:
+                  resources.admin.turnState.value?.probe_accounts.find((account) => account.account === result.account)?.label ||
+                  result.account ||
+                  "",
+                model: result.model || "",
+                index: result.proxy_index || 1,
+                total: result.proxy_total || 1,
+                proxy: turnStateProxyDisplay(result.exit),
+                attempt: result.proxy_pool === "rotating" ? m("ui.turn_state_probe_attempt", { attempt: result.proxy_attempt || 1 }) : ""
+              })
+            );
+          }
+        } catch (error) {
+          if (error instanceof AuthError) {
+            stopTurnStateProbe();
+            await fail(error);
+            return;
+          }
+        }
+        if (turnStateProbe.running && turnStateProbe.inFlight && generation === turnStateProbe.generation) {
+          turnStateProbe.progressTimer = setTimeout(() => pollTurnStateProbeProgress(generation), 1000);
+        }
+      }
+
+      function stopTurnStateWork() {
+        stopTurnStateProbe();
+        stopTurnStateDiagnostics();
+        clearTimeout(turnStateClockTimer);
+      }
+
       async function runTurnStateProbe(generation) {
         if (
           !turnStateProbe.running || generation !== turnStateProbe.generation || currentRole !== "admin" ||
           activeTab(false) !== "turn-state"
         )
           return;
+        const owner = adminUIState;
         turnStateProbe.inFlight = true;
         setText($("turn-state-probe-status"), m("ui.fork_probing"));
         renderTurnState();
@@ -7320,11 +7745,12 @@
         try {
           const result = await queueAdminData("configuration", async (current) => {
             if (!turnStateProbe.running || generation !== turnStateProbe.generation) throw new StaleRequestError();
+            turnStateProbe.progressTimer = setTimeout(() => pollTurnStateProbeProgress(generation), 250);
             const response = await plugin("POST", "/turn-state/probe", {}, { command: true, timeoutMS: 45000 });
             current();
             return response;
           });
-          if (currentRole !== "admin") return;
+          if (currentRole !== "admin" || owner !== adminUIState) return;
           appendTurnStateProbeLog(result);
           if (result.next_check_at) delay = Math.max(1500, Math.min(60000, new Date(result.next_check_at).getTime() - Date.now()) || 1500);
           await refreshTurnState();
@@ -7336,7 +7762,12 @@
           }
         } finally {
           turnStateProbe.inFlight = false;
-          if (currentRole === "admin") renderTurnState();
+          clearTimeout(turnStateProbe.progressTimer);
+          if (currentRole === "admin" && owner === adminUIState) {
+            if (!turnStateProbe.running || generation !== turnStateProbe.generation)
+              setText($("turn-state-probe-status"), m("ui.fork_probing_stopped"));
+            renderTurnState();
+          }
         }
         if (!turnStateProbe.running || generation !== turnStateProbe.generation) {
           setText($("turn-state-probe-status"), m("ui.fork_probing_stopped"));
@@ -7347,7 +7778,12 @@
       }
 
       function startTurnStateProbe() {
-        if (turnStateProbe.running || turnStateProbe.inFlight) return;
+        if (
+          turnStateProbe.running || turnStateProbe.inFlight || turnStateDiagnostics.running || turnStateDiagnostics.inFlight ||
+          adminUIState.turnStateSaving ||
+          turnStatePoolState().loading
+        )
+          return;
         const config = resources.admin.turnState.value?.config;
         if (!config?.probe_accounts?.length || !config?.models?.length)
           throw new UIError(m("ui.fork_select_probe_accounts_enter_models_and_save_first"));
@@ -9951,7 +10387,7 @@
       function setAdminTab(name) {
         if (editors.get($("route-picker"))?.saving) return;
         const selected = ADMIN_TAB_IDS.includes(name) ? name : "keys";
-        if (selected !== "turn-state") stopTurnStateProbe();
+        if (selected !== "turn-state") stopTurnStateWork();
         if (selected !== "keys") $("route-picker").close();
         writePageRoute("admin", selected);
         for (const tab of TABS) {
@@ -10004,6 +10440,22 @@
       $("turn-state-refresh").onclick = () => guard(refreshTurnState);
       $("turn-state-probe-start").onclick = () => guard(startTurnStateProbe);
       $("turn-state-probe-stop").onclick = stopTurnStateProbe;
+      $("turn-state-proxy-reload").onclick = () => guard(() => loadTurnStateProxies({ discard: true }));
+      for (const pool of Object.keys(TURN_STATE_POOLS)) {
+        $("turn-state-" + pool + "-test").onclick = () => guard(() => testTurnStateProxies(pool));
+        $("turn-state-" + pool + "-stop").onclick = () => {
+          stopTurnStateDiagnostics();
+          renderTurnState();
+        };
+        $("turn-state-" + pool + "-remove").onclick = () => removeFailedTurnStateProxies(pool);
+      }
+      for (const field of TURN_STATE_FIELDS.filter((field) => field !== "save")) {
+        $("turn-state-" + field).addEventListener("input", () => {
+          adminUIState.turnStateDirty = true;
+          if (["ttl", "renew-before"].includes(field)) renderTurnStateRenewHelp();
+          if (["proxies", "rotating"].includes(field)) renderTurnStateDiagnostics();
+        });
+      }
       $("turn-state-clear-templates").onclick = () =>
         openActionDialog(
           m("ui.fork_clear_turn_state_templates"),
@@ -10011,7 +10463,7 @@
           undefined,
           async () => { await writeTurnState("DELETE", "/turn-state/templates", {}, m("ui.fork_turn_state_templates_cleared")); }
         );
-      addEventListener("pagehide", stopTurnStateProbe);
+      addEventListener("pagehide", stopTurnStateWork);
       $("group-new").onclick = () => editGroup();
       $("group-rule-search").addEventListener("input", renderGroupRuleList);
       $("group-rule-all").onclick = () => setVisibleRouteChoices("group-dialog", groupSelection, "allow", renderGroupRuleList);

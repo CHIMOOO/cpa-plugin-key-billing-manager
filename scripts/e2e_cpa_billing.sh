@@ -1574,7 +1574,10 @@ assert_turn_state_round_trip() {
   count=$((count + 1))
   wait_for_event_count "$port" "$count" "$events_file"
   management_call GET "$port" "$base/turn-state" >"$settings_file"
-  if ! jq -e '.templates | length == 1 and .[0].model == "gpt-5.6-sol" and .[0].length == 292 and (.[0].account | length) > 0' "$settings_file" >/dev/null; then
+  if ! jq -e '(.server_time | length) > 0 and (.templates | length == 1 and .[0].model == "gpt-5.6-sol" and
+      .[0].length == 292 and (.[0].account | length) > 0 and .[0].source == "response" and
+      .[0].remaining_seconds > 0 and .[0].remaining_seconds <= 3600 and (.[0].harvested_at | length) > 0 and
+      (.[0] | has("value") | not))' "$settings_file" >/dev/null; then
     echo "真实宿主没有将响应头采集到确切账号和上游模型的模板桶。" >&2
     return 1
   fi
@@ -1630,7 +1633,8 @@ assert_turn_state_settings() {
   management_call GET "$port" "$route" >"$settings_file"
   if ! jq -e '.config.enabled == false and .config.inject_mode == "replace-only" and
       .config.models == ["gpt6", "gpt-5.6-sol"] and
-      .config.template_length == 292 and .config.replace_length == 312 and .templates == []' "$settings_file" >/dev/null; then
+      .config.template_length == 292 and .config.replace_length == 312 and .config.renew_before_minutes == 0 and
+      .renewal_lead_seconds == 300 and .templates == []' "$settings_file" >/dev/null; then
     echo "Codex turn-state 默认设置不正确。" >&2
     return 1
   fi
@@ -1679,22 +1683,25 @@ from urllib.request import Request, urlopen
 base = "http://127.0.0.1:" + sys.argv[1] + "/v0/management/plugins/cpa-key-billing/turn-state"
 largest_body = 0
 
-def call(method, path="", data=None, expected=200):
+def call(method, path="", data=None, expected=200, with_headers=False, token="e2e-management-key"):
     global largest_body
     body = None if data is None else json.dumps(data, separators=(",", ":")).encode()
     if body is not None:
         largest_body = max(largest_body, len(body))
         assert len(body) < 20 * 1024, "bulk settings escaped chunk sizing"
     request = Request(base + path, data=body, method=method, headers={
-        "Authorization": "Bearer e2e-management-key", "Content-Type": "application/json"})
+        "Authorization": "Bearer " + token, "Content-Type": "application/json"})
     try:
         response = urlopen(request, timeout=45)
     except HTTPError as error:
         response = error
     with response:
-        assert response.code == expected, "unexpected management HTTP status: " + str(response.code)
+        accepted = (expected,) if isinstance(expected, int) else expected
+        assert response.code in accepted, "unexpected management HTTP status: " + str(response.code)
         raw = response.read()
-    return json.loads(raw)
+        headers = dict(response.headers)
+    value = json.loads(raw)
+    return (value, headers, len(raw)) if with_headers else value
 
 before = call("GET")
 dummy_password = "dummy-proxy-password-" + "p" * 96
@@ -1727,8 +1734,66 @@ assert saved["config"]["inject_mode"] == before["config"]["inject_mode"]
 assert saved["config"]["probe_proxies"] == [] and saved["config"]["probe_proxies_rotating"] == []
 assert dummy_password not in json.dumps(saved), "status exposed proxy credentials"
 assert len(json.dumps(saved)) < 64 * 1024, "status response grew with the proxy pool"
+
+# The editor explicitly requests authenticated pages containing full dummy URLs.
+# The complete pool must round-trip without huge responses or mixed revisions.
+fixture = json.loads(payload)
+revision = ""
+page_count = 0
+for pool, field in (("static", "probe_proxies"), ("rotating", "probe_proxies_rotating")):
+    proxies, offset = [], 0
+    while True:
+        page, headers, size = call("POST", "/proxies/read", {"pool": pool, "offset": offset,
+            **({"revision": revision} if revision else {})}, with_headers=True)
+        assert "no-store" in headers.get("Cache-Control", ""), "proxy credentials can be cached"
+        assert size <= 32 * 1024, "proxy read page exceeded the response size budget"
+        assert page["pool"] == pool and page["offset"] == offset and page["total"] == 6000
+        assert not revision or page["revision"] == revision, "proxy read mixed configuration snapshots"
+        revision = page["revision"]
+        assert page["next_offset"] == offset + len(page["proxies"])
+        assert page["done"] or page["next_offset"] > offset
+        proxies.extend(page["proxies"])
+        offset = page["next_offset"]
+        page_count += 1
+        if page["done"]:
+            assert offset == page["total"]
+            break
+    assert proxies == fixture[field], "saved proxy editor lost URLs or credentials"
+assert page_count > 2, "fixture failed to exercise pagination"
+call("POST", "/proxies/read", {"pool": "static", "offset": 1}, expected=400)
+call("POST", "/proxies/read", {"pool": "invalid", "offset": 0}, expected=400)
+for token in ("", "e2e-downstream-key"):
+    denied = call("POST", "/proxies/read", {"pool": "static", "offset": 0}, expected=(401, 403), token=token)
+    assert dummy_password not in json.dumps(denied), "non-management caller received proxy credentials"
+
+progress, headers, _ = call("GET", "/probe-progress", with_headers=True)
+assert progress["active"] is False, "idle plugin reported an active probe"
+assert "no-store" in headers.get("Cache-Control", ""), "probe progress can be cached"
+assert dummy_password not in json.dumps(progress), "progress exposed proxy credentials"
+
+# Renewal-only changes must preserve both large pools and invalidate old editor
+# revisions; a rejected stale save must leave every current setting untouched.
+renewed = call("PUT", data={"renew_before_minutes": 20})
+assert renewed["config"]["renew_before_minutes"] == 20 and renewed["renewal_lead_seconds"] == 1200
+assert renewed["proxy_counts"] == {"static": 6000, "rotating": 6000}
+call("POST", "/proxies/read", {"pool": "static", "offset": 0, "revision": revision}, expected=409)
+call("PUT", data={"expected_revision": revision, "probe_proxies": []}, expected=400)
+for invalid in ({"renew_before_minutes": -1}, {"renew_before_minutes": 60},
+        {"renew_before_minutes": 1.5}, {"ttl_seconds": 1200, "renew_before_minutes": 20}):
+    call("PUT", data=invalid, expected=400)
+    current = call("GET")
+    assert current["config"] == renewed["config"] and current["proxy_counts"] == renewed["proxy_counts"]
+for pool, field in (("static", "probe_proxies"), ("rotating", "probe_proxies_rotating")):
+    current = call("POST", "/proxies/read", {"pool": pool, "offset": 0})
+    assert current["proxies"] == fixture[field][:len(current["proxies"])], "renewal settings changed proxy URLs"
+    assert current["revision"] != revision
+ten = call("PUT", data={"renew_before_minutes": 10})
+assert ten["renewal_lead_seconds"] == 600 and ten["proxy_counts"] == renewed["proxy_counts"]
+automatic = call("PUT", data={"renew_before_minutes": 0})
+assert automatic["renewal_lead_seconds"] == 300 and automatic["proxy_counts"] == renewed["proxy_counts"]
 call("PUT", data={"probe_proxies": [], "probe_proxies_rotating": []})
 print(f"  - 批量代理保存已验证：12,000 条代理，{len(payload):,} 字节配置，单次请求最多 {largest_body:,} 字节；未完成上传不改变配置")
+print(f"  - 新管理接口已验证：{page_count} 页完整代理、禁止缓存、管理鉴权、版本冲突、空闲进度；提前 10/20 分钟及自动续采设置保持代理池")
 PY
 }
 

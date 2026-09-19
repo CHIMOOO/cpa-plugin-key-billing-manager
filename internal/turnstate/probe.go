@@ -32,11 +32,43 @@ type ProbeResult struct {
 	Status        int              `json:"status,omitempty"`
 	Length        int              `json:"length,omitempty"`
 	NextCheckAt   time.Time        `json:"next_check_at"`
+	ProxyIndex    int              `json:"proxy_index,omitempty"`
+	ProxyTotal    int              `json:"proxy_total,omitempty"`
+	ProxyPool     string           `json:"proxy_pool,omitempty"`
+	ProxyAttempt  int              `json:"proxy_attempt,omitempty"`
+}
+
+type ProbeProgress struct {
+	Active bool        `json:"active"`
+	Result ProbeResult `json:"result"`
+}
+
+// ProbeProgress reports only the selected, reserved in-flight candidate. It
+// performs no host access or network I/O and starts no background work.
+func (m *Manager) ProbeProgress() ProbeProgress {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.activeProbe == nil {
+		return ProbeProgress{}
+	}
+	return ProbeProgress{Active: true, Result: *m.activeProbe}
 }
 
 type probeCandidate struct {
 	account, model, proxy, cooldownKey string
 	rotating                           bool
+	index, total, attempt              int
+}
+
+func (c probeCandidate) progress() ProbeResult {
+	pool := "static"
+	if c.rotating {
+		pool = "rotating"
+	} else if c.proxy == "" {
+		pool = "direct"
+	}
+	return ProbeResult{Account: c.account, Model: c.model, Exit: maskProxy(c.proxy),
+		ProxyIndex: c.index, ProxyTotal: c.total, ProxyPool: pool, ProxyAttempt: c.attempt}
 }
 
 func proxyKey(account, model, proxy string, rotating bool) string {
@@ -98,7 +130,15 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 		m.mu.Unlock()
 		return ProbeResult{}, err
 	}
+	progress := candidate.progress()
+	progress.Action = "probing"
+	m.activeProbe = &progress
 	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.activeProbe = nil
+		m.mu.Unlock()
+	}()
 	credential, err := fetch(candidate.account)
 	if err != nil {
 		return m.finishProbe(candidate, ProbeResponse{}, "Cannot read a valid Codex OAuth credential; sign in again or check the account", 10*time.Minute)
@@ -143,7 +183,7 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 		availableAccounts++
 		for _, model := range models {
 			if t, ok := m.state.Templates[key(a, model)]; ok {
-				renewAt := t.IssuedAt.Add(time.Duration(cfg.TTLSeconds)*time.Second - renewalLead(cfg.TTLSeconds))
+				renewAt := templateRenewAt(t, cfg)
 				if renewAt.After(now) {
 					fresh++
 					if renewAt.Before(result.NextCheckAt) {
@@ -159,7 +199,7 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 				continue
 			}
 			for poolIndex, pool := range [][]string{statics, cfg.ProbeProxiesRotating} {
-				for _, proxy := range pool {
+				for index, proxy := range pool {
 					rotating := poolIndex == 1
 					k := proxyKey(a, model, proxy, rotating)
 					c := m.state.Cooldowns[k]
@@ -169,7 +209,13 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 						}
 						continue
 					}
-					return probeCandidate{account: a, model: model, proxy: proxy, cooldownKey: k, rotating: rotating}, ProbeResult{}, true
+					attempt := 1
+					if rotating {
+						index += len(statics)
+						attempt += c.Attempts
+					}
+					return probeCandidate{account: a, model: model, proxy: proxy, cooldownKey: k, rotating: rotating,
+						index: index + 1, total: len(statics) + len(cfg.ProbeProxiesRotating), attempt: attempt}, ProbeResult{}, true
 				}
 			}
 		}
@@ -195,8 +241,8 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
-	result := ProbeResult{Account: c.account, Model: c.model, Exit: maskProxy(c.proxy), Status: response.Status,
-		Length: len(response.Value), NextCheckAt: now.Add(2 * time.Second)}
+	result := c.progress()
+	result.Status, result.Length, result.NextCheckAt = response.Status, len(response.Value), now.Add(2*time.Second)
 	switch {
 	case failure != "":
 		result.Action, result.Reason = "error", failure
@@ -220,7 +266,7 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 			result.Action, result.Reason = "unchanged", "The upstream returned the same or an older template; its original expiry was not extended"
 			break
 		}
-		if err := m.learnLocked(c.account, c.model, response.Value, now); err != nil {
+		if err := m.learnFromLocked(c.account, c.model, response.Value, now, "probe", maskProxy(c.proxy)); err != nil {
 			return ProbeResult{}, err
 		}
 		if t, ok := m.state.Templates[key(c.account, c.model)]; ok && t.Value == response.Value && t.IssuedAt.Equal(issued) && m.usableLocked(t, now) {
@@ -242,8 +288,7 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		// Keeping the failure budget of 55 minutes would outlive short TTLs,
 		// and even the default TTL when the returned template is already old.
 		t := m.state.Templates[key(c.account, c.model)]
-		renewAt := t.IssuedAt.Add(time.Duration(m.state.Config.TTLSeconds)*time.Second - renewalLead(m.state.Config.TTLSeconds))
-		m.state.Cooldowns[c.cooldownKey] = cooldown{Until: renewAt}
+		m.state.Cooldowns[c.cooldownKey] = cooldown{Until: templateRenewAt(t, m.state.Config), RenewalBucket: key(c.account, c.model)}
 	}
 	// next_check_at is a global scheduling hint, not necessarily this account's
 	// cooldown: another saved account can be probed by the next bounded call.

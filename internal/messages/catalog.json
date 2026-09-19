@@ -948,5 +948,57 @@
   "The settings upload is incomplete; save again": {
     "key": "backend.turn_state_upload_incomplete",
     "formats": []
+  },
+  "Renewal lead must be 0 (automatic) or 1–59 minutes and shorter than the template lifetime": {
+    "key": "backend.turn_state_renew_invalid",
+    "formats": []
+  },
+  "Settings changed since proxies were loaded; reload the saved proxies and retry": {
+    "key": "backend.turn_state_proxy_save_conflict",
+    "formats": []
+  },
+  "The proxy configuration changed; reload the proxy lists": {
+    "key": "backend.turn_state_proxy_read_conflict",
+    "formats": []
+  },
+  "Invalid proxy list page": {
+    "key": "backend.turn_state_proxy_page_invalid",
+    "formats": []
+  },
+  "Proxy pool must be static or rotating": {
+    "key": "backend.turn_state_proxy_pool_invalid",
+    "formats": []
+  },
+  "Enter a complete proxy URL to test": {
+    "key": "backend.turn_state_proxy_test_invalid",
+    "formats": []
+  },
+  "The proxy connectivity test could not be started": {
+    "key": "backend.turn_state_proxy_test_start_failed",
+    "formats": []
+  },
+  "Proxy authentication failed": {
+    "key": "backend.turn_state_proxy_auth_failed",
+    "formats": []
+  },
+  "The proxy rejected the connectivity test; the result is inconclusive": {
+    "key": "backend.turn_state_proxy_test_rejected",
+    "formats": []
+  },
+  "The proxy connectivity test timed out": {
+    "key": "backend.turn_state_proxy_test_timeout",
+    "formats": []
+  },
+  "The proxy could not establish a trusted HTTPS connection": {
+    "key": "backend.turn_state_proxy_test_tls_failed",
+    "formats": []
+  },
+  "The Codex API rejected the connectivity test; the result is inconclusive": {
+    "key": "backend.turn_state_proxy_test_upstream_rejected",
+    "formats": []
+  },
+  "The proxy reached the Codex API without using an account": {
+    "key": "backend.turn_state_proxy_test_reachable",
+    "formats": []
   }
 }

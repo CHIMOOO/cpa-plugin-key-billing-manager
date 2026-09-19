@@ -58,5 +58,13 @@ func (a *App) mutateWithView(req ManagementRequest, path string, handle func(*Ap
 		return response
 	}
 	result["view"], _ = json.Marshal(view)
-	return JSONResponse(response.StatusCode, result)
+	updated := JSONResponse(response.StatusCode, result)
+	for name, values := range response.Headers {
+		// Wrapping can change the body length, but must preserve security and
+		// cache policy headers set by handlers returning sensitive data.
+		if !strings.EqualFold(name, "Content-Length") {
+			updated.Headers[name] = append([]string{}, values...)
+		}
+	}
+	return updated
 }

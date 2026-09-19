@@ -32,6 +32,7 @@ type Config struct {
 	TemplateLength       int      `json:"template_length"`
 	ReplaceLength        int      `json:"replace_length"`
 	TTLSeconds           int      `json:"ttl_seconds"`
+	RenewBeforeMinutes   int      `json:"renew_before_minutes"`
 	Models               []string `json:"models"`
 	ProbeAccounts        []string `json:"probe_accounts"`
 	ProbeProxies         []string `json:"probe_proxies"`
@@ -45,18 +46,25 @@ func DefaultConfig() Config {
 }
 
 type Template struct {
-	Account  string    `json:"account"`
-	Model    string    `json:"model"`
-	Value    string    `json:"value"`
-	IssuedAt time.Time `json:"issued_at"`
+	Account     string    `json:"account"`
+	Model       string    `json:"model"`
+	Value       string    `json:"value"`
+	IssuedAt    time.Time `json:"issued_at"`
+	Source      string    `json:"source,omitempty"`
+	Exit        string    `json:"exit,omitempty"`
+	HarvestedAt time.Time `json:"harvested_at,omitzero"`
 }
 
 type TemplateView struct {
-	Account   string    `json:"account"`
-	Model     string    `json:"model"`
-	IssuedAt  time.Time `json:"issued_at"`
-	ExpiresAt time.Time `json:"expires_at"`
-	Length    int       `json:"length"`
+	Account          string    `json:"account"`
+	Model            string    `json:"model"`
+	IssuedAt         time.Time `json:"issued_at"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	Length           int       `json:"length"`
+	RemainingSeconds int64     `json:"remaining_seconds"`
+	Source           string    `json:"source,omitempty"`
+	Exit             string    `json:"exit,omitempty"`
+	HarvestedAt      time.Time `json:"harvested_at,omitzero"`
 }
 
 type Decision struct {
@@ -75,11 +83,13 @@ type Counters struct {
 }
 
 type Status struct {
-	Config       Config         `json:"config"`
-	Templates    []TemplateView `json:"templates"`
-	Counters     Counters       `json:"counters"`
-	LastDecision Decision       `json:"last_decision"`
-	ProxyCounts  map[string]int `json:"proxy_counts"`
+	Config             Config         `json:"config"`
+	Templates          []TemplateView `json:"templates"`
+	Counters           Counters       `json:"counters"`
+	LastDecision       Decision       `json:"last_decision"`
+	ProxyCounts        map[string]int `json:"proxy_counts"`
+	ServerTime         time.Time      `json:"server_time"`
+	RenewalLeadSeconds int            `json:"renewal_lead_seconds"`
 }
 
 type pending struct {
@@ -89,8 +99,9 @@ type pending struct {
 }
 
 type cooldown struct {
-	Until    time.Time `json:"until"`
-	Attempts int       `json:"attempts,omitempty"`
+	Until         time.Time `json:"until"`
+	Attempts      int       `json:"attempts,omitempty"`
+	RenewalBucket string    `json:"renewal_bucket,omitempty"`
 }
 
 type diskState struct {
@@ -103,17 +114,20 @@ type diskState struct {
 // Manager never starts goroutines or timers. Expiry and cooldown pruning run
 // synchronously inside host callbacks. Raw state is never returned by Status.
 type Manager struct {
-	mu             sync.Mutex
-	probeMu        sync.Mutex
-	path           string
-	state          diskState
-	pending        map[string]pending
-	counters       Counters
-	last           Decision
-	uploads        map[string]*configUpload
-	configRevision uint64
-	now            func() time.Time
-	runProbe       func(Credential, string, string) (ProbeResponse, error)
+	mu              sync.Mutex
+	probeMu         sync.Mutex
+	path            string
+	state           diskState
+	pending         map[string]pending
+	counters        Counters
+	last            Decision
+	uploads         map[string]*configUpload
+	configRevision  uint64
+	revisionToken   string
+	revisionTokenAt uint64
+	now             func() time.Time
+	runProbe        func(Credential, string, string) (ProbeResponse, error)
+	activeProbe     *ProbeResult
 }
 
 func New() *Manager {
@@ -189,6 +203,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.TTLSeconds < 60 || cfg.TTLSeconds > 3600 {
 		return messages.Errorf("Template lifetime must be 60–3600 seconds and must not exceed the upstream token lifetime")
+	}
+	if cfg.RenewBeforeMinutes < 0 || cfg.RenewBeforeMinutes > 59 || cfg.RenewBeforeMinutes*60 >= cfg.TTLSeconds {
+		return messages.Errorf("Renewal lead must be 0 (automatic) or 1–59 minutes and shorter than the template lifetime")
 	}
 	var err error
 	if cfg.Models, err = cleanList(cfg.Models, 100); err != nil {
@@ -277,13 +294,20 @@ func (m *Manager) updateLocked(raw []byte) error {
 		return messages.Errorf("Turn-state settings must not exceed 16 MiB")
 	}
 	cfg := cloneConfig(m.state.Config)
+	input := struct {
+		*Config
+		ExpectedRevision string `json:"expected_revision,omitempty"`
+	}{Config: &cfg}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&cfg); err != nil {
+	if err := decoder.Decode(&input); err != nil {
 		return messages.Errorf("Invalid turn-state configuration format")
 	}
 	if decoder.Decode(&struct{}{}) != io.EOF {
 		return messages.Errorf("Turn-state configuration must contain exactly one JSON object")
+	}
+	if input.ExpectedRevision != "" && input.ExpectedRevision != m.configRevisionTokenLocked() {
+		return messages.Errorf("Settings changed since proxies were loaded; reload the saved proxies and retry")
 	}
 	if err := validateConfig(&cfg); err != nil {
 		return err
@@ -307,6 +331,9 @@ func (m *Manager) updateLocked(raw []byte) error {
 		m.state.Templates[k] = v
 	}
 	m.state.Config = cfg
+	if old.TTLSeconds != cfg.TTLSeconds || old.RenewBeforeMinutes != cfg.RenewBeforeMinutes {
+		m.rescheduleRenewalsLocked()
+	}
 	m.pruneLocked(m.now())
 	if err := m.persistLocked(); err != nil {
 		m.state.Config = old
@@ -346,11 +373,21 @@ func (m *Manager) Status() Status {
 	cfg.ProbeProxies, cfg.ProbeProxiesRotating = []string{}, []string{}
 	rows := []TemplateView{}
 	for _, t := range m.state.Templates {
+		expiresAt := t.IssuedAt.Add(time.Duration(cfg.TTLSeconds) * time.Second)
 		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt,
-			ExpiresAt: t.IssuedAt.Add(time.Duration(cfg.TTLSeconds) * time.Second), Length: len(t.Value)})
+			ExpiresAt: expiresAt, Length: len(t.Value), RemainingSeconds: int64(expiresAt.Sub(now) / time.Second),
+			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt})
 	}
 	sort.Slice(rows, func(i, j int) bool { return key(rows[i].Account, rows[i].Model) < key(rows[j].Account, rows[j].Model) })
-	return Status{Config: cfg, Templates: rows, Counters: m.counters, LastDecision: m.last, ProxyCounts: counts}
+	return Status{Config: cfg, Templates: rows, Counters: m.counters, LastDecision: m.last, ProxyCounts: counts,
+		ServerTime: now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second)}
+}
+
+func maskSavedExit(exit string) string {
+	if exit == "" || exit == "direct" {
+		return exit
+	}
+	return maskProxy(exit)
 }
 
 func maskProxy(raw string) string {
@@ -506,6 +543,10 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 }
 
 func (m *Manager) learnLocked(account, model, value string, now time.Time) error {
+	return m.learnFromLocked(account, model, value, now, "response", "")
+}
+
+func (m *Manager) learnFromLocked(account, model, value string, now time.Time, source, exit string) error {
 	if !validBucket(account, model) {
 		m.recordLocked("skip", "Cannot verify the response account and upstream model", account, model, now)
 		return nil
@@ -524,7 +565,8 @@ func (m *Manager) learnLocked(account, model, value string, now time.Time) error
 	if exists && !timestamp.After(old.IssuedAt) {
 		return nil
 	}
-	m.state.Templates[k] = Template{Account: account, Model: model, Value: value, IssuedAt: timestamp}
+	m.state.Templates[k] = Template{Account: account, Model: model, Value: value, IssuedAt: timestamp,
+		Source: source, Exit: exit, HarvestedAt: now}
 	if err := m.persistLocked(); err != nil {
 		if exists {
 			m.state.Templates[k] = old

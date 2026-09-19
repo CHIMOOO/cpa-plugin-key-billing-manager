@@ -609,13 +609,14 @@ ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 
 TURN_STATE_CONFIG = {
     "enabled": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
-    "template_length": 292, "replace_length": 312, "ttl_seconds": 3600,
+    "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
     "models": ["gpt6", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
 TURN_STATE_COUNTERS = {"injected": 0, "learned": 0, "passed": 0}
 TURN_STATE_LAST = {}
 TURN_STATE_UPLOADS = {}
+TURN_STATE_PROGRESS = {}
 
 
 def ui_message(key):
@@ -627,7 +628,12 @@ def turn_state_view():
     config = dict(TURN_STATE_CONFIG)
     for field in ("probe_proxies", "probe_proxies_rotating"):
         config[field] = []
-    return {"config": config, "templates": TURN_STATE_TEMPLATES, "counters": TURN_STATE_COUNTERS,
+    now = datetime.now(timezone.utc)
+    templates = [dict(item, remaining_seconds=max(0, int((datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) - now).total_seconds())))
+                 for item in TURN_STATE_TEMPLATES if datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) > now]
+    return {"config": config, "templates": templates, "counters": TURN_STATE_COUNTERS,
+            "server_time": iso(now),
+            "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
             "last_decision": TURN_STATE_LAST, "probe_supported": True, "probe_unavailable_reason": "",
             "host_requirement": ui_message("backend.turn_state_host_requirement")["message"],
             "host_requirement_message": {"message_key": "backend.turn_state_host_requirement"},
@@ -636,6 +642,17 @@ def turn_state_view():
                                for item in CREDENTIALS if item["provider"] == "codex" and item["source"] == "auth-files"],
             "proxy_counts": {"static": len(TURN_STATE_CONFIG["probe_proxies"]),
                              "rotating": len(TURN_STATE_CONFIG["probe_proxies_rotating"])}}
+
+
+def turn_state_revision():
+    return hashlib.sha256(json.dumps(TURN_STATE_CONFIG, sort_keys=True).encode()).hexdigest()
+
+
+def masked_dummy_proxy(value):
+    parsed = urlparse(value)
+    if not parsed.hostname:
+        return "(direct)" if not value else "invalid"
+    return f"{parsed.scheme}://{'***@' if parsed.username or parsed.password else ''}{parsed.hostname}:{parsed.port or (443 if parsed.scheme == 'https' else 80)}"
 
 ROUTE_RULE_FIELDS = ("models", "credential_ids", "credential_providers", "denied_models", "denied_credential_ids", "denied_credential_providers")
 
@@ -1403,6 +1420,8 @@ def group_rows():
 def payload_for(path, query):
     if path == f"{API_BASE}/turn-state":
         return turn_state_view()
+    if path == f"{API_BASE}/turn-state/probe-progress":
+        return {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)}
     if path == f"{API_BASE}/access-control":
         return {"access_control": ACCESS_CONTROL}
     if path == f"{API_BASE}/groups":
@@ -1634,7 +1653,39 @@ class Handler(BaseHTTPRequestHandler):
             self.mutation_view = json.loads(request_body or b"{}")
             request_body = json.dumps(self.mutation_view.get("data") or {}).encode()
         route = self.command, parsed.path
-        if parsed.path == f"{API_BASE}/turn-state/config-upload":
+        if route == ("POST", f"{API_BASE}/turn-state/proxies/read"):
+            body = json.loads(request_body or b"{}")
+            pool, offset = body.get("pool"), body.get("offset", 0)
+            if pool not in {"static", "rotating"} or type(offset) is not int or offset < 0:
+                self.send_json(400, {"error": {"message": "Invalid proxy page"}})
+                return
+            revision = turn_state_revision()
+            if body.get("revision") and body["revision"] != revision:
+                self.send_json(409, {"error": {"message": "Settings changed; reload saved proxies"}})
+                return
+            proxies = TURN_STATE_CONFIG["probe_proxies" if pool == "static" else "probe_proxies_rotating"]
+            page, size = [], 0
+            for proxy in proxies[offset:offset + 256]:
+                encoded_size = len(json.dumps(proxy).encode()) + 1
+                if page and size + encoded_size > 24 * 1024:
+                    break
+                page.append(proxy)
+                size += encoded_size
+            next_offset = offset + len(page)
+            self.send_json(200, {"pool": pool, "revision": revision, "total": len(proxies), "offset": offset,
+                                 "next_offset": next_offset, "done": next_offset == len(proxies), "proxies": page})
+        elif route == ("POST", f"{API_BASE}/turn-state/proxies/test"):
+            body = json.loads(request_body or b"{}")
+            proxy = body.get("proxy", "")
+            invalid = "fail" in proxy or "invalid" in proxy
+            inconclusive = "limited" in proxy or "429" in proxy
+            status = "failed" if invalid else "inconclusive" if inconclusive else "reachable"
+            time.sleep(0.15)
+            self.send_json(200, {"proxy": masked_dummy_proxy(proxy), "status": status,
+                                 "ip": "" if invalid else "203.0.113.24", "latency_ms": 150,
+                                 "http_status": 0 if invalid else 429 if inconclusive else 401,
+                                 "reason": "", "deletable": invalid})
+        elif parsed.path == f"{API_BASE}/turn-state/config-upload":
             body = json.loads(request_body or b"{}")
             if self.command == "POST":
                 upload_id = f"{time.time_ns():032x}"
@@ -1662,6 +1713,9 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": ui_message("backend.turn_state_upload_conflict")})
                 return
             config = json.loads(upload["data"])
+            if config.pop("expected_revision", turn_state_revision()) != turn_state_revision():
+                self.send_json(409, {"error": {"message": "Settings changed since proxies were loaded; reload the saved proxies and retry"}})
+                return
             if config.get("inject_mode") not in {"always", "replace-only"}:
                 self.send_json(400, {"error": ui_message("backend.turn_state_invalid_inject_mode")})
                 return
@@ -1670,13 +1724,21 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, turn_state_view())
         elif route == ("PUT", f"{API_BASE}/turn-state"):
             body = json.loads(request_body or b"{}")
+            if body.pop("expected_revision", turn_state_revision()) != turn_state_revision():
+                self.send_json(409, {"error": {"message": "Settings changed since proxies were loaded; reload the saved proxies and retry"}})
+                return
             if body.get("inject_mode") not in {"always", "replace-only"}:
                 self.send_json(400, {"error": ui_message("backend.turn_state_invalid_inject_mode")})
                 return
             TURN_STATE_CONFIG.update(body)
             self.send_json(200, turn_state_view())
         elif route == ("DELETE", f"{API_BASE}/turn-state/templates"):
-            TURN_STATE_TEMPLATES.clear()
+            body = json.loads(request_body or b"{}")
+            if body.get("account") and body.get("model"):
+                TURN_STATE_TEMPLATES[:] = [item for item in TURN_STATE_TEMPLATES
+                                         if item["account"] != body["account"] or item["model"] != body["model"]]
+            else:
+                TURN_STATE_TEMPLATES.clear()
             self.send_json(200, turn_state_view())
         elif route == ("POST", f"{API_BASE}/turn-state/probe"):
             accounts, models = TURN_STATE_CONFIG["probe_accounts"], TURN_STATE_CONFIG["models"]
@@ -1690,9 +1752,17 @@ class Handler(BaseHTTPRequestHandler):
                       "reason_message": {"message_key": reason["message_key"]},
                       "account": accounts[0], "model": models[0], "next_check_at": iso(now + timedelta(seconds=60))}
             if not fresh:
+                static, rotating = TURN_STATE_CONFIG["probe_proxies"], TURN_STATE_CONFIG["probe_proxies_rotating"]
+                proxy = next(iter(static or rotating), "")
+                result.update({"exit": masked_dummy_proxy(proxy), "proxy_index": 1, "proxy_total": len(static) + len(rotating) or 1,
+                               "proxy_pool": "static" if static else "rotating" if rotating else "direct", "proxy_attempt": 1, "length": 292})
+                TURN_STATE_PROGRESS.update(result)
+                time.sleep(0.6)
                 TURN_STATE_TEMPLATES.append({"account": accounts[0], "model": models[0], "length": 292,
-                                             "issued_at": iso(now), "expires_at": iso(now + timedelta(hours=1))})
+                                             "issued_at": iso(now), "expires_at": iso(now + timedelta(seconds=TURN_STATE_CONFIG["ttl_seconds"])),
+                                             "source": "probe", "exit": result["exit"], "harvested_at": iso(now)})
                 TURN_STATE_COUNTERS["learned"] += 1
+                TURN_STATE_PROGRESS.clear()
             TURN_STATE_LAST.update(result)
             self.send_json(200, result)
         elif route == ("PUT", f"{API_BASE}/access-control"):
