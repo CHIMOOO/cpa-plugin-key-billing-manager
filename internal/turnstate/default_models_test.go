@@ -8,7 +8,7 @@ import (
 )
 
 func TestDefaultProbeModelsPreserveSavedSelections(t *testing.T) {
-	defaults := []string{"gpt6", "gpt-5.6-sol"}
+	defaults := []string{"gpt-6-astra", "gpt-5.6-sol"}
 	for _, tc := range []struct {
 		name  string
 		saved string
@@ -16,6 +16,7 @@ func TestDefaultProbeModelsPreserveSavedSelections(t *testing.T) {
 	}{
 		{name: "new installation", want: defaults},
 		{name: "legacy config without model field", saved: `{"version":1,"config":{"dry_run":true}}`, want: defaults},
+		{name: "legacy default model list", saved: `{"version":1,"config":{"models":["gpt6","gpt-5.6-sol"]}}`, want: defaults},
 		{name: "saved operator list", saved: `{"version":1,"config":{"models":["operator-model","gpt6"]}}`, want: []string{"operator-model", "gpt6"}},
 		{name: "saved empty list", saved: `{"version":1,"config":{"models":[]}}`, want: []string{}},
 		{name: "saved null list", saved: `{"version":1,"config":{"models":null}}`, want: []string{}},

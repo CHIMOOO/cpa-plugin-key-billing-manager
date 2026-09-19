@@ -39,6 +39,8 @@ const (
 	routeTurnStateProxiesRead   = "/turn-state/proxies/read"
 	routeTurnStateProxiesTest   = "/turn-state/proxies/test"
 	routeTurnStateProbeProgress = "/turn-state/probe-progress"
+	routeTurnStateCooldowns     = "/turn-state/cooldowns/clear"
+	routeTurnStateSelfTest      = "/turn-state/self-test"
 	routeKeysRoutes             = "/keys/routes"
 	routeKeysBind               = "/keys/bind"
 	routeKeysUnbind             = "/keys/unbind"
@@ -83,6 +85,8 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodPost, routeTurnStateProxiesRead, "Read a page of saved proxy URLs for editing", (*App).readTurnStateProxies},
 	{http.MethodPost, routeTurnStateProxiesTest, "Test one proxy connection without using an account", (*App).testTurnStateProxy},
 	{http.MethodGet, routeTurnStateProbeProgress, "View the active Codex turn-state probe exit", (*App).getTurnStateProbeProgress},
+	{http.MethodPost, routeTurnStateCooldowns, "Clear failed Codex turn-state probe cooldowns", (*App).clearTurnStateCooldowns},
+	{http.MethodPost, routeTurnStateSelfTest, "Test a specific Codex account and model without harvesting", (*App).selfTestTurnState},
 	{http.MethodPost, routeGroups, "Create API key group", (*App).createGroup},
 	{http.MethodPatch, routeGroups, "Update API key group", (*App).updateGroup},
 	{http.MethodDelete, routeGroups, "Delete API key group", (*App).deleteGroup},

@@ -41,7 +41,7 @@ type Config struct {
 
 func DefaultConfig() Config {
 	return Config{InjectMode: "replace-only", LearnResponses: true, TemplateLength: 292,
-		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt6", "gpt-5.6-sol"}, ProbeAccounts: []string{},
+		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
 		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}}
 }
 
@@ -77,9 +77,15 @@ type Decision struct {
 }
 
 type Counters struct {
-	Injected uint64 `json:"injected"`
-	Learned  uint64 `json:"learned"`
-	Passed   uint64 `json:"passed"`
+	Injected    uint64    `json:"injected"`
+	Learned     uint64    `json:"learned"`
+	Passed      uint64    `json:"passed"`
+	Substituted uint64    `json:"substituted"`
+	Inserted    uint64    `json:"inserted"`
+	Skipped     uint64    `json:"skipped"`
+	DryRun      uint64    `json:"dry_run"`
+	Errors      uint64    `json:"errors"`
+	Since       time.Time `json:"since"`
 }
 
 type Status struct {
@@ -90,6 +96,9 @@ type Status struct {
 	ProxyCounts        map[string]int `json:"proxy_counts"`
 	ServerTime         time.Time      `json:"server_time"`
 	RenewalLeadSeconds int            `json:"renewal_lead_seconds"`
+	ProbeStats         ProbeStats     `json:"probe_stats"`
+	LastProbe          ProbeResult    `json:"last_probe"`
+	ProbeProgress      ProbeProgress  `json:"probe_progress"`
 }
 
 type pending struct {
@@ -128,6 +137,8 @@ type Manager struct {
 	now             func() time.Time
 	runProbe        func(Credential, string, string) (ProbeResponse, error)
 	activeProbe     *ProbeResult
+	probeStats      ProbeStats
+	lastProbe       ProbeResult
 }
 
 func New() *Manager {
@@ -165,6 +176,11 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 		if state.Version != 1 {
 			return messages.Errorf("Unsupported turn-state state file version")
 		}
+		// Correct only the shipped legacy default. Operator aliases, custom
+		// selections and intentionally empty scopes remain unchanged.
+		if len(state.Config.Models) == 2 && state.Config.Models[0] == "gpt6" && state.Config.Models[1] == "gpt-5.6-sol" {
+			state.Config.Models = DefaultConfig().Models
+		}
 		if err := validateConfig(&state.Config); err != nil {
 			return messages.Errorf("Invalid turn-state state configuration: %w", err)
 		}
@@ -189,7 +205,8 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 	m.uploads = nil
 	m.configRevision++
 	m.pending = map[string]pending{}
-	m.counters, m.last = Counters{}, Decision{}
+	m.counters, m.last = Counters{Since: m.now().UTC()}, Decision{}
+	m.probeStats, m.lastProbe = ProbeStats{Since: m.now().UTC()}, ProbeResult{}
 	m.pruneLocked(m.now())
 	return nil
 }
@@ -379,8 +396,13 @@ func (m *Manager) Status() Status {
 			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt})
 	}
 	sort.Slice(rows, func(i, j int) bool { return key(rows[i].Account, rows[i].Model) < key(rows[j].Account, rows[j].Model) })
+	progress := ProbeProgress{}
+	if m.activeProbe != nil {
+		progress = ProbeProgress{Active: true, Result: *m.activeProbe}
+	}
 	return Status{Config: cfg, Templates: rows, Counters: m.counters, LastDecision: m.last, ProxyCounts: counts,
-		ServerTime: now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second)}
+		ServerTime: now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
+		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress}
 }
 
 func maskSavedExit(exit string) string {
@@ -508,6 +530,11 @@ func (m *Manager) Before(requestID, account, model string, headers http.Header) 
 		return nil, nil
 	}
 	m.recordLocked("inject", "A valid template for the same account and model was injected", account, model, now)
+	if value == "" {
+		m.counters.Inserted++
+	} else {
+		m.counters.Substituted++
+	}
 	return http.Header{Header: []string{t.Value}}, []string{Header}
 }
 
@@ -616,8 +643,15 @@ func (m *Manager) recordLocked(action, reason, account, model string, now time.T
 		m.counters.Injected++
 	case "harvest":
 		m.counters.Learned++
-	case "pass", "dry_run":
+	case "pass":
 		m.counters.Passed++
+	case "dry_run":
+		m.counters.Passed++ // Preserve the existing aggregate for old clients.
+		m.counters.DryRun++
+	case "skip":
+		m.counters.Skipped++
+	case "error":
+		m.counters.Errors++
 	}
 }
 

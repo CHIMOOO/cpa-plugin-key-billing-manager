@@ -43,6 +43,17 @@ type ProbeProgress struct {
 	Result ProbeResult `json:"result"`
 }
 
+// ProbeStats are process-local observations, not a detached runner or a claim
+// that a browser is still polling. The last result remains visible on reload.
+type ProbeStats struct {
+	Attempts  uint64    `json:"attempts"`
+	Harvested uint64    `json:"harvested"`
+	Degraded  uint64    `json:"degraded"`
+	Failed    uint64    `json:"failed"`
+	Unchanged uint64    `json:"unchanged"`
+	Since     time.Time `json:"since"`
+}
+
 // ProbeProgress reports only the selected, reserved in-flight candidate. It
 // performs no host access or network I/O and starts no background work.
 func (m *Manager) ProbeProgress() ProbeProgress {
@@ -97,16 +108,39 @@ func (m *Manager) ProbeWithAvailability(account, model string, available func(st
 }
 
 func (m *Manager) probe(account, model string, available func(string) bool, fetch func(string) (Credential, error)) (result ProbeResult, err error) {
+	model = ModelName(model)
+	if !m.probeMu.TryLock() {
+		reason := "A probe request is already running"
+		return ProbeResult{Action: "busy", Reason: reason, ReasonMessage: messages.Literal(reason), NextCheckAt: time.Now().Add(3 * time.Second)}, nil
+	}
+	defer m.probeMu.Unlock()
+	// Finalize observations before releasing the configuration/probe gate.
+	// Otherwise a waiting ConfigureWith can switch storage and clear counters,
+	// then have this old request overwrite the new manager's last result.
 	defer func() {
 		if result.ReasonMessage.IsZero() {
 			result.ReasonMessage = messages.Literal(result.Reason)
 		}
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		if result.Action != "busy" && err == nil {
+			m.lastProbe = result
+			switch result.Action {
+			case "harvested":
+				m.probeStats.Harvested++
+			case "degraded":
+				m.probeStats.Degraded++
+			case "unchanged":
+				m.probeStats.Unchanged++
+			case "error":
+				if result.Account != "" {
+					m.probeStats.Failed++
+				}
+			}
+		} else if err != nil {
+			m.probeStats.Failed++
+		}
 	}()
-	model = ModelName(model)
-	if !m.probeMu.TryLock() {
-		return ProbeResult{Action: "busy", Reason: "A probe request is already running", NextCheckAt: time.Now().Add(3 * time.Second)}, nil
-	}
-	defer m.probeMu.Unlock()
 	m.mu.Lock()
 	now := m.now()
 	m.pruneLocked(now)
@@ -133,6 +167,7 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 	progress := candidate.progress()
 	progress.Action = "probing"
 	m.activeProbe = &progress
+	m.probeStats.Attempts++
 	m.mu.Unlock()
 	defer func() {
 		m.mu.Lock()
