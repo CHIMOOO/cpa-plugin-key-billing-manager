@@ -252,11 +252,13 @@ func TestCredentialSourceClassification(t *testing.T) {
 	}{
 		{name: "config backend", attributes: map[string]string{"source_backend": "config"}, want: billing.CredentialSourceAIProviders},
 		{name: "config source", attributes: map[string]string{"source": "config:codex[0]"}, want: billing.CredentialSourceAIProviders},
+		{name: "plain config source", attributes: map[string]string{"source": "config"}, want: billing.CredentialSourceAIProviders},
 		{name: "runtime backend", attributes: map[string]string{"source_backend": "memory"}, want: billing.CredentialSourceAIProviders},
 		{name: "runtime marker", attributes: map[string]string{"runtime_only": "true", "path": "/ignored"}, want: billing.CredentialSourceAIProviders},
 		{name: "file backend", attributes: map[string]string{"source_backend": "file"}, want: billing.CredentialSourceAuthFiles},
 		{name: "remote auth file", attributes: map[string]string{"source_backend": "postgres"}, want: billing.CredentialSourceAuthFiles},
 		{name: "path", attributes: map[string]string{"path": "/auth/codex.json", "auth_kind": "apikey"}, want: billing.CredentialSourceAuthFiles},
+		{name: "loaded file missing from disk", attributes: map[string]string{"source": "memory", "path": "/auth/codex.json"}, want: billing.CredentialSourceAuthFiles},
 		{name: "auth kind is not source", attributes: map[string]string{"auth_kind": "apikey"}, want: ""},
 	}
 	for _, test := range tests {
@@ -269,6 +271,9 @@ func TestCredentialSourceClassification(t *testing.T) {
 	}
 	if got := credentialSourceFromHost(hostAuthFile{RuntimeOnly: true, Source: "file", Path: "/ignored"}); got != billing.CredentialSourceAIProviders {
 		t.Fatalf("runtime-only host credential source=%q", got)
+	}
+	if got := credentialSourceFromHost(hostAuthFile{Source: "memory", Path: "/auth/codex.json"}); got != billing.CredentialSourceAuthFiles {
+		t.Fatalf("loaded auth file incorrectly grouped as API Provider: %q", got)
 	}
 }
 

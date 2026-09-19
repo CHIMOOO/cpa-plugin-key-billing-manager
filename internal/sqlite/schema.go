@@ -69,6 +69,12 @@ const groupRuleSchema = `
 ALTER TABLE groups ADD COLUMN rule_json TEXT NOT NULL DEFAULT '{}';
 `
 
+// v18 preserves existing groups as enabled and lets operators suspend grants
+// without removing membership, routes, or direct credential selections.
+const groupDisabledSchema = `
+ALTER TABLE groups ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1));
+`
+
 const schema = `
 CREATE TABLE api_keys (
 	scope                 TEXT    PRIMARY KEY,
@@ -189,4 +195,4 @@ CREATE TABLE plugin_logs (
 	level   TEXT    NOT NULL DEFAULT '',
 	message TEXT    NOT NULL DEFAULT ''
 );
-` + accessControlSchema + forwardedForBlockSchema + groupRuleSchema
+` + accessControlSchema + forwardedForBlockSchema + groupRuleSchema + groupDisabledSchema

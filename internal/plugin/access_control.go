@@ -29,6 +29,7 @@ func (a *App) setAccessControl(req ManagementRequest) ManagementResponse {
 func (a *App) createGroup(req ManagementRequest) ManagementResponse {
 	var body struct {
 		Name     string            `json:"name"`
+		Disabled bool              `json:"disabled"`
 		RouteIDs []string          `json:"route_ids"`
 		Rule     billing.RouteRule `json:"rule"`
 		Scopes   []string          `json:"scopes"`
@@ -43,7 +44,7 @@ func (a *App) createGroup(req ManagementRequest) ManagementResponse {
 	if response := a.validateNewCredentialRefs(rule.CredentialRefs(), nil); response != nil {
 		return *response
 	}
-	group, err := a.store.CreateGroup(billing.KeyGroup{Name: body.Name, RouteIDs: body.RouteIDs, Rule: rule}, body.Scopes)
+	group, err := a.store.CreateGroup(billing.KeyGroup{Name: body.Name, Disabled: body.Disabled, RouteIDs: body.RouteIDs, Rule: rule}, body.Scopes)
 	if err != nil {
 		return errorResponse(err)
 	}

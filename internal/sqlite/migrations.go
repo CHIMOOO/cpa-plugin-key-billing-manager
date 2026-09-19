@@ -11,6 +11,14 @@ import (
 	"cpa-key-billing/internal/billing"
 )
 
+// v18 adds an enabled-by-default group switch without rewriting history.
+func migrateToV18(tx *sql.Tx) error {
+	if _, err := tx.Exec(groupDisabledSchema); err != nil {
+		return fmt.Errorf("迁移分组启用状态：%w", err)
+	}
+	return nil
+}
+
 // v17 adds each group's direct model and credential selection, empty for every
 // existing group, and leaves every other table untouched.
 func migrateToV17(tx *sql.Tx) error {

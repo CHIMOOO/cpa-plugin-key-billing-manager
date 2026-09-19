@@ -17,6 +17,7 @@ type AccessControl struct {
 type KeyGroup struct {
 	ID       string    `json:"id"`
 	Name     string    `json:"name"`
+	Disabled bool      `json:"disabled"`
 	RouteIDs []string  `json:"route_ids"`
 	Rule     RouteRule `json:"rule"`
 }
@@ -29,6 +30,7 @@ type GroupView struct {
 type GroupPatch struct {
 	ID       string     `json:"id"`
 	Name     *string    `json:"name,omitempty"`
+	Disabled *bool      `json:"disabled,omitempty"`
 	RouteIDs *[]string  `json:"route_ids,omitempty"`
 	Rule     *RouteRule `json:"rule,omitempty"`
 	Scopes   *[]string  `json:"scopes,omitempty"`
@@ -163,6 +165,9 @@ func (s *Store) UpdateGroup(patch GroupPatch) (GroupView, error) {
 		group := state.Groups[i]
 		if patch.Name != nil {
 			group.Name = *patch.Name
+		}
+		if patch.Disabled != nil {
+			group.Disabled = *patch.Disabled
 		}
 		if patch.RouteIDs != nil {
 			group.RouteIDs = *patch.RouteIDs

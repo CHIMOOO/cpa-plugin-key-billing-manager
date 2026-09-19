@@ -575,6 +575,7 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	routeIDs := append([]string(nil), key.RouteBindings.RouteIDs...)
 	groupRules := make([]RouteRule, 0, len(key.GroupIDs))
 	groupConfigured := false
+	groupEnabled := false
 	for _, id := range key.GroupIDs {
 		i := state.findGroupIndex(id)
 		if i < 0 {
@@ -582,12 +583,19 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 			return d
 		}
 		group := state.Groups[i]
+		if group.Disabled {
+			continue
+		}
+		groupEnabled = true
 		groupConfigured = groupConfigured || group.grantsAccess()
 		routeIDs = append(routeIDs, group.RouteIDs...)
 		groupRules = append(groupRules, group.Rule)
 	}
 	if len(key.GroupIDs) > 0 && !groupConfigured {
 		d.AccessDenied = "API Key 所属分组尚未绑定路由规则或上游凭证，访问已被禁止"
+		if !groupEnabled {
+			d.AccessDenied = "API Key 所属分组均已禁用，访问已被禁止"
+		}
 		return d
 	}
 	direct := RoutingDecision{RouteRule: key.RouteBindings.RouteRule}

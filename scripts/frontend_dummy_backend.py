@@ -866,7 +866,7 @@ def account_routing(index):
     route_ids = set(bindings["route_ids"])
     group_rules = []
     for group in GROUPS:
-        if group["id"] in key.get("group_ids", []):
+        if group["id"] in key.get("group_ids", []) and not group.get("disabled", False):
             route_ids.update(group["route_ids"])
             group_rules.append(group["rule"])
     rules = [bindings] + group_rules + [route["rule"] for route in ROUTES if route["id"] in route_ids]
@@ -893,7 +893,14 @@ def account_routing_view(index):
         bool(group_ids) and not any(group_grants_access(group) for group in GROUPS if group["id"] in group_ids)
     )
     def credential_view(item):
-        return {"source": item["source"], "provider": item["provider"], "name": item["display_name"], "status": item["status"],
+        status = item.get("status", "")
+        if item.get("disabled"):
+            status = "disabled"
+        elif item.get("unavailable") and status in ("", "active"):
+            status = "unavailable"
+        elif not status:
+            status = "active"
+        return {"source": item["source"], "provider": item["provider"], "name": item["display_name"], "status": status,
                 "denied": item["ref"] in denied_refs or (item["source"], item["provider"]) in denied_providers}
     return {
         "models": sorted(models), "denied_models": sorted(denied_models),
@@ -1289,7 +1296,7 @@ def route_rows():
 
 
 def group_grants_access(group):
-    return bool(group["route_ids"]) or any(group["rule"].values())
+    return not group.get("disabled", False) and (bool(group["route_ids"]) or any(group["rule"].values()))
 
 
 def rule_credential_refs(rule):
@@ -1631,7 +1638,7 @@ class Handler(BaseHTTPRequestHandler):
             group_id = body.get("id") or "group-" + str(time.time_ns())
             group = next((item for item in GROUPS if item["id"] == group_id), None)
             if self.command == "POST":
-                group = {"id": group_id, "route_ids": [], "rule": empty_rule()}
+                group = {"id": group_id, "disabled": False, "route_ids": [], "rule": empty_rule()}
             if group is None:
                 self.send_json(404, {"error": {"message": "group not found"}})
                 return
@@ -1648,7 +1655,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.command == "POST":
                 GROUPS.append(group)
-            group.update({field: body[field] for field in ("name", "route_ids") if field in body}, rule=rule)
+            group.update({field: body[field] for field in ("name", "route_ids", "disabled") if field in body}, rule=rule)
             if "scopes" in body:
                 scopes = set(body["scopes"])
                 for key in KEYS:

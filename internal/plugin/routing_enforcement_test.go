@@ -1,11 +1,34 @@
 package plugin
 
 import (
+	"encoding/json"
 	"net/http"
 	"testing"
 
 	"cpa-key-billing/internal/billing"
 )
+
+func TestLoadedAuthFileKeepsProviderGrantAfterInventoryRefresh(t *testing.T) {
+	app, scope := configuredRoutingApp(t, billing.RouteRule{CredentialProviders: []billing.CredentialProviderSelector{{Source: billing.CredentialSourceAuthFiles, Provider: "codex"}}})
+	app.SetHostCaller(func(method string, _ any) (json.RawMessage, error) {
+		if method != hostAuthList {
+			t.Fatalf("host method = %q", method)
+		}
+		// CPA reports this shape for a still-loaded authentication file whose
+		// path no longer exists. Inventory refresh must not change its group.
+		return json.RawMessage(`{"files":[{"id":"dummy-loaded-codex","provider":"codex","source":"memory","path":"/auth/codex.json","email":"dummy@example.test"}]}`), nil
+	})
+	if err := app.refreshCredentialInventory(); err != nil {
+		t.Fatal(err)
+	}
+	credentials := app.credentialInventory()
+	if len(credentials) != 1 || credentials[0].Source != billing.CredentialSourceAuthFiles || credentials[0].DisplayName != "dummy@example.test" {
+		t.Fatalf("loaded file classified incorrectly: %+v", credentials)
+	}
+	if response := afterAuthForTest(t, app, scope, "dummy-loaded-codex"); response.Terminate {
+		t.Fatalf("inventory grouping changed the provider grant: %+v", response)
+	}
+}
 
 func TestAfterAuthEnforcesExactCredentialWithoutScheduler(t *testing.T) {
 	app, scope := configuredRoutingApp(t, billing.RouteRule{CredentialIDs: []string{billing.CredentialFingerprint("dummy-allowed-file")}})

@@ -97,7 +97,7 @@ func TestV15ForwardedForBlockMigrationPreservesDataAndRollsBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer raw.Close()
-			oldSchema := strings.TrimSuffix(strings.TrimSuffix(schema, groupRuleSchema), forwardedForBlockSchema)
+			oldSchema := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(schema, groupDisabledSchema), groupRuleSchema), forwardedForBlockSchema)
 			if oldSchema == schema || strings.Contains(oldSchema, "forwarded_for_block") || strings.Contains(oldSchema, "ALTER TABLE groups") {
 				t.Fatal("v15 fixture still contains later tables")
 			}
@@ -142,7 +142,7 @@ INSERT INTO request_errors(request_event_id,status_code,body) VALUES(2,502,'pres
 			}
 			defer d.Close()
 			var version int
-			if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion || schemaVersion != 17 {
+			if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion || schemaVersion != 18 {
 				t.Fatalf("schema version = %d (%d), err = %v", version, schemaVersion, err)
 			}
 			state := mustLoad(t, d).State

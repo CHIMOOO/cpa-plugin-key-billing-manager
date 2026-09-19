@@ -134,7 +134,14 @@ func (s *subsetScheduler) prune(scopes map[string]struct{}) {
 }
 
 func candidateAllowed(candidate SchedulerAuthCandidate, decision billing.RoutingDecision) bool {
-	return routingAllowsCredential(candidate.ID, credentialSourceFromCandidate(candidate), candidate.Provider, decision)
+	// Permissions from every enabled group are combined before this check. A
+	// grant never re-enables an upstream account that CPA marks as disabled.
+	// Do not reject status=error here: the host applies model-specific cooldowns
+	// before supplying candidates, so another model may still use that account.
+	return strings.TrimSpace(candidate.ID) != "" &&
+		!strings.EqualFold(strings.TrimSpace(candidate.Status), "disabled") &&
+		candidateWeight(candidate) > 0 &&
+		routingAllowsCredential(candidate.ID, credentialSourceFromCandidate(candidate), candidate.Provider, decision)
 }
 
 func (a *App) pickCredential(raw []byte) ([]byte, error) {

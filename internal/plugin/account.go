@@ -171,7 +171,11 @@ func accountRoutingCredentials(inventory []credentialView, refs []string, provid
 
 func accountCredential(item credentialView) accountRouteCredential {
 	status := item.Status
-	if status == "" {
+	if item.Disabled {
+		status = "disabled"
+	} else if item.Unavailable && (status == "" || status == "active") {
+		status = "unavailable"
+	} else if status == "" {
 		status = "active"
 	}
 	return accountRouteCredential{Source: item.Source, Provider: item.Provider, Name: item.DisplayName, Status: status}

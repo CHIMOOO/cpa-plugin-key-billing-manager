@@ -2,7 +2,7 @@
 # copy of this file into its run directory, replacing every double-underscored
 # placeholder with a runtime value, and never writes back here.
 #
-# The upstream of all four providers is scripts/dummy_provider.py.
+# All upstream requests go to scripts/dummy_provider.py.
 host: "127.0.0.1"
 port: __PORT__
 auth-dir: "__RUNTIME_DIR__/auth"
@@ -63,6 +63,29 @@ openai-compatibility:
       - api-key: "e2e-route-denied-2222"
     models:
       - name: "e2e-credential-route"
+  # Same-priority credentials isolate multi-group failover from the host's
+  # priority filtering. The third stays enabled but is never granted to a Key.
+  - name: "group-fallback-a-e2e"
+    priority: 0
+    base-url: "__UPSTREAM_ORIGIN__/v1"
+    api-key-entries:
+      - api-key: "e2e-group-fallback-a"
+    models:
+      - name: "e2e-group-fallback"
+  - name: "group-fallback-b-e2e"
+    priority: 0
+    base-url: "__UPSTREAM_ORIGIN__/v1"
+    api-key-entries:
+      - api-key: "e2e-group-fallback-b"
+    models:
+      - name: "e2e-group-fallback"
+  - name: "group-fallback-unauthorized-e2e"
+    priority: 0
+    base-url: "__UPSTREAM_ORIGIN__/v1"
+    api-key-entries:
+      - api-key: "e2e-group-fallback-unauthorized"
+    models:
+      - name: "e2e-group-fallback"
 codex-api-key:
   - api-key: __UPSTREAM_API_KEY__
     prefix: "codex"

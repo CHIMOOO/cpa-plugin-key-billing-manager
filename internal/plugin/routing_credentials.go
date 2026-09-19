@@ -72,11 +72,16 @@ func credentialDisplayName(file hostAuthFile, source, provider, ref string) stri
 
 func credentialSourceFromHost(file hostAuthFile) string {
 	source := strings.ToLower(strings.TrimSpace(file.Source))
-	if file.RuntimeOnly || source == "memory" || source == "config" || strings.HasPrefix(source, "config:") {
+	if file.RuntimeOnly || source == "config" || strings.HasPrefix(source, "config:") {
 		return billing.CredentialSourceAIProviders
 	}
+	// CPA keeps a loaded file's path when its disk entry disappears and reports
+	// source=memory. It remains a file credential, just like its scheduler entry.
 	if source == "file" || strings.TrimSpace(file.Path) != "" {
 		return billing.CredentialSourceAuthFiles
+	}
+	if source == "memory" {
+		return billing.CredentialSourceAIProviders
 	}
 	return ""
 }
@@ -108,11 +113,14 @@ func credentialSourceFromCandidate(candidate SchedulerAuthCandidate) string {
 	backend := strings.ToLower(strings.TrimSpace(candidate.Attributes["source_backend"]))
 	source := strings.ToLower(strings.TrimSpace(candidate.Attributes["source"]))
 	runtimeOnly := strings.EqualFold(strings.TrimSpace(candidate.Attributes["runtime_only"]), "true")
-	if backend == "config" || backend == "memory" || runtimeOnly || strings.HasPrefix(source, "config:") || source == "memory" || source == "runtime" || source == "runtime_only" {
+	if backend == "config" || runtimeOnly || source == "config" || strings.HasPrefix(source, "config:") || source == "runtime" || source == "runtime_only" {
 		return billing.CredentialSourceAIProviders
 	}
 	if backend == "file" || backend == "git" || backend == "objectstore" || backend == "postgres" || strings.TrimSpace(candidate.Attributes["path"]) != "" || source == "file" || source == "filesystem" || source == "git" || source == "objectstore" || source == "postgres" {
 		return billing.CredentialSourceAuthFiles
+	}
+	if backend == "memory" || source == "memory" {
+		return billing.CredentialSourceAIProviders
 	}
 	return ""
 }
@@ -171,19 +179,41 @@ func (a *App) observeCandidates(candidates []SchedulerAuthCandidate) {
 			continue
 		}
 		ref := billing.CredentialFingerprint(id)
+		existing := a.credentials[ref]
 		source := credentialSourceFromCandidate(candidate)
+		if source == "" {
+			source = existing.Source
+		}
 		if source == "" {
 			continue
 		}
 		provider := strings.ToLower(strings.TrimSpace(candidate.Provider))
+		if provider == "" {
+			provider = existing.Provider
+		}
 		name := "配置凭证 " + shortCredentialRef(ref)
 		if source == billing.CredentialSourceAuthFiles {
 			name = "未提供邮箱"
 		}
-		if existing, ok := a.credentials[ref]; ok && existing.DisplayName != "" {
+		if existing.DisplayName != "" {
 			name = existing.DisplayName
 		}
-		a.credentials[ref] = credentialView{Ref: ref, Source: source, Provider: provider, DisplayName: name, Status: candidate.Status}
+		item := existing
+		item.Ref, item.Source, item.Provider, item.DisplayName = ref, source, provider, name
+		if status := strings.ToLower(strings.TrimSpace(candidate.Status)); status != "" {
+			item.Status = status
+			// An explicit current host status supersedes a stale management
+			// snapshot. Missing status must not silently erase a disabled flag.
+			switch status {
+			case "disabled":
+				item.Disabled = true
+			case "active":
+				item.Disabled, item.Unavailable = false, false
+			case "pending", "error":
+				item.Disabled = false
+			}
+		}
+		a.credentials[ref] = item
 		a.credentialsByRawID[id] = ref
 	}
 }
