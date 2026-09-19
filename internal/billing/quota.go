@@ -53,13 +53,15 @@ type QuotaWindowView struct {
 	StartAt       time.Time      `json:"start_at,omitzero"`
 	EndAt         time.Time      `json:"end_at,omitzero"`
 	Dimensions    []QuotaBalance `json:"dimensions"`
+	Scope         QuotaScope     `json:"scope,omitzero"`
 }
 
 type QuotaView struct {
-	Unlimited bool              `json:"unlimited"`
-	Blocked   bool              `json:"blocked"`
-	RetryAt   time.Time         `json:"retry_at,omitzero"`
-	Windows   []QuotaWindowView `json:"windows"`
+	Unlimited        bool              `json:"unlimited"`
+	Blocked          bool              `json:"blocked"`
+	PartiallyBlocked bool              `json:"partially_blocked"`
+	RetryAt          time.Time         `json:"retry_at,omitzero"`
+	Windows          []QuotaWindowView `json:"windows"`
 }
 
 func (w QuotaWindow) view(cycle QuotaCycle) QuotaWindowView {
@@ -67,6 +69,7 @@ func (w QuotaWindow) view(cycle QuotaCycle) QuotaWindowView {
 		ID: w.ID, Name: w.Name, PeriodSeconds: w.PeriodSeconds, CycleAnchorAt: w.CycleAnchorAt,
 		Started: !cycle.StartAt.IsZero(), StartAt: cycle.StartAt, EndAt: cycle.EndAt,
 		Dimensions: make([]QuotaBalance, 0, 3),
+		Scope:      w.Scope.clone(),
 	}
 	view.Dimensions = appendQuotaBalance(view.Dimensions, QuotaAmount, w.AmountUSD, cycle.SpentUSD)
 	view.Dimensions = appendQuotaBalance(view.Dimensions, QuotaTokens, w.TokenLimit, cycle.UsedTokens)
@@ -85,11 +88,14 @@ func quotaView(key *KeyState, plan Plan, now time.Time) QuotaView {
 			cycle = window.newCycle(plan.ID, now)
 		}
 		item := window.view(cycle)
-		if item.Blocked {
+		if item.Blocked && window.Scope.IsZero() {
 			view.Blocked = true
 			if item.EndAt.After(view.RetryAt) {
 				view.RetryAt = item.EndAt
 			}
+		}
+		if item.Blocked && !window.Scope.IsZero() {
+			view.PartiallyBlocked = true
 		}
 		view.Windows = append(view.Windows, item)
 	}
@@ -180,11 +186,16 @@ func (key *KeyState) ValidateCycles(plan Plan) error {
 }
 
 // Usage never starts a window or charges a replacement window with older usage.
-func (key *KeyState) chargeCycles(at time.Time, usage quotaUsage) {
+func (key *KeyState) chargeCycles(at time.Time, usage quotaUsage, matched Plan) {
 	if key.PlanID == "" || at.IsZero() {
 		return
 	}
-	for id, cycle := range key.Cycles {
+	for _, window := range matched.Windows {
+		id := window.ID
+		cycle, exists := key.Cycles[id]
+		if !exists {
+			continue
+		}
 		if cycle.PlanID != key.PlanID || at.Before(cycle.StartAt) || at.Before(cycle.UsageSince) || !at.Before(cycle.EndAt) {
 			continue
 		}

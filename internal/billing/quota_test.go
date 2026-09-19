@@ -130,7 +130,7 @@ func TestQuotaPreservesNumericBoundaries(t *testing.T) {
 		cycle.SpentUSD = math.MaxFloat64 * 0.75
 		cycle.UsedTokens, cycle.UsedRequests = maxQuotaCount-1, maxQuotaCount-1
 		key.Cycles["w"] = cycle
-		key.chargeCycles(now, quotaUsage{AmountUSD: math.MaxFloat64 * 0.75, Tokens: 1, Requests: 1})
+		key.chargeCycles(now, quotaUsage{AmountUSD: math.MaxFloat64 * 0.75, Tokens: 1, Requests: 1}, state.Plans[0])
 	})
 	view := store.Authorize("s", now)
 	for _, balance := range view.Windows[0].Dimensions {

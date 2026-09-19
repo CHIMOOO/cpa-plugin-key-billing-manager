@@ -125,7 +125,14 @@ func (a *App) interceptBeforeAuth(raw []byte) ([]byte, error) {
 	// Reference price refresh may have taken time. Quota and Retry-After share the
 	// current instant, rather than the instant before the download.
 	now := a.store.Now()
-	decision := a.store.Authorize(scope, now)
+	quotaRequestedModel := req.RequestedModel
+	if strings.TrimSpace(quotaRequestedModel) == "" {
+		quotaRequestedModel = metadataString(req.Metadata, MetadataRequestedModel)
+	}
+	decision := a.store.AuthorizeModel(scope, req.Model, quotaRequestedModel, now)
+	if decision.ModelUnresolved {
+		return OKEnvelope(priceRefusal(req.SourceFormat, "quota_model_unresolved", "Dynamic auto model selection is unavailable for subscription plans with model-scoped quotas. Choose an explicit model so admission and usage use the same quota pool."))
+	}
 	if !decision.Allowed {
 		a.store.ReportQuotaBlock(scope, endpoint, decision)
 		return OKEnvelope(quotaExhaustedResponse(req.SourceFormat, decision, now))

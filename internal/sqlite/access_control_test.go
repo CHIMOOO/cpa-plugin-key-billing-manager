@@ -217,7 +217,7 @@ INSERT INTO request_errors(request_event_id,status_code,body) VALUES(2,502,'pres
 			}
 			defer d.Close()
 			var version int
-			if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion || schemaVersion != 18 {
+			if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion || schemaVersion != 19 {
 				t.Fatalf("schema version = %d (%d), err = %v", version, schemaVersion, err)
 			}
 			state := mustLoad(t, d).State

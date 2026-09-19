@@ -52,7 +52,7 @@ func (d *DB) loadPlans(state *billing.State) error {
 		if err := plan.Validate(); err != nil {
 			return err
 		}
-		slices.SortFunc(plan.Windows, func(a, b billing.QuotaWindow) int {
+		slices.SortStableFunc(plan.Windows, func(a, b billing.QuotaWindow) int {
 			return cmp.Compare(a.PeriodSeconds, b.PeriodSeconds)
 		})
 		state.Plans = append(state.Plans, plan)

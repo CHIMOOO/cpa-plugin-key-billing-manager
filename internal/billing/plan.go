@@ -18,13 +18,14 @@ type Plan struct {
 
 // Zero disables a quota dimension. An absent anchor starts cycles on admission.
 type QuotaWindow struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	PeriodSeconds int64     `json:"period_seconds"`
-	AmountUSD     float64   `json:"amount_usd"`
-	TokenLimit    int64     `json:"token_limit"`
-	RequestLimit  int64     `json:"request_limit"`
-	CycleAnchorAt time.Time `json:"cycle_anchor_at,omitzero"`
+	ID            string     `json:"id"`
+	Name          string     `json:"name"`
+	PeriodSeconds int64      `json:"period_seconds"`
+	AmountUSD     float64    `json:"amount_usd"`
+	TokenLimit    int64      `json:"token_limit"`
+	RequestLimit  int64      `json:"request_limit"`
+	CycleAnchorAt time.Time  `json:"cycle_anchor_at,omitzero"`
+	Scope         QuotaScope `json:"scope,omitzero"`
 }
 
 const maxPeriodSeconds = int64(math.MaxInt64) / int64(time.Second)
@@ -41,7 +42,7 @@ func (p Plan) Validate() error {
 	}
 	ids := make(map[string]bool)
 	names := make(map[string]bool)
-	periods := make(map[int64]bool)
+	periods := make(map[int64]map[string]bool)
 	for _, window := range p.Windows {
 		if window.ID == "" || ids[window.ID] {
 			return invalidf("Invalid or duplicate quota window ID")
@@ -65,8 +66,11 @@ func (p Plan) Validate() error {
 		if window.PeriodSeconds <= 0 || window.PeriodSeconds > maxPeriodSeconds {
 			return invalidf("Window %q: period must be between 1 and %d seconds", name, maxPeriodSeconds)
 		}
-		if periods[window.PeriodSeconds] {
-			return invalidf("Window %q has the same period as another window", name)
+		if _, err := window.Scope.normalized(); err != nil {
+			return err
+		}
+		if periods[window.PeriodSeconds][window.Scope.identity()] {
+			return invalidf("Window %q has the same period and scope as another window", name)
 		}
 		if window.CycleAnchorAt.IsZero() != p.Windows[0].CycleAnchorAt.IsZero() {
 			return invalidf("All windows in a subscription plan must use the same cycle mode")
@@ -74,7 +78,11 @@ func (p Plan) Validate() error {
 		if !window.CycleAnchorAt.IsZero() && (window.CycleAnchorAt.Year() < 1970 || window.CycleAnchorAt.Year() > 9999 || window.CycleAnchorAt.Nanosecond() != 0) {
 			return invalidf("Window %q: cycle start must be between years 1970 and 9999 with second precision", name)
 		}
-		ids[window.ID], names[strings.ToLower(name)], periods[window.PeriodSeconds] = true, true, true
+		ids[window.ID], names[strings.ToLower(name)] = true, true
+		if periods[window.PeriodSeconds] == nil {
+			periods[window.PeriodSeconds] = make(map[string]bool)
+		}
+		periods[window.PeriodSeconds][window.Scope.identity()] = true
 	}
 	return nil
 }
@@ -84,6 +92,11 @@ func prepareWindows(windows, existing []QuotaWindow, now time.Time) ([]QuotaWind
 	for i := range windows {
 		window := &windows[i]
 		window.Name = strings.TrimSpace(window.Name)
+		var err error
+		window.Scope, err = window.Scope.normalized()
+		if err != nil {
+			return nil, err
+		}
 		oldIndex := slices.IndexFunc(existing, func(old QuotaWindow) bool { return old.ID == window.ID })
 		if window.ID == "" {
 			var id [16]byte
@@ -104,7 +117,7 @@ func prepareWindows(windows, existing []QuotaWindow, now time.Time) ([]QuotaWind
 			}
 		}
 	}
-	slices.SortFunc(windows, func(a, b QuotaWindow) int {
+	slices.SortStableFunc(windows, func(a, b QuotaWindow) int {
 		return cmp.Compare(a.PeriodSeconds, b.PeriodSeconds)
 	})
 	return windows, nil
@@ -121,6 +134,9 @@ func (w QuotaWindow) sameSchedule(other QuotaWindow) bool {
 
 func clonePlan(plan Plan) Plan {
 	plan.Windows = slices.Clone(plan.Windows)
+	for i := range plan.Windows {
+		plan.Windows[i].Scope = plan.Windows[i].Scope.clone()
+	}
 	return plan
 }
 
@@ -243,7 +259,7 @@ func (s *Store) UpdatePlanWithBindings(patch PlanPatch, scopes *[]string) (Plan,
 			if patch.Windows != nil {
 				for _, old := range state.Plans[i].Windows {
 					if !slices.ContainsFunc(updated.Windows, func(window QuotaWindow) bool {
-						return window.ID == old.ID && window.sameSchedule(old)
+						return window.ID == old.ID && window.sameSchedule(old) && window.Scope.identity() == old.Scope.identity()
 					}) {
 						resetWindows = append(resetWindows, old.ID)
 					}

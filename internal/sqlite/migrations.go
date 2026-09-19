@@ -11,6 +11,60 @@ import (
 	"cpa-key-billing/internal/billing"
 )
 
+// v19 extends windows_json with model scopes. Older binaries must reject this
+// version instead of silently interpreting a scoped budget as an all-model one.
+// The migration validates existing plans and balances without rewriting any
+// JSON, rows, or history; a malformed legacy record rolls the version back.
+func migrateToV19(tx *sql.Tx) error {
+	plans := make(map[string]billing.Plan)
+	rows, err := tx.Query("SELECT id, name, windows_json FROM plans")
+	if err != nil {
+		return fmt.Errorf("Read plans for scoped quota migration: %w", err)
+	}
+	for rows.Next() {
+		var plan billing.Plan
+		var raw string
+		if err = rows.Scan(&plan.ID, &plan.Name, &raw); err == nil {
+			err = json.Unmarshal([]byte(raw), &plan.Windows)
+		}
+		if err == nil {
+			err = plan.Validate()
+		}
+		if err != nil {
+			rows.Close()
+			return fmt.Errorf("Validate plans for scoped quota migration: %w", err)
+		}
+		plans[plan.ID] = plan
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	rows, err = tx.Query("SELECT plan_id, cycles_json FROM api_keys")
+	if err != nil {
+		return fmt.Errorf("Read balances for scoped quota migration: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key billing.KeyState
+		var raw string
+		if err = rows.Scan(&key.PlanID, &raw); err == nil {
+			err = json.Unmarshal([]byte(raw), &key.Cycles)
+		}
+		if err == nil && key.Cycles == nil {
+			err = fmt.Errorf("Quota cycles must be a JSON object")
+		}
+		if err == nil {
+			err = key.ValidateCycles(plans[key.PlanID])
+		}
+		if err != nil {
+			return fmt.Errorf("Validate balances for scoped quota migration: %w", err)
+		}
+	}
+	return rows.Err()
+}
+
 // v18 adds an enabled-by-default group switch without rewriting history.
 func migrateToV18(tx *sql.Tx) error {
 	if _, err := tx.Exec(groupDisabledSchema); err != nil {
