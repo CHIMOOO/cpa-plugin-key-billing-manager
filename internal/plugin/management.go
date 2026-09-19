@@ -1,7 +1,6 @@
 package plugin
 
 import (
-	_ "embed"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,9 +15,6 @@ const (
 	resourceBase   = "/v0/resource/plugins/" + PluginID
 	resourceUIPath = "/ui"
 )
-
-//go:embed ui.html
-var uiHTML []byte
 
 const (
 	routeKeys                   = "/keys"

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import base64
 import hashlib
 import json
 import random
@@ -21,7 +22,7 @@ CALLER_SCOPE_SALT = b"cli-proxy-api:caller-scope:v1\0"
 
 
 HOST_SHELL = r"""<!doctype html>
-<html lang="zh-CN" data-host="__HOST_MODE__">
+<html lang="en" data-host="__HOST_MODE__">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -150,6 +151,7 @@ html[data-host=cpamp] #plugin-frame{background:var(--bg-primary)}
 <header class="navbar">
   <div class="navbar-left"><button class="mobile-menu" title="菜单">☰</button><span>API Key 管理</span></div>
   <div class="theme-controls" aria-label="预览主题">
+    <select id="host-language" aria-label="Language"><option value="en">English</option><option value="zh-CN">简体中文</option><option value="zh-TW">繁體中文</option><option value="ru">Русский</option></select>
     <button type="button" data-action="refresh" title="刷新">↻</button>
     <button type="button" data-theme-choice="light" title="浅色主题">◐</button>
     <button type="button" class="theme-white" data-theme-choice="white" title="白色主题">○</button>
@@ -163,6 +165,9 @@ const HOST_MODE="__HOST_MODE__";
 const INITIAL_THEME="__INITIAL_THEME__";
 const root=document.documentElement;
 const frame=document.getElementById("plugin-frame");
+const language=document.getElementById("host-language");
+language.value=root.lang;
+language.onchange=()=>{root.lang=language.value;};
 const systemDark=()=>!!matchMedia("(prefers-color-scheme:dark)").matches;
 let selectedTheme=INITIAL_THEME;
 
@@ -317,6 +322,7 @@ CREDENTIALS = [
     {"ref": "sha256:" + "e" * 64, "source": "auth-files", "provider": "xai", "display_name": "disabled@example.com", "status": "disabled", "disabled": True, "unavailable": False},
     {"ref": AUTOMATION_CREDENTIAL_REF, "source": "auth-files", "provider": "codex", "display_name": "automation@example.com", "status": "active", "disabled": False, "unavailable": False},
     {"ref": UNAVAILABLE_CREDENTIAL_REF, "source": "auth-files", "provider": "kimi", "display_name": "research@example.com", "status": "error", "disabled": False, "unavailable": True},
+    {"ref": "sha256:" + "2" * 64, "source": "auth-files", "provider": "codex", "display_name": "paused-codex@example.com", "status": "disabled", "disabled": True, "unavailable": False},
 ]
 SYNCED_CREDENTIAL_REFS = set()
 
@@ -521,11 +527,21 @@ def auth_file_quota(query):
     if quota is None:
         return None
     auth_file = next(item for item in AUTH_FILES if item["auth_index"] == auth_index)
-    return {
+    result = {
         "auth_revision": auth_file["cache_revision"],
         "fetched_at": iso(NOW),
         **quota,
     }
+    english = json.loads((UI_PATH.parent / "locales/en.json").read_text(encoding="utf-8"))
+    chinese = json.loads((UI_PATH.parent / "locales/zh-CN.json").read_text(encoding="utf-8"))
+    labels = {value: key for key, value in chinese.items() if key.startswith("backend.") and "{" not in value}
+    result["quota"] = [dict(row) for row in result["quota"]]
+    for row in result["quota"]:
+        key = labels.get(row.get("label", ""))
+        if key:
+            row["label"] = english[key]
+            row["label_message"] = {"message_key": key}
+    return result
 
 
 KEY_PROFILES = [
@@ -594,22 +610,30 @@ ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 TURN_STATE_CONFIG = {
     "enabled": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
     "template_length": 292, "replace_length": 312, "ttl_seconds": 3600,
-    "models": ["gpt-6-astra"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
+    "models": ["gpt6", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
 TURN_STATE_COUNTERS = {"injected": 0, "learned": 0, "passed": 0}
 TURN_STATE_LAST = {}
+TURN_STATE_UPLOADS = {}
+
+
+def ui_message(key):
+    english = json.loads((UI_PATH.parent / "locales/en.json").read_text(encoding="utf-8"))
+    return {"message": english[key], "message_key": key}
 
 
 def turn_state_view():
     config = dict(TURN_STATE_CONFIG)
     for field in ("probe_proxies", "probe_proxies_rotating"):
-        config[field] = ["http://***@proxy.example:10000" for _ in config[field]]
+        config[field] = []
     return {"config": config, "templates": TURN_STATE_TEMPLATES, "counters": TURN_STATE_COUNTERS,
             "last_decision": TURN_STATE_LAST, "probe_supported": True, "probe_unavailable_reason": "",
-            "probe_accounts": [{"account": item["ref"], "label": item["display_name"]}
-                               for item in CREDENTIALS if item["provider"] == "codex" and item["source"] == "auth-files"
-                               and not item.get("disabled") and item.get("status", "").lower() != "disabled"],
+            "host_requirement": ui_message("backend.turn_state_host_requirement")["message"],
+            "host_requirement_message": {"message_key": "backend.turn_state_host_requirement"},
+            "probe_accounts": [{"account": item["ref"], "label": item["display_name"],
+                                "disabled": bool(item.get("disabled")) or item.get("status", "").lower() == "disabled"}
+                               for item in CREDENTIALS if item["provider"] == "codex" and item["source"] == "auth-files"],
             "proxy_counts": {"static": len(TURN_STATE_CONFIG["probe_proxies"]),
                              "rotating": len(TURN_STATE_CONFIG["probe_proxies_rotating"])}}
 
@@ -1515,6 +1539,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path in ("/", "/ui"):
             body = UI_PATH.read_text(encoding="utf-8")
+            catalogs = {language: json.loads((UI_PATH.parent / "locales" / f"{language}.json").read_text(encoding="utf-8"))
+                        for language in ("en", "zh-CN")}
+            script = "const BILLING_MESSAGES = " + json.dumps(catalogs).replace("<", "\\u003c") + ";\n"
+            script += (UI_PATH.parent / "i18n.js").read_text(encoding="utf-8")
+            body = body.replace("// BILLING_I18N", script)
             if self.host_mode != "standalone":
                 body = body.replace(
                     "</head>",
@@ -1605,10 +1634,44 @@ class Handler(BaseHTTPRequestHandler):
             self.mutation_view = json.loads(request_body or b"{}")
             request_body = json.dumps(self.mutation_view.get("data") or {}).encode()
         route = self.command, parsed.path
-        if route == ("PUT", f"{API_BASE}/turn-state"):
+        if parsed.path == f"{API_BASE}/turn-state/config-upload":
+            body = json.loads(request_body or b"{}")
+            if self.command == "POST":
+                upload_id = f"{time.time_ns():032x}"
+                TURN_STATE_UPLOADS[upload_id] = {"size": body["size"], "data": b"",
+                    "base": json.dumps(TURN_STATE_CONFIG, sort_keys=True)}
+                self.send_json(200, {"id": upload_id, "received": 0, "chunk_bytes": 12288})
+            elif self.command == "DELETE":
+                TURN_STATE_UPLOADS.pop(body["id"], None)
+                self.send_json(200, {"cancelled": True})
+            elif self.command == "PATCH":
+                upload = TURN_STATE_UPLOADS.get(body["id"])
+                data = base64.b64decode(body["data"], validate=True)
+                if not upload or body["offset"] != len(upload["data"]) or len(data) > 12288:
+                    self.send_json(400, {"error": ui_message("backend.turn_state_upload_chunk_invalid")})
+                    return
+                upload["data"] += data
+                self.send_json(200, {"id": body["id"], "received": len(upload["data"]), "chunk_bytes": 12288})
+        elif route == ("POST", f"{API_BASE}/turn-state/config-upload/commit"):
+            body = json.loads(request_body or b"{}")
+            upload = TURN_STATE_UPLOADS.get(body["id"])
+            if not upload or len(upload["data"]) != upload["size"]:
+                self.send_json(400, {"error": ui_message("backend.turn_state_upload_incomplete")})
+                return
+            if upload["base"] != json.dumps(TURN_STATE_CONFIG, sort_keys=True):
+                self.send_json(400, {"error": ui_message("backend.turn_state_upload_conflict")})
+                return
+            config = json.loads(upload["data"])
+            if config.get("inject_mode") not in {"always", "replace-only"}:
+                self.send_json(400, {"error": ui_message("backend.turn_state_invalid_inject_mode")})
+                return
+            TURN_STATE_CONFIG.update(config)
+            del TURN_STATE_UPLOADS[body["id"]]
+            self.send_json(200, turn_state_view())
+        elif route == ("PUT", f"{API_BASE}/turn-state"):
             body = json.loads(request_body or b"{}")
             if body.get("inject_mode") not in {"always", "replace-only"}:
-                self.send_json(400, {"error": {"message": "invalid inject mode"}})
+                self.send_json(400, {"error": ui_message("backend.turn_state_invalid_inject_mode")})
                 return
             TURN_STATE_CONFIG.update(body)
             self.send_json(200, turn_state_view())
@@ -1618,11 +1681,13 @@ class Handler(BaseHTTPRequestHandler):
         elif route == ("POST", f"{API_BASE}/turn-state/probe"):
             accounts, models = TURN_STATE_CONFIG["probe_accounts"], TURN_STATE_CONFIG["models"]
             if not accounts or not models:
-                self.send_json(400, {"error": {"message": "select account and model"}})
+                self.send_json(400, {"error": ui_message("backend.turn_state_scope_required")})
                 return
             now = datetime.now(timezone.utc)
             fresh = bool(TURN_STATE_TEMPLATES)
-            result = {"action": "fresh" if fresh else "harvested", "reason": "模板仍有效" if fresh else "已采集有效模板",
+            reason = ui_message("backend.turn_state_fresh" if fresh else "backend.turn_state_harvested")
+            result = {"action": "fresh" if fresh else "harvested", "reason": reason["message"],
+                      "reason_message": {"message_key": reason["message_key"]},
                       "account": accounts[0], "model": models[0], "next_check_at": iso(now + timedelta(seconds=60))}
             if not fresh:
                 TURN_STATE_TEMPLATES.append({"account": accounts[0], "model": models[0], "length": 292,

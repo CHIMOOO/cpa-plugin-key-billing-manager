@@ -99,3 +99,10 @@ jobs:
             | sed -e '/^[[:space:]]*<script>$/d' -e '/^[[:space:]]*<\/script>$/d' > "$ui_script"
           test -s "$ui_script"
           node --check "$ui_script"
+          node --check internal/plugin/i18n.js
+
+      - name: Check UI formatting and translations
+        run: |
+          npm ci --prefix scripts
+          npm test --prefix scripts
+          node scripts/format_ui.mjs --check
