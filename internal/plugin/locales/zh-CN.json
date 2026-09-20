@@ -1429,5 +1429,6 @@
   "ui.model_test_model_different": "模型名称不一致，请核对别名或版本",
   "ui.model_test_model_conflicting": "本次响应声明了多个不同模型",
   "ui.model_test_model_missing": "上游未返回可识别的响应模型",
-  "ui.model_test_model_declaration_help": "响应模型仅来自本次测试中上游返回的声明；名称不同可能是别名或版本差异，名称一致也不能证明实际模型身份或回答质量。该信息不参与计费或路由。"
+  "ui.model_test_model_declaration_help": "响应模型仅来自本次测试中上游返回的声明；名称不同可能是别名或版本差异，名称一致也不能证明实际模型身份或回答质量。该信息不参与计费或路由。",
+  "ui.state_image_isolation_help": "CPA 的生图、改图接口不要求或学习聊天 State，分组权限、额度与并发限制仍然生效。图片模型支持、上传与超时由 CPA 和上游提供。"
 }

@@ -1429,5 +1429,6 @@
   "ui.model_test_model_different": "Model names differ; check aliases or versions",
   "ui.model_test_model_conflicting": "Conflicting model declarations in this response",
   "ui.model_test_model_missing": "No identifiable response model was returned",
-  "ui.model_test_model_declaration_help": "The response model is declared by the upstream for this test. A different name may reflect an alias or model version; matching names do not prove model identity or answer quality. It does not change billing or routing."
+  "ui.model_test_model_declaration_help": "The response model is declared by the upstream for this test. A different name may reflect an alias or model version; matching names do not prove model identity or answer quality. It does not change billing or routing.",
+  "ui.state_image_isolation_help": "CPA image generation and edit endpoints do not require or learn conversational State. Group permissions, quotas and concurrency still apply. Image model support, uploads and timeouts are provided by CPA and the upstream."
 }

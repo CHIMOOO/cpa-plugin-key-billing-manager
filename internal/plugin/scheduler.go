@@ -177,7 +177,7 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	if decision.ConfigurationError != "" {
 		return ErrorEnvelope("routing_configuration_error", decision.ConfigurationError, http.StatusServiceUnavailable), nil
 	}
-	protectAccounts := a.accountRuntime != nil && a.accountRuntime.requiresTurnState() && a.turnState.HasProtectedAccounts()
+	protectAccounts := !isTurnStateImageRequest(req.Options.Metadata) && a.accountRuntime != nil && a.accountRuntime.requiresTurnState() && a.turnState.HasProtectedAccounts()
 	if !decision.RestrictsCredentials() && !protectAccounts {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}

@@ -477,8 +477,9 @@ func (a *App) enforceAccountRuntime(req RequestInterceptRequest) RequestIntercep
 		return RequestInterceptResponse{}
 	}
 	id := metadataString(req.Metadata, MetadataSelectedAuth)
+	protectState := a.accountRuntime.requiresTurnState() && !isTurnStateImageRequest(req.Metadata)
 	if id == "" {
-		if a.accountRuntime.requiresTurnState() && a.turnState.HasProtectedAccounts() {
+		if protectState && a.turnState.HasProtectedAccounts() {
 			return priceRefusal(req.SourceFormat, "turn_state_required", "Cannot verify the selected account; protected account requests are blocked")
 		}
 		if a.accountRuntime.hasConcurrencyLimits() {
@@ -487,10 +488,10 @@ func (a *App) enforceAccountRuntime(req RequestInterceptRequest) RequestIntercep
 		return RequestInterceptResponse{}
 	}
 	ref := billing.CredentialFingerprint(id)
-	if a.accountRuntime.requiresTurnState() && a.turnState.AccountProtected(id) && a.hostSchema.Load() < 6 {
+	if protectState && a.turnState.AccountProtected(id) && a.hostSchema.Load() < 6 {
 		return priceRefusal(req.SourceFormat, "turn_state_host_unsupported", "Protected Turn State accounts require a verified CLIProxyAPI v7.3.4-compatible host with plugin schema 6 or newer")
 	}
-	if a.accountRuntime.requiresTurnState() && a.turnState.AccountProtected(id) && (strings.EqualFold(strings.TrimSpace(req.Headers.Get("Upgrade")), "websocket") || metadataString(req.Metadata, "execution_session_id") != "") {
+	if protectState && a.turnState.AccountProtected(id) && (strings.EqualFold(strings.TrimSpace(req.Headers.Get("Upgrade")), "websocket") || metadataString(req.Metadata, "execution_session_id") != "") {
 		if !a.turnStateUpstreamHTTP(req, id) {
 			return priceRefusal(req.SourceFormat, "turn_state_websocket_unsupported", "This protected account must disable upstream WebSocket mode before serving WebSocket clients. Save its State account selection to apply HTTP/SSE mode, then reconnect existing sessions")
 		}

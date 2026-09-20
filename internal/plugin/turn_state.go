@@ -173,7 +173,7 @@ func (a *App) turnStateRequest(req RequestInterceptRequest) (http.Header, []stri
 	// A scheduler retry can reuse the RequestID while selecting another
 	// provider. Never leave the earlier account attached to that later response.
 	a.turnState.Complete(req.RequestID)
-	if !a.turnState.Enabled() {
+	if isTurnStateImageRequest(req.Metadata) || !a.turnState.Enabled() {
 		return nil, nil
 	}
 	account := metadataString(req.Metadata, MetadataSelectedAuth)
@@ -219,6 +219,12 @@ func (a *App) handleTurnStateResponse(raw []byte, stream bool) ([]byte, error) {
 	}
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
+	}
+	if isTurnStateImageRequest(req.Metadata) {
+		if a.turnState != nil {
+			a.turnState.Complete(req.RequestID)
+		}
+		return OKEnvelope(struct{}{})
 	}
 	if stream && req.ChunkIndex != -1 {
 		return OKEnvelope(struct{}{})

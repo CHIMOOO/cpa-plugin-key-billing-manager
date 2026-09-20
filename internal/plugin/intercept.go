@@ -153,6 +153,12 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 		return nil, fmt.Errorf("Parse post-auth request interception parameters: %w", errUnmarshal)
 	}
 	if a != nil {
+		// A retry may reuse an earlier chat request ID. Image responses must
+		// never inherit that chat's template-learning attribution, even if a
+		// later credential or concurrency check refuses this attempt.
+		if a.turnState != nil && isTurnStateImageRequest(req.Metadata) {
+			a.turnState.Complete(req.RequestID)
+		}
 		a.observeRouteCredential(
 			req.RequestID,
 			metadataString(req.Metadata, MetadataSelectedAuth),
@@ -175,7 +181,7 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 	}
 	if !response.Terminate && a != nil && a.turnState != nil && a.store != nil && a.store.Enabled() {
 		account := metadataString(req.Metadata, MetadataSelectedAuth)
-		if metadataString(req.Metadata, MetadataSource) != SourcePluginHostModelCallback && a.accountRuntime.requiresTurnState() && a.turnState.AccountProtected(account) {
+		if !isTurnStateImageRequest(req.Metadata) && metadataString(req.Metadata, MetadataSource) != SourcePluginHostModelCallback && a.accountRuntime.requiresTurnState() && a.turnState.AccountProtected(account) {
 			var reason string
 			response.Headers, response.ClearHeaders, reason = a.turnState.BeforeRequired(req.RequestID, account, req.Model, req.Headers)
 			if reason != "" {
