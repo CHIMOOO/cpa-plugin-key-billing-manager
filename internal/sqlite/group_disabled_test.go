@@ -20,7 +20,7 @@ func TestV17GroupDisabledMigrationPreservesDataAndRollsBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer raw.Close()
-			if _, err := raw.Exec(strings.TrimSuffix(schema, groupDisabledSchema) + `
+			if _, err := raw.Exec(strings.TrimSuffix(strings.TrimSuffix(schema, groupRoutingModeSchema), groupDisabledSchema) + `
 PRAGMA user_version=17;
 INSERT INTO api_keys(scope,preview,label) VALUES('scope','dum…001','History');
 INSERT INTO groups(position,id,name,route_ids_json,rule_json) VALUES(0,'team','Team','["route"]','{"models":["model"]}');

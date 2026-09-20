@@ -11,6 +11,13 @@ import (
 	"cpa-key-billing/internal/billing"
 )
 
+func migrateToV20(tx *sql.Tx) error {
+	if _, err := tx.Exec(groupRoutingModeSchema); err != nil {
+		return fmt.Errorf("Migrate group routing modes: %w", err)
+	}
+	return nil
+}
+
 // v19 extends windows_json with model scopes. Older binaries must reject this
 // version instead of silently interpreting a scoped budget as an all-model one.
 // The migration validates existing plans and balances without rewriting any

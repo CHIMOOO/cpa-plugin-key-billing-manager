@@ -74,7 +74,7 @@ func TestV14AccessControlMigrationPreservesHistoryAndRollsBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer raw.Close()
-			oldSchema := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(schema, groupDisabledSchema), groupRuleSchema), forwardedForBlockSchema), accessControlSchema)
+			oldSchema := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(schema, groupRoutingModeSchema), groupDisabledSchema), groupRuleSchema), forwardedForBlockSchema), accessControlSchema)
 			if oldSchema == schema || strings.Contains(oldSchema, "forwarded_for_block") || strings.Contains(oldSchema, "access_control") {
 				t.Fatal("v14 fixture still contains later tables")
 			}
@@ -174,7 +174,7 @@ func TestV16GroupRuleMigrationPreservesDataAndRollsBack(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer raw.Close()
-			oldSchema := strings.TrimSuffix(strings.TrimSuffix(schema, groupDisabledSchema), groupRuleSchema)
+			oldSchema := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSuffix(schema, groupRoutingModeSchema), groupDisabledSchema), groupRuleSchema)
 			if oldSchema == schema || !strings.Contains(oldSchema, "forwarded_for_block") || strings.Contains(oldSchema, "ALTER TABLE groups") {
 				t.Fatal("v16 fixture is not the v16 schema")
 			}
@@ -217,7 +217,7 @@ INSERT INTO request_errors(request_event_id,status_code,body) VALUES(2,502,'pres
 			}
 			defer d.Close()
 			var version int
-			if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion || schemaVersion != 19 {
+			if err := d.db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion || schemaVersion != 20 {
 				t.Fatalf("schema version = %d (%d), err = %v", version, schemaVersion, err)
 			}
 			state := mustLoad(t, d).State

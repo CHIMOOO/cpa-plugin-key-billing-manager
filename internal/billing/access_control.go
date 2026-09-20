@@ -1,6 +1,7 @@
 package billing
 
 import (
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -15,11 +16,12 @@ type AccessControl struct {
 // exactly like a bound route's rule, so operators can select credentials and
 // models directly without creating a route first.
 type KeyGroup struct {
-	ID       string    `json:"id"`
-	Name     string    `json:"name"`
-	Disabled bool      `json:"disabled"`
-	RouteIDs []string  `json:"route_ids"`
-	Rule     RouteRule `json:"rule"`
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	Disabled    bool      `json:"disabled"`
+	RoutingMode string    `json:"routing_mode"`
+	RouteIDs    []string  `json:"route_ids"`
+	Rule        RouteRule `json:"rule"`
 }
 
 type GroupView struct {
@@ -28,12 +30,32 @@ type GroupView struct {
 }
 
 type GroupPatch struct {
-	ID       string     `json:"id"`
-	Name     *string    `json:"name,omitempty"`
-	Disabled *bool      `json:"disabled,omitempty"`
-	RouteIDs *[]string  `json:"route_ids,omitempty"`
-	Rule     *RouteRule `json:"rule,omitempty"`
-	Scopes   *[]string  `json:"scopes,omitempty"`
+	ID          string     `json:"id"`
+	Name        *string    `json:"name,omitempty"`
+	Disabled    *bool      `json:"disabled,omitempty"`
+	RoutingMode *string    `json:"routing_mode,omitempty"`
+	RouteIDs    *[]string  `json:"route_ids,omitempty"`
+	Rule        *RouteRule `json:"rule,omitempty"`
+	Scopes      *[]string  `json:"scopes,omitempty"`
+}
+
+const (
+	GroupRoutingOrdinary  = "ordinary"
+	GroupRoutingExclusive = "exclusive"
+	GroupRoutingCommon    = "common"
+)
+
+func normalizeGroupRoutingMode(mode string) (string, error) {
+	mode = strings.TrimSpace(mode)
+	if mode == "" {
+		return GroupRoutingOrdinary, nil
+	}
+	switch mode {
+	case GroupRoutingOrdinary, GroupRoutingExclusive, GroupRoutingCommon:
+		return mode, nil
+	default:
+		return "", invalidf("Group routing mode must be ordinary, exclusive, or common")
+	}
 }
 
 func (s *Store) AccessControl() AccessControl {
@@ -51,6 +73,9 @@ func (s *Store) SetAccessControl(settings AccessControl) error {
 }
 
 func cloneGroup(group KeyGroup) KeyGroup {
+	if group.RoutingMode == "" {
+		group.RoutingMode = GroupRoutingOrdinary
+	}
 	group.RouteIDs = append([]string{}, group.RouteIDs...)
 	group.Rule = group.Rule.clone()
 	return group
@@ -65,6 +90,9 @@ func NormalizeGroup(group KeyGroup) (KeyGroup, error) {
 		return KeyGroup{}, invalidf("Group name is required and must not exceed %d bytes", maxRouteNameBytes)
 	}
 	var err error
+	if group.RoutingMode, err = normalizeGroupRoutingMode(group.RoutingMode); err != nil {
+		return KeyGroup{}, err
+	}
 	if group.RouteIDs, err = normalizeRouteStrings(group.RouteIDs); err != nil {
 		return KeyGroup{}, err
 	}
@@ -125,6 +153,56 @@ func validateGroupRoutes(state *State, group KeyGroup) error {
 	return nil
 }
 
+// Only explicitly bound, enabled groups participate. One exclusive group
+// replaces ordinary group contributions; common groups remain additive.
+// Direct API-key restrictions are applied separately by routing resolution.
+func (s *State) effectiveKeyGroups(ids []string) ([]KeyGroup, error) {
+	groups := make([]KeyGroup, 0, len(ids))
+	var exclusiveID string
+	seen := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		i := s.findGroupIndex(id)
+		if i < 0 {
+			return nil, fmt.Errorf("Group %q no longer exists", id)
+		}
+		group := s.Groups[i]
+		if group.Disabled {
+			continue
+		}
+		mode, err := normalizeGroupRoutingMode(group.RoutingMode)
+		if err != nil {
+			return nil, err
+		}
+		group.RoutingMode = mode
+		if mode == GroupRoutingExclusive {
+			if exclusiveID != "" {
+				return nil, conflictf("An API key can belong to only one enabled exclusive group; groups %q and %q conflict", exclusiveID, id)
+			}
+			exclusiveID = id
+		}
+		groups = append(groups, group)
+	}
+	if exclusiveID != "" {
+		groups = slices.DeleteFunc(groups, func(group KeyGroup) bool { return group.RoutingMode == GroupRoutingOrdinary })
+	}
+	return groups, nil
+}
+
+func validateExclusiveGroupBindings(state *State, scopes []string) error {
+	for _, scope := range scopes {
+		if key := state.Keys[scope]; key != nil {
+			if _, err := state.effectiveKeyGroups(key.GroupIDs); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 func (s *Store) CreateGroup(group KeyGroup, scopes []string) (GroupView, error) {
 	scopes = normalizeScopes(scopes)
 	return editConfiguration(s, func(state *State) (GroupView, Changes, error) {
@@ -151,6 +229,9 @@ func (s *Store) CreateGroup(group KeyGroup, scopes []string) (GroupView, error) 
 		for _, scope := range scopes {
 			state.Keys[scope].GroupIDs = append(state.Keys[scope].GroupIDs, group.ID)
 		}
+		if err := validateExclusiveGroupBindings(state, scopes); err != nil {
+			return GroupView{}, Changes{}, err
+		}
 		return state.groupView(group), Changes{Groups: true, Keys: scopes}, nil
 	})
 }
@@ -168,6 +249,9 @@ func (s *Store) UpdateGroup(patch GroupPatch) (GroupView, error) {
 		}
 		if patch.Disabled != nil {
 			group.Disabled = *patch.Disabled
+		}
+		if patch.RoutingMode != nil {
+			group.RoutingMode = *patch.RoutingMode
 		}
 		if patch.RouteIDs != nil {
 			group.RouteIDs = *patch.RouteIDs
@@ -208,6 +292,9 @@ func (s *Store) UpdateGroup(patch GroupPatch) (GroupView, error) {
 			}
 		}
 		state.Groups[i] = group
+		if err := validateExclusiveGroupBindings(state, state.groupView(group).Scopes); err != nil {
+			return GroupView{}, Changes{}, err
+		}
 		return state.groupView(group), Changes{Groups: true, Keys: changed}, nil
 	})
 }
@@ -254,6 +341,9 @@ func (s *Store) SetKeyGroups(scopes, groupIDs []string) error {
 		}
 		for _, scope := range scopes {
 			state.Keys[scope].GroupIDs = append([]string(nil), groupIDs...)
+		}
+		if err := validateExclusiveGroupBindings(state, scopes); err != nil {
+			return struct{}{}, Changes{}, err
 		}
 		return struct{}{}, Changes{Keys: scopes}, nil
 	})

@@ -1532,7 +1532,7 @@ def complete_dummy_model_test(body):
     return 200, result
 
 def team_account_runtime():
-    return {"accounts": [{"credential_ref": item["ref"], "auth_index": next((file["auth_index"] for file in AUTH_FILES if file["credential_ref"] == item["ref"]), ""), "name": item["display_name"], "provider": item["provider"], "disabled": item["disabled"], "concurrency_limit": TEAM_ACCOUNT_SETTINGS["accounts"].get(item["ref"], {}).get("concurrency_limit", 0), "current_concurrency": index % 3, "usage": {"requests": 80 + index, "successes": 76, "failures": 4 + index, "total_tokens": 82500, "amount_usd": 3.42, "last_used_at": iso(NOW)}} for index, item in enumerate(CREDENTIALS)], "settings": TEAM_ACCOUNT_SETTINGS, "usage_retention_days": 365, "host_schema": 6, "turn_state_host_supported": True}
+    return {"accounts": [{"credential_ref": item["ref"], "auth_index": "dummy-index-" + item["ref"], "name": item["display_name"], "provider": item["provider"], "disabled": item["disabled"], "source": item["source"], "status_patch": {"name": "dummy-account-" + item["ref"], "auth_index": "dummy-index-" + item["ref"]} if item["source"] == "auth-files" else None, "concurrency_limit": TEAM_ACCOUNT_SETTINGS["accounts"].get(item["ref"], {}).get("concurrency_limit", 0), "current_concurrency": index % 3, "usage": {"requests": 80 + index, "successes": 76, "failures": 4 + index, "total_tokens": 82500, "amount_usd": 3.42, "last_used_at": iso(NOW)}} for index, item in enumerate(CREDENTIALS)], "settings": TEAM_ACCOUNT_SETTINGS, "usage_retention_days": 365, "host_schema": 6, "turn_state_host_supported": True}
 
 def team_channels(account):
     descriptors = []
@@ -1903,6 +1903,17 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(*prepare_dummy_model_test(json.loads(request_body or b"{}")))
         elif route == ("POST", f"{API_BASE}/model-tests/complete"):
             self.send_json(*complete_dummy_model_test(json.loads(request_body or b"{}")))
+        elif route == ("PATCH", "/v0/management/auth-files/status"):
+            body = json.loads(request_body or b"{}")
+            target = next((item for item in CREDENTIALS if "dummy-account-" + item["ref"] == body.get("name") and "dummy-index-" + item["ref"] == body.get("auth_index")), None)
+            if target is None or not isinstance(body.get("disabled"), bool):
+                self.send_json(404, {"error": {"message": "Account identity changed"}})
+                return
+            target["disabled"] = body["disabled"]
+            for file in AUTH_FILES:
+                if file["credential_ref"] == target["ref"]:
+                    file["disabled"] = body["disabled"]
+            self.send_json(200, {"status": "ok", "disabled": body["disabled"]})
         elif route == ("POST", f"{API_BASE}/turn-state/proxies/read"):
             body = json.loads(request_body or b"{}")
             pool, offset = body.get("pool"), body.get("offset", 0)
@@ -2072,7 +2083,7 @@ class Handler(BaseHTTPRequestHandler):
             group_id = body.get("id") or "group-" + str(time.time_ns())
             group = next((item for item in GROUPS if item["id"] == group_id), None)
             if self.command == "POST":
-                group = {"id": group_id, "disabled": False, "route_ids": [], "rule": empty_rule()}
+                group = {"id": group_id, "disabled": False, "routing_mode": "ordinary", "route_ids": [], "rule": empty_rule()}
             if group is None:
                 self.send_json(404, {"error": {"message": "group not found"}})
                 return
@@ -2089,7 +2100,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if self.command == "POST":
                 GROUPS.append(group)
-            group.update({field: body[field] for field in ("name", "route_ids", "disabled") if field in body}, rule=rule)
+            group.update({field: body[field] for field in ("name", "route_ids", "disabled", "routing_mode") if field in body}, rule=rule)
             if "scopes" in body:
                 scopes = set(body["scopes"])
                 for key in KEYS:

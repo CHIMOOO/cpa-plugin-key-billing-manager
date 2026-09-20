@@ -1559,16 +1559,19 @@
       .team-gate-card { margin-bottom: 16px; }
       #risk-events td { white-space: normal; overflow-wrap: anywhere; }
       .team-group-accounts { display: grid; gap: 8px; width: 100%; }
+      .team-group-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; }
+      .team-group-account-note { grid-column: 1 / -1; min-width: 0; white-space: normal; }
       .team-group-account {
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
         align-items: center;
-        gap: 6px;
+        gap: 6px 10px;
         padding: 8px 10px;
         border: 1px solid var(--border-color);
         border-radius: 8px;
       }
-      .team-group-account .team-account-name { flex: 1 1 160px; }
+      .team-group-account .team-account-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .team-group-account .toggle-filter { width: auto; min-width: 0; justify-self: end; margin: 0; gap: 6px; white-space: nowrap; }
       @media (max-width: 600px) {
         .settings-entry-field.team-group-field { flex-direction: column; }
         .team-group-field > .error-event-field-label { max-width: 100%; }
@@ -1746,6 +1749,20 @@
       .group-dialog .selection-list { max-height: min(23dvh, 220px); }
       .group-dialog .field { margin: 12px 0; }
       .group-dialog .access-help { margin: 0; }
+      .group-routing-modes { display: grid; gap: 8px; border: 0; padding: 0; margin: 14px 0; min-width: 0; }
+      .group-routing-modes legend { font-weight: 600; margin-bottom: 8px; }
+      .group-routing-modes > label {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        cursor: pointer;
+      }
+      .group-routing-modes > label:has(input:checked) { background: var(--bg-tertiary); }
+      .group-routing-modes input { flex: 0 0 auto; margin-top: 3px; }
+      .group-routing-modes strong, .group-routing-modes .small { display: block; }
       .group-dialog .routing-list { max-height: min(34dvh, 320px); }
       .credential-tabs { display: flex; flex-wrap: wrap; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--border-primary); }
       .credential-tabs button { min-height: 28px; padding: 4px 10px; font-size: 12px; }
@@ -2536,7 +2553,8 @@
           </div>
           <div class="card">
             <div class="row spread settings-section-header"><h2 data-i18n="ui.fork_api_key_groups">API Key groups</h2><button id="group-new" type="button" data-i18n="ui.fork_create_group">Create group</button></div>
-            <p class="access-help" data-i18n="ui.fork_a_key_can_belong_to_multiple_groups_groups_combine_routing_rules_and_direc">A key can belong to multiple groups. Groups combine routing rules and directly selected credentials and models: allowed entries are merged and denied entries take precedence. To restrict access to specific auth files, allow only those files in the group. Keys need at least one allowed upstream credential. Disabled groups retain rules and members but grant no access; keys with no active credential grants are denied.</p>
+            <p class="access-help" data-i18n="ui.fork_a_key_can_belong_to_multiple_groups_groups_combine_routing_rules_and_direc">A key can belong to multiple groups. With one enabled exclusive group, only that group and the key's bound common groups grant access; ordinary groups are excluded. Without an exclusive group, enabled groups combine as usual. Denied entries take precedence. Disabled groups retain their rules and members but grant no access.</p>
+            <p class="access-help" data-i18n="ui.group_account_switch_help">Account switches change the CPA account globally, including every group that uses it. Disabling excludes it from new requests; in-flight responses may finish.</p>
             <div id="groups-body"></div>
           </div>
           <dialog id="group-dialog" class="settings-dialog group-dialog">
@@ -2545,6 +2563,12 @@
             <input id="group-id" type="hidden" />
             <div class="chooser-identity-fields"><label class="field"><span data-i18n="ui.fork_group_name">Group name</span><input id="group-name" placeholder="For example: Codex team" data-i18n-placeholder="ui.fork_for_example_codex_team" /></label>
             <label class="toggle-filter"><input id="group-enabled" type="checkbox" role="switch" checked /><span data-i18n="ui.fork_enable_group">Enable group</span></label></div>
+            <fieldset class="group-routing-modes">
+              <legend data-i18n="ui.group_routing_mode">Account pool role</legend>
+              <label><input type="radio" name="group-routing-mode" value="ordinary" checked /><span><strong data-i18n="ui.group_mode_ordinary">Ordinary</strong><span class="small muted" data-i18n="ui.group_mode_ordinary_help">Combined with other bound groups unless this key has an enabled exclusive group.</span></span></label>
+              <label><input type="radio" name="group-routing-mode" value="exclusive" /><span><strong data-i18n="ui.group_mode_exclusive">Exclusive</strong><span class="small muted" data-i18n="ui.group_mode_exclusive_help">This key uses only this group and its bound common groups. Ordinary groups are excluded. Only one enabled exclusive group is allowed per key.</span></span></label>
+              <label><input type="radio" name="group-routing-mode" value="common" /><span><strong data-i18n="ui.group_mode_common">Common</strong><span class="small muted" data-i18n="ui.group_mode_common_help">Remains available alongside an exclusive group. Only keys explicitly bound to this group can use its accounts.</span></span></label>
+            </fieldset>
             <div class="selection-section">
 
               <details class="chooser-rule-help"><summary data-i18n="ui.chooser_rules_help">How access rules combine</summary><p class="access-help" data-i18n="ui.fork_routing_rules_and_direct_selections_are_merged_with_denied_entries_taking">Routing rules and direct selections are merged, with denied entries taking precedence. Only allowed upstream credentials are authorized; unselected credentials are denied.</p></details>
@@ -3395,7 +3419,7 @@
           turnState: { names: ["turnState"] },
           pricing: { names: ["catalog", "priceStatus"], after: "configuration" },
           authFiles: { names: ["authFiles"] },
-          accountRuntime: { names: ["accountRuntime"] },
+          accountRuntime: { names: ["accountRuntime"], after: "configuration" },
           riskCenter: { names: ["riskCenter"] },
           integrations: { names: ["integrations"] },
           modelTests: { names: ["modelTests"] }
@@ -4271,10 +4295,16 @@
         ["claude-api-key", "claude", "claude:apikey", true],
         ["codex-api-key", "codex", "codex:apikey", true],
         ["xai-api-key", "xai", "xai:apikey", true],
+        ["meta-api-key", "meta", "meta:apikey", true],
         ["vertex-api-key", "vertex", "vertex:apikey", false]
       ];
 
-      function configuredEntryEnabled(entry) { return entry.disabled !== true && (entry.weight ?? 1) > 0; }
+      function configuredEntryDisabled(entry) {
+        return (
+          entry.disabled === true || (entry["excluded-models"] || []).some((model) => typeof model === "string" && model.trim() === "*")
+        );
+      }
+      function configuredEntryEnabled(entry) { return !configuredEntryDisabled(entry) && (entry.weight ?? 1) > 0; }
 
       function sortedConfiguredHeaders(headers) {
         if (!headers) return "";
@@ -4361,7 +4391,8 @@
       }
 
       function configuredCredentialEntries(config, field) {
-        const entries = config[field] === null ? [] : requireArray(config[field], field);
+        const entries =
+          config[field] === null || (field === "meta-api-key" && config[field] === undefined) ? [] : requireArray(config[field], field);
         const validateEntry = (entry) => {
           requireObject(entry, field);
           for (const key of ["api-key", "base-url", "proxy-url", "prefix", "name"])
@@ -4818,7 +4849,7 @@
           } else if (name === "turnState") {
             await read("turnState", async () => validateTurnState(await plugin("GET", "/turn-state")));
           } else if (name === "accountRuntime") {
-            await read("accountRuntime", () => plugin("GET", "/account-runtime"));
+            await read("accountRuntime", () => fetchGroupAccountRuntime());
           } else if (name === "riskCenter") {
             await read("riskCenter", () => plugin("GET", "/risk-center"));
           } else if (name === "modelTests") { await read("modelTests", fetchModelTestCatalog); } else if (name === "integrations") {
@@ -4924,7 +4955,7 @@
             editors: ["group"],
             sections: [
               section(["accessControl"], renderAccessControl),
-              keyedSection(["groups", "keys", "routes", "credentials", "authFiles", "integrations"], renderGroups)
+              keyedSection(["groups", "keys", "routes", "credentials", "accountRuntime"], renderGroups)
             ]
           };
           result["turn-state"] = { sections: [section(["turnState", "accountRuntime"], renderTurnState)] };
@@ -9830,14 +9861,22 @@
         const rule = group.rule || {};
         const count = (field) => (rule[field] || []).length + (rule["denied_" + field] || []).length;
         const credentials = count("credential_ids") + count("credential_providers");
-        const parts = [];
+        const parts = [groupRoutingModeLabel(group)];
         if (group.route_ids?.length) parts.push(m("ui.group_route_count", { count: group.route_ids.length }));
         if (credentials) parts.push(m("ui.group_credential_count", { count: credentials }));
         if (count("models")) parts.push(m("ui.group_model_count", { count: count("models") }));
-        return (
-          (group.disabled ? m("ui.fork_disabled") : "") +
-          (parts.length ? parts.join("、") : m("ui.fork_no_rules_or_credentials_bound_no_access_granted"))
-        );
+        if (parts.length === 1) parts.push(m("ui.fork_no_rules_or_credentials_bound_no_access_granted"));
+        return [...(group.disabled ? [m("ui.fork_disabled")] : []), ...parts].join(" · ");
+      }
+
+      function groupRoutingModeLabel(group) {
+        const mode = ["exclusive", "common"].includes(group.routing_mode) ? group.routing_mode : "ordinary";
+        return m("ui.group_mode_" + mode);
+      }
+
+      function validateExclusiveGroupSelection(groups) {
+        if (groups.filter((group) => !group.disabled && group.routing_mode === "exclusive").length > 1)
+          throw new UIError(m("ui.group_exclusive_conflict"));
       }
 
       function groupRoutingFields(group) {
@@ -9879,86 +9918,100 @@
           );
         return credentials.filter((item) => allows(item) && !denies(item)).sort(compareCredentials);
       }
-      function groupAccountQuotaSource(item) {
-        const integrations = (resources.admin.integrations.value?.accounts || []).filter((account) =>
-          (account.credential_refs || []).includes(item.ref)
+      function groupAccountRuntime(item, data = resources.admin.accountRuntime.value) {
+        const matches = (data?.accounts || []).filter((account) => account.credential_ref === item.ref);
+        return matches.length === 1 ? matches[0] : null;
+      }
+      async function fetchGroupAccountRuntime() {
+        const data = await plugin("GET", "/account-runtime");
+        if (Number(data.host_schema || 0) < 6) return data;
+        const key = authKey;
+        const definitions = CONFIGURED_CREDENTIAL_FIELDS;
+        const providers = new Set((data.accounts || []).filter((item) => item.source === "ai-providers").map((item) => item.provider));
+        const selected = definitions.filter(([, provider]) => providers.has(provider));
+        const results = await Promise.allSettled(
+          selected.map(async ([resource, provider, kind, usesHeaders]) => {
+            const snapshot = await api("GET", "/v0/management/" + resource, null, { key, raw: true });
+            const counters = new Map(), rows = [];
+            for (const entry of configuredCredentialEntries(snapshot, resource)) {
+              const token = (entry["api-key"] || "").trim(), base = (entry["base-url"] || "").trim();
+              if (!token && !base) continue;
+              const parts = [token, base, entry["proxy-url"]];
+              if (usesHeaders) parts.push(entry.prefix, sortedConfiguredHeaders(entry.headers));
+              const identity = await configuredCredentialIdentity(kind, parts, counters);
+              const index = typeof entry["auth-index"] === "string" ? entry["auth-index"] : "";
+              rows.push({
+                credential_ref: identity.ref,
+                provider,
+                auth_index: index,
+                disabled: configuredEntryDisabled(entry),
+                selection_unavailable: (entry.weight ?? 1) <= 0,
+                status_patch: index ? { name: identity.id, auth_index: index } : null
+              });
+            }
+            return rows;
+          })
         );
-        if (integrations.length === 1) return { integration: integrations[0] };
-        if (integrations.length > 1) return {};
-        return { file: (resources.admin.authFiles.value || []).find((file) => file.credential_ref === item.ref) };
+        const rows = [];
+        for (const result of results) {
+          if (result.status === "fulfilled") rows.push(...result.value);
+          else if (result.reason instanceof AuthError || result.reason instanceof StaleRequestError) throw result.reason;
+        }
+        for (const account of data.accounts || []) {
+          if (!providers.has(account.provider) || account.source !== "ai-providers") continue;
+          const matches = rows.filter((row) => row.credential_ref === account.credential_ref && row.provider === account.provider);
+          if (
+            matches.length !== 1 || !matches[0].status_patch || rows.filter((row) => row.auth_index === matches[0].auth_index).length !== 1
+          ) {
+            account.status_patch = null;
+            continue;
+          }
+          Object.assign(account, matches[0]);
+        }
+        return data;
       }
       function groupAccountField(group) {
         const items = groupAccounts(group);
         const missing = (group.route_ids || []).some((id) => !(resources.admin.routes.value || []).some((route) => route.id === id));
-        const pending = adminUIState.groupQuotaLoading?.has(group.id);
         const content = el(
           "div",
           { class: "team-group-accounts" },
+          missing ? el("div", { class: "auth-quota-error", text: m("ui.team_group_missing_route") }) : null,
           el(
             "div",
-            { class: "row spread" },
-            el("span", { class: "small muted", text: m("ui.team_group_quota_help") }),
-            el("button", {
-              type: "button",
-              class: "link small",
-              disabled:
-                pending ||
-                !items.some((item) => {
-                  const source = groupAccountQuotaSource(item);
-                  return source.file?.quota_supported || source.integration;
-                }),
-              text: m(pending ? "ui.updating_quotas" : "ui.update_quotas"),
-              onclick: () => guard(() => refreshGroupQuotas(group))
+            { class: "team-group-account-grid" },
+            ...items.map((item) => {
+              const runtime = groupAccountRuntime(item), pending = adminUIState.groupAccountSubmissions?.has(item.ref);
+              const disabled = runtime ? runtime.disabled : item.disabled;
+              const supported = !!runtime?.status_patch?.name && !!runtime?.status_patch?.auth_index;
+              return el(
+                "div",
+                { class: "team-group-account", "data-credential-ref": item.ref },
+                el("span", { class: "team-account-name", text: credentialLabel(item), title: credentialLabel(item) }),
+                el(
+                  "label",
+                  { class: "toggle-filter", title: m(supported ? "ui.group_account_switch_help" : "ui.group_account_switch_unavailable") },
+                  switchControl({
+                    input: el("input", {
+                      type: "checkbox",
+                      role: "switch",
+                      checked: !disabled,
+                      disabled: pending || !supported,
+                      "aria-label": m("ui.group_account_enable_named", { name: credentialLabel(item) }),
+                      onchange: (event) => guard(() => setGroupAccountEnabled(item, event.target.checked))
+                    })
+                  }),
+                  el("span", { class: "small", text: m(pending ? "ui.saving" : disabled ? "ui.disabled" : "ui.enabled") })
+                ),
+                !supported
+                  ? el("span", { class: "small muted team-group-account-note", text: m("ui.group_account_switch_unavailable") })
+                  : null,
+                runtime?.selection_unavailable
+                  ? el("span", { class: "small muted team-group-account-note", text: m("ui.group_account_zero_weight") })
+                  : null
+              );
             })
           ),
-          missing ? el("div", { class: "auth-quota-error", text: m("ui.team_group_missing_route") }) : null,
-          ...items.map((item) => {
-            const { file, integration } = groupAccountQuotaSource(item);
-            const quota = file
-              ? adminUIState.authQuotas.get(file.auth_index)
-              : integration ? integrationState().quota.get(integration.id)?.quota : null;
-            const error = file
-              ? adminUIState.authQuotaErrors.get(file.auth_index)
-              : integration ? integrationState().errors.get(integration.id) : null;
-            const windows = [18000, 604800].flatMap((seconds) => {
-              const rows = (quota?.quota || []).filter((row) => row.scope === "account" && row.window_seconds === seconds);
-              if (rows.length !== 1) return [];
-              const row = rows[0];
-              const hasValue = Number.isFinite(row?.remaining_percent), stale = row?.reset_at && Date.parse(row.reset_at) <= Date.now();
-              return el("span", {
-                class: "tag " + (stale ? "warn" : "plain"),
-                title: row
-                  ? [
-                      quota?.fetched_at ? m("ui.last_checked_value", { v0: when(quota.fetched_at) }) : "",
-                      row.reset_at ? when(row.reset_at) : ""
-                    ]
-                      .filter(Boolean)
-                      .join(DISPLAY_SEPARATOR)
-                  : m("ui.team_quota_unknown"),
-                text:
-                  m(seconds === 18000 ? "ui.team_quota_5h" : "ui.team_quota_week") + ": " +
-                  (hasValue ? row.remaining_percent.toFixed(0) + "%" : "—") +
-                  (stale ? " · " + m("ui.team_quota_stale") : "")
-              });
-            });
-            return el(
-              "div",
-              { class: "team-group-account", "data-credential-ref": item.ref },
-              el("span", { class: "team-account-name", text: credentialLabel(item) }),
-              el("span", {
-                class: "tag " + (item.disabled ? "plain" : item.unavailable ? "warn" : "ok"),
-                text: m(item.disabled ? "ui.disabled" : item.unavailable ? "ui.unavailable" : "ui.enabled")
-              }),
-              ...windows,
-              !windows.length && !error
-                ? el("span", {
-                    class: "small muted",
-                    text: m(quota || (!file?.quota_supported && !integration) ? "ui.team_quota_unavailable" : "ui.team_quota_not_queried")
-                  })
-                : null,
-              error ? el("span", { class: "auth-quota-error small", text: error }) : null
-            );
-          }),
           !items.length ? el("span", { class: "small muted", text: m("ui.team_group_no_accounts") }) : null,
           group.disabled ? el("span", { class: "small muted", text: m("ui.team_group_disabled_accounts") }) : null
         );
@@ -9966,51 +10019,46 @@
         field.classList.add("team-group-field");
         return field;
       }
-      async function refreshGroupQuotas(group) {
-        const owner = adminUIState, generation = authQuotaGeneration.admin;
-        owner.groupQuotaLoading ||= new Set();
-        if (owner.groupQuotaLoading.has(group.id)) return;
-        owner.groupQuotaLoading.add(group.id);
-        const refs = new Set(groupAccounts(group).map((item) => item.ref));
-        const files = (resources.admin.authFiles.value || []).filter((file) => refs.has(file.credential_ref) && file.quota_supported);
-        const integrations = [
-          ...new Map(
-            groupAccounts(group).map(groupAccountQuotaSource).map((source) => source.integration).filter(Boolean)
-              .map((account) => [account.id, account])
-          ).values()
-        ];
-        let next = 0;
+      async function setGroupAccountEnabled(item, enabled) {
+        const owner = adminUIState;
+        owner.groupAccountSubmissions ||= new Set();
+        if (owner.groupAccountSubmissions.has(item.ref)) return;
+        owner.groupAccountSubmissions.add(item.ref);
         renderGroups();
+        let submitted = false;
         try {
-          await Promise.all(
-            Array.from({ length: Math.min(AUTH_QUOTA_BATCH_CONCURRENCY, files.length) }, async () => {
-              while (next < files.length && generation === authQuotaGeneration.admin) await loadAuthQuota(files[next++], false);
-            })
-          );
-          for (const account of integrations) {
-            if (owner !== adminUIState || generation !== authQuotaGeneration.admin) break;
-            const state = integrationState();
-            state.errors.delete(account.id);
-            try {
-              state.quota.set(
-                account.id,
-                await plugin("POST", "/integrations/query", { id: account.id }, { command: true, timeoutMS: 65000 })
-              );
-            } catch (error) {
-              state.errors.set(account.id, error.message || String(error));
-              if (error instanceof AuthError) throw error;
-            }
-          }
+          await queueAdminData("configuration", async (current) => {
+            const before = await fetchGroupAccountRuntime();
+            current();
+            const target = groupAccountRuntime(item, before), patch = target?.status_patch;
+            if (!patch?.name || !patch.auth_index || patch.auth_index !== target.auth_index)
+              throw new UIError(m("ui.group_account_switch_unavailable"));
+            submitted = true;
+            await api(
+              "PATCH",
+              "/v0/management/auth-files/status",
+              { name: patch.name, auth_index: patch.auth_index, disabled: !enabled },
+              { command: true }
+            );
+            const after = await fetchGroupAccountRuntime();
+            current();
+            Object.assign(resources.admin.accountRuntime, { value: after, error: "" });
+            const verified = groupAccountRuntime(item, after);
+            if (!verified || verified.disabled !== !enabled) throw new UIError(m("ui.group_account_switch_unverified"));
+          });
+          await loadDataGroup(false, "configuration", true);
+          notify(m(enabled ? "ui.group_account_enabled" : "ui.group_account_disabled"));
+        } catch (error) {
+          if (submitted && owner === adminUIState) await loadDataGroup(false, "accountRuntime", true);
+          throw error;
         } finally {
-          owner.groupQuotaLoading.delete(group.id);
-          if (owner === adminUIState) {
-            persistAuthQuotaCache(false);
-            renderGroups();
-          }
+          owner.groupAccountSubmissions.delete(item.ref);
+          if (owner === adminUIState) renderGroups();
         }
       }
 
       function renderGroups() {
+        $("group-new").disabled = EDITOR_RESOURCES.group.some((name) => resources.admin[name].value === null);
         if (
           renderDataPending(
             $("groups-body"),
@@ -10027,6 +10075,7 @@
             settingsCard(
               group.name || group.id,
               [
+                settingsEntryField(m("ui.group_routing_mode"), el("span", { class: "tag plain", text: groupRoutingModeLabel(group) })),
                 ...groupRoutingFields(group),
                 groupAccountField(group),
                 boundKeyField(resources.admin.keys.value.filter((key) => (key.group_ids || []).includes(group.id)))
@@ -10128,6 +10177,8 @@
           $("group-id").value = current?.id || "";
           $("group-name").value = current?.name || "";
           $("group-enabled").checked = !current?.disabled;
+          for (const input of document.querySelectorAll('input[name="group-routing-mode"]'))
+            input.checked = input.value === (current?.routing_mode || "ordinary");
           $("group-dialog").querySelector(".chooser-key-assignment").open = true;
           setText($("group-dialog-title"), current ? m("ui.fork_edit_group") : m("ui.fork_create_group"));
           groupSelection = {
@@ -12875,15 +12926,27 @@
           const data = {
             name,
             disabled: !$("group-enabled").checked,
+            routing_mode: document.querySelector('input[name="group-routing-mode"]:checked')?.value || "ordinary",
             route_ids: [...groupSelection.routeIDs],
             rule: routingPayload(groupSelection),
             scopes: [...groupSelection.scopes]
           };
+          if (!data.disabled && data.routing_mode === "exclusive") {
+            const editor = editors.get($("group-dialog")).data;
+            for (const key of editor.keys.filter((item) => groupSelection.scopes.has(item.scope)))
+              validateExclusiveGroupSelection([
+                ...editor.groups.filter((item) => item.id !== id && (key.group_ids || []).includes(item.id)),
+                data
+              ]);
+          }
           await mutateAdmin(id ? "PATCH" : "POST", "/groups", id ? { id, ...data } : data);
           notify(m("ui.fork_group_saved"));
         });
       $("group-picker-save").onclick = () =>
         submitEditor("group-picker", async () => {
+          validateExclusiveGroupSelection(
+            editors.get($("group-picker")).data.groups.filter((group) => keyGroupSelection.groups.has(group.id))
+          );
           await mutateAdmin("PUT", "/keys/groups", { scopes: keyGroupSelection.scopes, group_ids: [...keyGroupSelection.groups] });
           notify(m("ui.fork_api_key_groups_saved"));
         });

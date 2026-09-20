@@ -20,6 +20,9 @@ func replaceGroups(tx *sql.Tx, state *billing.State) error {
 		return fmt.Errorf("Save groups: %w", err)
 	}
 	for position, group := range state.Groups {
+		if group.RoutingMode == "" {
+			group.RoutingMode = billing.GroupRoutingOrdinary
+		}
 		routeIDs, err := json.Marshal(group.RouteIDs)
 		if err != nil {
 			return err
@@ -28,8 +31,8 @@ func replaceGroups(tx *sql.Tx, state *billing.State) error {
 		if err != nil {
 			return fmt.Errorf("Save group %s: %w", group.ID, err)
 		}
-		if _, err := tx.Exec("INSERT INTO groups(position, id, name, disabled, route_ids_json, rule_json) VALUES (?, ?, ?, ?, ?, ?)",
-			position, group.ID, group.Name, group.Disabled, string(routeIDs), string(rule)); err != nil {
+		if _, err := tx.Exec("INSERT INTO groups(position, id, name, disabled, routing_mode, route_ids_json, rule_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			position, group.ID, group.Name, group.Disabled, group.RoutingMode, string(routeIDs), string(rule)); err != nil {
 			return fmt.Errorf("Save groups: %w", err)
 		}
 	}
@@ -37,7 +40,7 @@ func replaceGroups(tx *sql.Tx, state *billing.State) error {
 }
 
 func (d *DB) loadGroups(state *billing.State) error {
-	rows, err := d.db.Query("SELECT id, name, disabled, route_ids_json, rule_json FROM groups ORDER BY position")
+	rows, err := d.db.Query("SELECT id, name, disabled, routing_mode, route_ids_json, rule_json FROM groups ORDER BY position")
 	if err != nil {
 		return fmt.Errorf("Load groups: %w", err)
 	}
@@ -45,7 +48,7 @@ func (d *DB) loadGroups(state *billing.State) error {
 	for rows.Next() {
 		var group billing.KeyGroup
 		var routeIDs, rule string
-		if err := rows.Scan(&group.ID, &group.Name, &group.Disabled, &routeIDs, &rule); err != nil {
+		if err := rows.Scan(&group.ID, &group.Name, &group.Disabled, &group.RoutingMode, &routeIDs, &rule); err != nil {
 			return err
 		}
 		if err := json.Unmarshal([]byte(routeIDs), &group.RouteIDs); err != nil {

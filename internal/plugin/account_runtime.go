@@ -380,6 +380,9 @@ func (a *App) getAccountRuntime(_ ManagementRequest) ManagementResponse {
 		CurrentConcurrency int                   `json:"current_concurrency"`
 		UsageAvailable     bool                  `json:"usage_available"`
 		Usage              *billing.AccountUsage `json:"usage"`
+		Source             string                `json:"source,omitempty"`
+		StatusPatch        *accountStatusPatch   `json:"status_patch,omitempty"`
+		StatusToggleReason string                `json:"status_toggle_reason,omitempty"`
 	}
 	rows := []row{}
 	settings := a.accountRuntime.snapshot()
@@ -401,7 +404,11 @@ func (a *App) getAccountRuntime(_ ManagementRequest) ManagementResponse {
 		}
 		u := byIndex[f.AuthIndex]
 		u.AuthIndex = f.AuthIndex
-		rows = append(rows, row{ref, f.AuthIndex, credentialDisplayName(f, credentialSourceFromHost(f), provider, ref), provider, f.Disabled || strings.EqualFold(f.Status, "disabled"), settings.Accounts[ref].ConcurrencyLimit, active[accountCanonicalRef(settings, ref)], true, &u})
+		rows = append(rows, row{CredentialRef: ref, AuthIndex: f.AuthIndex,
+			Name: credentialDisplayName(f, credentialSourceFromHost(f), provider, ref), Provider: provider,
+			Disabled: f.Disabled || strings.EqualFold(f.Status, "disabled"), ConcurrencyLimit: settings.Accounts[ref].ConcurrencyLimit,
+			CurrentConcurrency: active[accountCanonicalRef(settings, ref)], UsageAvailable: true, Usage: &u,
+			Source: credentialSourceFromHost(f)})
 		seen[ref] = true
 	}
 	// Some hosts omit config credentials from host.auth.list. Only the exact
@@ -414,7 +421,9 @@ func (a *App) getAccountRuntime(_ ManagementRequest) ManagementResponse {
 		}
 		u := byIndex[index]
 		u.AuthIndex = index
-		rows = append(rows, row{ref, index, credential.DisplayName, credential.Provider, credential.Disabled, settings.Accounts[ref].ConcurrencyLimit, active[accountCanonicalRef(settings, ref)], true, &u})
+		rows = append(rows, row{CredentialRef: ref, AuthIndex: index, Name: credential.DisplayName, Provider: credential.Provider,
+			Disabled: credential.Disabled, ConcurrencyLimit: settings.Accounts[ref].ConcurrencyLimit,
+			CurrentConcurrency: active[accountCanonicalRef(settings, ref)], UsageAvailable: true, Usage: &u, Source: credential.Source})
 		seen[ref] = true
 	}
 	for ref, credential := range a.credentials {
@@ -423,16 +432,41 @@ func (a *App) getAccountRuntime(_ ManagementRequest) ManagementResponse {
 		}
 		// The opaque ref is sufficient to configure admission before first use.
 		// Usage remains explicitly unavailable until the host supplies its index.
-		rows = append(rows, row{ref, "", credential.DisplayName, credential.Provider, credential.Disabled, settings.Accounts[ref].ConcurrencyLimit, active[accountCanonicalRef(settings, ref)], false, nil})
+		rows = append(rows, row{CredentialRef: ref, Name: credential.DisplayName, Provider: credential.Provider,
+			Disabled: credential.Disabled, ConcurrencyLimit: settings.Accounts[ref].ConcurrencyLimit,
+			CurrentConcurrency: active[accountCanonicalRef(settings, ref)], Source: credential.Source})
 	}
 	a.routingMu.Unlock()
+	// Resolve management descriptors after releasing routingMu. A missing
+	// native inventory entry needs an exact local runtime callback, never a
+	// guessed account name or a reversed credential fingerprint.
+	identities := accountStatusIdentities(files)
+	for i := range rows {
+		item := &rows[i]
+		file, known := identities.byRef[item.CredentialRef]
+		if !known && item.AuthIndex != "" {
+			var runtimeErr error
+			file, runtimeErr = a.modelTestAccount(item.AuthIndex)
+			known = runtimeErr == nil && billing.CredentialFingerprint(file.ID) == item.CredentialRef &&
+				strings.EqualFold(accountStatusProvider(file), item.Provider)
+			if known {
+				item.Disabled = file.Disabled || strings.EqualFold(file.Status, "disabled")
+				item.Source = credentialSourceFromHost(file)
+			}
+		}
+		if !known || file.AuthIndex != item.AuthIndex || identities.ambiguous[item.CredentialRef] {
+			item.StatusToggleReason = "unverified_identity"
+			continue
+		}
+		item.StatusPatch, item.StatusToggleReason = a.accountStatusDescriptor(file, identities.pathCounts)
+	}
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].AuthIndex == rows[j].AuthIndex {
 			return rows[i].CredentialRef < rows[j].CredentialRef
 		}
 		return rows[i].AuthIndex < rows[j].AuthIndex
 	})
-	return JSONResponse(200, map[string]any{"accounts": rows, "settings": settings, "usage_retention_days": 365, "token_totals": "classified_reported_tokens", "host_schema": a.hostSchema.Load(), "turn_state_host_supported": a.hostSchema.Load() >= 6})
+	return JSONResponse(200, map[string]any{"accounts": rows, "settings": settings, "usage_retention_days": 365, "token_totals": "classified_reported_tokens", "host_schema": a.hostSchema.Load(), "turn_state_host_supported": a.hostSchema.Load() >= 6, "status_patch_path": "/v0/management/auth-files/status"})
 }
 
 func (a *App) enforceAccountRuntime(req RequestInterceptRequest) RequestInterceptResponse {

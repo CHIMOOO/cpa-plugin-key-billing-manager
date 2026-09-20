@@ -28,11 +28,12 @@ func (a *App) setAccessControl(req ManagementRequest) ManagementResponse {
 // references it newly adds must still exist, so retired ones survive an edit.
 func (a *App) createGroup(req ManagementRequest) ManagementResponse {
 	var body struct {
-		Name     string            `json:"name"`
-		Disabled bool              `json:"disabled"`
-		RouteIDs []string          `json:"route_ids"`
-		Rule     billing.RouteRule `json:"rule"`
-		Scopes   []string          `json:"scopes"`
+		Name        string            `json:"name"`
+		Disabled    bool              `json:"disabled"`
+		RoutingMode string            `json:"routing_mode"`
+		RouteIDs    []string          `json:"route_ids"`
+		Rule        billing.RouteRule `json:"rule"`
+		Scopes      []string          `json:"scopes"`
 	}
 	if err := decodeStrict(req.Body, &body); err != nil {
 		return errorResponse(err)
@@ -44,7 +45,7 @@ func (a *App) createGroup(req ManagementRequest) ManagementResponse {
 	if response := a.validateNewCredentialRefs(rule.CredentialRefs(), nil); response != nil {
 		return *response
 	}
-	group, err := a.store.CreateGroup(billing.KeyGroup{Name: body.Name, Disabled: body.Disabled, RouteIDs: body.RouteIDs, Rule: rule}, body.Scopes)
+	group, err := a.store.CreateGroup(billing.KeyGroup{Name: body.Name, Disabled: body.Disabled, RoutingMode: body.RoutingMode, RouteIDs: body.RouteIDs, Rule: rule}, body.Scopes)
 	if err != nil {
 		return errorResponse(err)
 	}

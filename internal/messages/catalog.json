@@ -1248,5 +1248,20 @@
   "The proxy reached the Codex API without using an account": {
     "key": "backend.turn_state_proxy_test_reachable",
     "formats": []
+  },
+  "Group routing mode must be ordinary, exclusive, or common": {
+    "key": "backend.groups.invalid_routing_mode",
+    "formats": []
+  },
+  "An API key can belong to only one enabled exclusive group; groups %q and %q conflict": {
+    "key": "backend.groups.exclusive_conflict",
+    "formats": [
+      "%q",
+      "%q"
+    ]
+  },
+  "The API key's direct model rules and exclusive group have no models in common; access is denied": {
+    "key": "backend.groups.exclusive_models_empty",
+    "formats": []
   }
 }

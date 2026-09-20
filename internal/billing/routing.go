@@ -57,6 +57,9 @@ type RoutingDecision struct {
 	ConfigurationError         string
 	AccessDenied               string
 	RequireCredentialAllowlist bool
+	// An exclusive group defines the maximum pool. A key's explicit direct
+	// allowlist may narrow that pool, including dynamic provider selectors.
+	CredentialConstraint *RouteRule
 }
 
 func (d RoutingDecision) RestrictsModels() bool {
@@ -79,12 +82,15 @@ func containsRouteValue(values []string, value string) bool {
 }
 
 func (d RoutingDecision) RestrictsCredentials() bool {
-	return d.RequireCredentialAllowlist || d.AccessDenied != "" || len(d.CredentialIDs) > 0 || len(d.CredentialProviders) > 0 ||
+	return d.CredentialConstraint != nil || d.RequireCredentialAllowlist || d.AccessDenied != "" || len(d.CredentialIDs) > 0 || len(d.CredentialProviders) > 0 ||
 		len(d.DeniedCredentialIDs) > 0 || len(d.DeniedCredentialProviders) > 0
 }
 
 // ref is a fingerprint, never the raw host credential ID or an API key.
 func (d RoutingDecision) AllowsCredential(ref, source, provider string) bool {
+	if d.CredentialConstraint != nil && !(RoutingDecision{RouteRule: *d.CredentialConstraint, RequireCredentialAllowlist: true}).AllowsCredential(ref, source, provider) {
+		return false
+	}
 	selector := CredentialProviderSelector{Source: strings.ToLower(strings.TrimSpace(source)), Provider: strings.ToLower(strings.TrimSpace(provider))}
 	if d.ConfigurationError != "" || d.AccessDenied != "" || containsRouteValue(d.DeniedCredentialIDs, ref) {
 		return false
@@ -582,25 +588,29 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	routeIDs := append([]string(nil), key.RouteBindings.RouteIDs...)
 	groupRules := make([]RouteRule, 0, len(key.GroupIDs))
 	groupConfigured := false
-	groupEnabled := false
-	for _, id := range key.GroupIDs {
-		i := state.findGroupIndex(id)
-		if i < 0 {
-			d.ConfigurationError = fmt.Sprintf("Group %q no longer exists", id)
-			return d
-		}
-		group := state.Groups[i]
-		if group.Disabled {
-			continue
-		}
-		groupEnabled = true
+	groups, err := state.effectiveKeyGroups(key.GroupIDs)
+	if err != nil {
+		d.ConfigurationError = err.Error()
+		return d
+	}
+	exclusive := false
+	for _, group := range groups {
+		exclusive = exclusive || group.RoutingMode == GroupRoutingExclusive
 		groupConfigured = groupConfigured || group.grantsAccess()
 		routeIDs = append(routeIDs, group.RouteIDs...)
 		groupRules = append(groupRules, group.Rule)
 	}
+	if exclusive {
+		// Key-bound routes are constraints in exclusive mode, never another
+		// source of grants. Group route IDs are rebuilt without those bindings.
+		routeIDs = nil
+		for _, group := range groups {
+			routeIDs = append(routeIDs, group.RouteIDs...)
+		}
+	}
 	if len(key.GroupIDs) > 0 && !groupConfigured {
 		d.AccessDenied = "API key groups have no routing rules or upstream credentials configured; access is denied"
-		if !groupEnabled {
+		if len(groups) == 0 {
 			d.AccessDenied = "All groups assigned to this API key are disabled; access is denied"
 		}
 		return d
@@ -627,7 +637,41 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	for _, rule := range groupRules {
 		merge(rule)
 	}
-	merge(key.RouteBindings.RouteRule)
+	if exclusive {
+		constraint := key.RouteBindings.RouteRule.clone()
+		for _, id := range key.RouteBindings.RouteIDs {
+			route, ok := state.findRoute(id)
+			if !ok {
+				d.ConfigurationError = fmt.Sprintf("Routing rule %q no longer exists", id)
+				return d
+			}
+			constraint.Models = append(constraint.Models, route.Rule.Models...)
+			constraint.CredentialIDs = append(constraint.CredentialIDs, route.Rule.CredentialIDs...)
+			constraint.CredentialProviders = append(constraint.CredentialProviders, route.Rule.CredentialProviders...)
+			constraint.DeniedModels = append(constraint.DeniedModels, route.Rule.DeniedModels...)
+			constraint.DeniedCredentialIDs = append(constraint.DeniedCredentialIDs, route.Rule.DeniedCredentialIDs...)
+			constraint.DeniedCredentialProviders = append(constraint.DeniedCredentialProviders, route.Rule.DeniedCredentialProviders...)
+		}
+		// An untouched key inherits its groups. An explicitly configured direct
+		// rule remains a constraint even after its credential allowlist is
+		// emptied; model-only and deny-only edits must not restore access.
+		if key.RouteBindings.Configured || len(constraint.CredentialIDs) > 0 || len(constraint.CredentialProviders) > 0 {
+			d.CredentialConstraint = &constraint
+		}
+		if len(constraint.Models) > 0 {
+			if len(d.Models) == 0 {
+				d.Models = slices.Clone(constraint.Models)
+			} else {
+				d.Models = slices.DeleteFunc(d.Models, func(model string) bool { return !containsRouteValue(constraint.Models, model) })
+				if len(d.Models) == 0 {
+					d.AccessDenied = "The API key's direct model rules and exclusive group have no models in common; access is denied"
+				}
+			}
+		}
+		merge(RouteRule{DeniedModels: constraint.DeniedModels, DeniedCredentialIDs: constraint.DeniedCredentialIDs, DeniedCredentialProviders: constraint.DeniedCredentialProviders})
+	} else {
+		merge(key.RouteBindings.RouteRule)
+	}
 	for _, values := range []*[]string{&d.Models, &d.CredentialIDs, &d.DeniedModels, &d.DeniedCredentialIDs} {
 		sort.SliceStable(*values, func(i, j int) bool { return strings.ToLower((*values)[i]) < strings.ToLower((*values)[j]) })
 		*values = slices.CompactFunc(*values, strings.EqualFold)

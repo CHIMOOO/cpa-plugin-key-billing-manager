@@ -44,7 +44,16 @@ func routingPoolKey(model string, decision billing.RoutingDecision) string {
 	// credentials the key is allowed to use.
 	policy := decision.RouteRule
 	policy.Models, policy.DeniedModels = nil, nil
-	raw, _ := json.Marshal(policy)
+	var constraint *billing.RouteRule
+	if decision.CredentialConstraint != nil {
+		copyRule := *decision.CredentialConstraint
+		copyRule.Models, copyRule.DeniedModels = nil, nil
+		constraint = &copyRule
+	}
+	raw, _ := json.Marshal(struct {
+		Rule       billing.RouteRule
+		Constraint *billing.RouteRule
+	}{policy, constraint})
 	sum := sha256.Sum256(raw)
 	return strings.ToLower(strings.TrimSpace(model)) + "\x00" + hex.EncodeToString(sum[:])
 }

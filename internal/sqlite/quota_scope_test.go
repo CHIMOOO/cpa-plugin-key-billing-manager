@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -46,7 +47,7 @@ func TestV19MigrationPreservesLegacyBalancesAndHistoryAtomically(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer raw.Close()
-			if _, err := raw.Exec(schema + `PRAGMA user_version=18;
+			if _, err := raw.Exec(strings.TrimSuffix(schema, groupRoutingModeSchema) + `PRAGMA user_version=18;
 INSERT INTO plans(position,id,name,windows_json) VALUES(0,'p','Plan','[{"id":"w", "name":"Quota", "period_seconds":3600,"amount_usd":100}]');
 INSERT INTO api_keys(scope,preview,plan_id,cycles_json) VALUES('scope','sk-dum…0001','p','{"w":{"plan_id":"p", "start_at":"2026-09-19T09:00:00Z","end_at":"2026-09-19T10:00:00Z","spent_usd":7.5}}');
 INSERT INTO request_events(at,scope,failed) VALUES(1,'scope',1),(2,'scope',0);`); err != nil {
@@ -76,7 +77,7 @@ INSERT INTO request_events(at,scope,failed) VALUES(1,'scope',1),(2,'scope',0);`)
 			raw.QueryRow("SELECT cycles_json FROM api_keys").Scan(&cycles)
 			raw.QueryRow("PRAGMA user_version").Scan(&version)
 			raw.QueryRow("SELECT count(*),sum(failed) FROM request_events").Scan(&events, &failures)
-			wantVersion := 19
+			wantVersion := schemaVersion
 			if corrupt != "" {
 				wantVersion = 18
 			}

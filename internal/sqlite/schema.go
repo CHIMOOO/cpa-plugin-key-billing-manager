@@ -75,6 +75,12 @@ const groupDisabledSchema = `
 ALTER TABLE groups ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1));
 `
 
+// v20 makes exclusive routing explicit. Older binaries must not silently
+// reinterpret exclusive groups as additive ordinary grants.
+const groupRoutingModeSchema = `
+ALTER TABLE groups ADD COLUMN routing_mode TEXT NOT NULL DEFAULT 'ordinary' CHECK (routing_mode IN ('ordinary', 'exclusive', 'common'));
+`
+
 const schema = `
 CREATE TABLE api_keys (
 	scope                 TEXT    PRIMARY KEY,
@@ -195,4 +201,4 @@ CREATE TABLE plugin_logs (
 	level   TEXT    NOT NULL DEFAULT '',
 	message TEXT    NOT NULL DEFAULT ''
 );
-` + accessControlSchema + forwardedForBlockSchema + groupRuleSchema + groupDisabledSchema
+` + accessControlSchema + forwardedForBlockSchema + groupRuleSchema + groupDisabledSchema + groupRoutingModeSchema
