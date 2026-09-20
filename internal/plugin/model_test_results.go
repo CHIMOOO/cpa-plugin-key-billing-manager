@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"io"
@@ -12,30 +13,47 @@ import (
 	"cpa-key-billing/internal/messages"
 )
 
-type modelTestPreset struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Prompt    string `json:"prompt"`
-	Assertion string `json:"assertion"`
+type modelTestPresetSource struct {
+	Title string `json:"title"`
+	URL   string `json:"url"`
 }
 
-// These small original prompts test specific instructions, not model identity
-// or a universal intelligence score. Generated code is displayed, never run.
-var modelTestPresets = []modelTestPreset{
-	{"json", "JSON instructions", `Return exactly one JSON object, without Markdown or any other text. Use exactly the keys name, total, and tags. Set name to Ada. Set total to the sum of 17 and 25 as a number. Given tags ["Blue","RED","blue"], lowercase them, remove duplicates, and sort alphabetically. Do not include extra keys.`, "Exact JSON object"},
-	{"logic", "Unique assignment", `Four boxes A, B, C, and D each contain one different integer from 1 through 4. A is greater than B. B is even. D equals A minus 1. C is less than D. Find the unique assignment. Return only one JSON object with the four keys A, B, C, D and numeric values. Do not include Markdown or an explanation.`, "Exact JSON object"},
-	{"code", "Unicode code review", `Write a JavaScript function firstUniqueChar(text) that returns the first Unicode code point occurring exactly once, or null when none exists. Treat case as significant and return the character itself, not its index. Use no dependencies. Explain its time and space complexity and include examples for an empty string, repeated emoji, and mixed upper/lowercase characters. The code will be reviewed as text; do not assume it will be executed.`, "Manual review; code is not executed"},
-	{"free", "Custom prompt", `Explain the difference between correlation and causation using a concrete everyday example. Then describe what further evidence would be needed before claiming a causal relationship.`, "Optional exact output"},
+type modelTestPreset struct {
+	ID          string                  `json:"id"`
+	Name        string                  `json:"name"`
+	Prompt      string                  `json:"prompt"`
+	Assertion   string                  `json:"assertion"`
+	Expected    string                  `json:"expected,omitempty"`
+	LabelKey    string                  `json:"label_key"`
+	CriteriaKey string                  `json:"criteria_key"`
+	Sources     []modelTestPresetSource `json:"sources"`
+}
+
+// Canonical prompts and their sources are shared with the development preview.
+// Checks concern the stated task only, not model identity or overall quality.
+//
+//go:embed model_test_presets.json
+var modelTestPresetData []byte
+
+var modelTestPresets = func() []modelTestPreset {
+	var presets []modelTestPreset
+	if err := json.Unmarshal(modelTestPresetData, &presets); err != nil {
+		panic("invalid embedded model test presets")
+	}
+	return presets
+}()
+
+func modelTestPresetByID(id string) *modelTestPreset {
+	for index := range modelTestPresets {
+		if modelTestPresets[index].ID == id {
+			return &modelTestPresets[index]
+		}
+	}
+	return nil
 }
 
 func modelTestPrompt(preset, prompt, expected string) (string, string, error) {
-	var selected *modelTestPreset
-	for index := range modelTestPresets {
-		if modelTestPresets[index].ID == preset {
-			selected = &modelTestPresets[index]
-			break
-		}
-	}
+	selected := modelTestPresetByID(preset)
 	if selected == nil {
 		return "", "", errors.New("Unknown model test preset")
 	}
@@ -54,13 +72,8 @@ func modelTestPrompt(preset, prompt, expected string) (string, string, error) {
 	if preset != "free" && prompt != selected.Prompt {
 		return "", "", errors.New("Use the custom preset after editing a test prompt")
 	}
-	switch preset {
-	case "json":
-		expected = `{"name":"Ada","total":42,"tags":["blue","red"]}`
-	case "logic":
-		expected = `{"A":4,"B":2,"C":1,"D":3}`
-	case "code":
-		expected = ""
+	if preset != "free" {
+		expected = selected.Expected
 	}
 	return prompt, expected, nil
 }
@@ -72,15 +85,19 @@ type modelTestAssertion struct {
 }
 
 type modelTestResult struct {
-	TestID          string               `json:"test_id"`
-	Outcome         string               `json:"outcome"`
-	Output          string               `json:"output"`
-	OutputTruncated bool                 `json:"output_truncated"`
-	Assertions      []modelTestAssertion `json:"assertions"`
-	Reason          string               `json:"reason,omitempty"`
-	ReasonMessage   messages.Message     `json:"reason_message,omitzero"`
-	UsageAvailable  bool                 `json:"usage_available"`
-	LeaseRetained   bool                 `json:"lease_retained,omitempty"`
+	TestID              string               `json:"test_id"`
+	Outcome             string               `json:"outcome"`
+	Output              string               `json:"output"`
+	OutputTruncated     bool                 `json:"output_truncated"`
+	Assertions          []modelTestAssertion `json:"assertions"`
+	Reason              string               `json:"reason,omitempty"`
+	ReasonMessage       messages.Message     `json:"reason_message,omitzero"`
+	UsageAvailable      bool                 `json:"usage_available"`
+	LeaseRetained       bool                 `json:"lease_retained,omitempty"`
+	RequestedModel      string               `json:"requested_model"`
+	UpstreamModel       string               `json:"upstream_model"`
+	ResponseModel       string               `json:"response_model"`
+	ResponseModelStatus string               `json:"response_model_status"`
 }
 
 // A management client's submitted completion is diagnostic display data, not
@@ -110,7 +127,8 @@ func (a *App) completeModelTest(req ManagementRequest) ManagementResponse {
 		a.modelTestsMu.Unlock()
 		return modelTestError(409, "This model test expired or was already completed")
 	}
-	result := modelTestResult{TestID: input.TestID, Outcome: "failed", Assertions: []modelTestAssertion{}}
+	result := modelTestResult{TestID: input.TestID, Outcome: "failed", Assertions: []modelTestAssertion{},
+		RequestedModel: lease.RequestedModel, UpstreamModel: lease.UpstreamModel, ResponseModelStatus: "missing"}
 	if input.TransportFailed {
 		// A disconnected browser cannot prove the host API-call stopped. Keep
 		// its slot through the original bounded timeout instead of overlapping
@@ -131,6 +149,7 @@ func (a *App) completeModelTest(req ManagementRequest) ManagementResponse {
 		result.Reason = "The native model test did not return a successful response"
 		return modelTestJSON(200, result)
 	}
+	result.ResponseModel, result.ResponseModelStatus = modelTestDeclaredModel(input.Body, lease.Protocol, lease.UpstreamModel)
 	output, complete := modelTestReadOutput(input.Body, lease.Protocol)
 	if output == "" {
 		result.Reason = "The response contains no supported model text output"
@@ -151,16 +170,18 @@ func (a *App) completeModelTest(req ManagementRequest) ManagementResponse {
 	}
 	result.Output = output
 	if lease.Expected != "" {
+		preset := modelTestPresetByID(lease.Preset)
+		exactJSON := preset != nil && preset.Assertion == "Exact JSON object"
 		passed := false
 		if !result.OutputTruncated {
-			if lease.Preset == "json" || lease.Preset == "logic" {
+			if exactJSON {
 				passed = modelTestEqualJSON(output, lease.Expected)
 			} else {
 				passed = strings.TrimSpace(output) == strings.TrimSpace(lease.Expected)
 			}
 		}
 		name := "Exact output"
-		if lease.Preset == "json" || lease.Preset == "logic" {
+		if exactJSON {
 			name = "Exact JSON object"
 		}
 		result.Assertions = append(result.Assertions, modelTestAssertion{Name: name, Passed: passed, Expected: lease.Expected})

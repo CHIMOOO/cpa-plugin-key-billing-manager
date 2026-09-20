@@ -1,0 +1,102 @@
+[
+  {
+    "id": "json",
+    "name": "JSON instructions",
+    "prompt": "Return exactly one JSON object, without Markdown or any other text. Use exactly the keys name, total, and tags. Set name to Ada. Set total to the sum of 17 and 25 as a number. Given tags [\"Blue\",\"RED\",\"blue\"], lowercase them, remove duplicates, and sort alphabetically. Do not include extra keys.",
+    "assertion": "Exact JSON object",
+    "expected": "{\"name\":\"Ada\",\"total\":42,\"tags\":[\"blue\",\"red\"]}",
+    "label_key": "ui.model_test_preset_json",
+    "criteria_key": "ui.model_test_json_criteria",
+    "sources": []
+  },
+  {
+    "id": "logic",
+    "name": "Unique assignment",
+    "prompt": "Four boxes A, B, C, and D each contain one different integer from 1 through 4. A is greater than B. B is even. D equals A minus 1. C is less than D. Find the unique assignment. Return only one JSON object with the four keys A, B, C, D and numeric values. Do not include Markdown or an explanation.",
+    "assertion": "Exact JSON object",
+    "expected": "{\"A\":4,\"B\":2,\"C\":1,\"D\":3}",
+    "label_key": "ui.model_test_preset_logic",
+    "criteria_key": "ui.model_test_logic_criteria",
+    "sources": []
+  },
+  {
+    "id": "code",
+    "name": "Unicode code review",
+    "prompt": "Write a JavaScript function firstUniqueChar(text) that returns the first Unicode code point occurring exactly once, or null when none exists. Treat case as significant and return the character itself, not its index. Use no dependencies. Explain its time and space complexity and include examples for an empty string, repeated emoji, and mixed upper/lowercase characters. The code will be reviewed as text; do not assume it will be executed.",
+    "assertion": "Manual review; code is not executed",
+    "expected": "",
+    "label_key": "ui.model_test_preset_code",
+    "criteria_key": "ui.model_test_code_criteria",
+    "sources": []
+  },
+  {
+    "id": "pelican",
+    "name": "Classic pelican bicycle SVG",
+    "prompt": "请生成一幅“鹈鹕骑自行车”的静态 SVG。只输出完整的 <svg> 元素，不要 Markdown 代码围栏或解释，不要脚本、外部资源、图片嵌入或动画。画面应包含可辨认的鹈鹕、两个轮子、车架和脚踏，使用简洁的矢量图形。使用 fill、stroke 等 SVG 属性设置颜色和线条，不使用 style 标签或 style、class 属性。",
+    "assertion": "Manual review; code is not executed",
+    "expected": "",
+    "sources": [
+      {
+        "title": "Simon Willison · Pelicans on a bicycle (2024-10-25)",
+        "url": "https://simonwillison.net/2024/Oct/25/pelicans-on-a-bicycle/"
+      }
+    ],
+    "label_key": "ui.model_test_preset_pelican",
+    "criteria_key": "ui.model_test_pelican_criteria"
+  },
+  {
+    "id": "candy",
+    "name": "Candy guarantee puzzle (adapted)",
+    "prompt": "不使用外部工具。袋中有三种口味、两种形状的糖果。数量按“苹果、桃子、西瓜”的顺序为：圆形 (7, 9, 8)，星形 (7, 6, 4)。你能靠触摸分辨形状，但不能分辨口味；可以按形状挑选，取出后不放回。开始前必须确定取几颗圆形和几颗星形。怎样使总颗数最少，却一定得到一对“口味分别为苹果与桃子、形状不同”的糖？只输出 JSON，键为 minimum、round、star，值为最少总数及一种实现它的取法。",
+    "assertion": "Exact JSON object",
+    "expected": "{\"minimum\":21,\"round\":9,\"star\":12}",
+    "sources": [
+      {
+        "title": "haowang02/codex-candy-eval · community puzzle, reworded",
+        "url": "https://github.com/haowang02/codex-candy-eval/blob/main/codex_candy_eval.py"
+      }
+    ],
+    "label_key": "ui.model_test_preset_candy",
+    "criteria_key": "ui.model_test_candy_criteria"
+  },
+  {
+    "id": "boolean",
+    "name": "Boolean expressions (original variant)",
+    "prompt": "按 Python 布尔运算规则求值。a = not (True and (False or not False)) or ((True or False) and not (False or False))；b = ((not False and True) or False) and not (True and (False or not False))。只输出 JSON 对象，键为 a、b，值必须为 JSON 布尔值；不要解释或代码围栏。",
+    "assertion": "Exact JSON object",
+    "expected": "{\"a\":true,\"b\":false}",
+    "sources": [
+      {
+        "title": "BIG-bench · Boolean Expressions (task-family reference)",
+        "url": "https://github.com/google/BIG-bench/tree/main/bigbench/benchmark_tasks/boolean_expressions"
+      }
+    ],
+    "label_key": "ui.model_test_preset_boolean",
+    "criteria_key": "ui.model_test_boolean_criteria"
+  },
+  {
+    "id": "tracking",
+    "name": "Tracking swaps (original variant)",
+    "prompt": "五个人各持一枚不同颜色的令牌：A=blue，B=green，C=yellow，D=red，E=black。依次交换双方当前所持令牌：A与C；B与E；A与D；C与E；B与D；A与E。最后每个人拿着什么？只输出 JSON 对象，以 A、B、C、D、E 为键，以最初给出的英文颜色为值，不要解释或代码围栏。",
+    "assertion": "Exact JSON object",
+    "expected": "{\"A\":\"blue\",\"B\":\"yellow\",\"C\":\"green\",\"D\":\"black\",\"E\":\"red\"}",
+    "sources": [
+      {
+        "title": "BIG-bench · Tracking Shuffled Objects (task-family reference)",
+        "url": "https://github.com/google/BIG-bench/tree/main/bigbench/benchmark_tasks/tracking_shuffled_objects"
+      }
+    ],
+    "label_key": "ui.model_test_preset_tracking",
+    "criteria_key": "ui.model_test_tracking_criteria"
+  },
+  {
+    "id": "free",
+    "name": "Custom prompt",
+    "prompt": "Explain the difference between correlation and causation using a concrete everyday example. Then describe what further evidence would be needed before claiming a causal relationship.",
+    "assertion": "Optional exact output",
+    "expected": "",
+    "label_key": "ui.model_test_preset_free",
+    "criteria_key": "ui.model_test_free_criteria",
+    "sources": []
+  }
+]

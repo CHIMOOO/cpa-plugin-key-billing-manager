@@ -30,11 +30,13 @@ const (
 // Only a random capability, opaque credential ref, assertion, and deadlines
 // remain in memory. Prompts, output, token headers, and proxies are never stored.
 type modelTestLease struct {
-	RequestID string
-	Protocol  string
-	Preset    string
-	Expected  string
-	Until     time.Time
+	RequestID      string
+	Protocol       string
+	Preset         string
+	Expected       string
+	RequestedModel string
+	UpstreamModel  string
+	Until          time.Time
 }
 
 type modelTestAccount struct {
@@ -349,7 +351,7 @@ func (a *App) prepareModelTest(req ManagementRequest) ManagementResponse {
 	if a.modelTests == nil {
 		a.modelTests = map[string]modelTestLease{}
 	}
-	a.modelTests[id] = modelTestLease{RequestID: requestID, Protocol: protocol, Preset: input.Preset, Expected: expected, Until: prepared.LeaseExpiresAt}
+	a.modelTests[id] = modelTestLease{RequestID: requestID, Protocol: protocol, Preset: input.Preset, Expected: expected, RequestedModel: input.Model, UpstreamModel: actualModel, Until: prepared.LeaseExpiresAt}
 	return modelTestJSON(200, prepared)
 }
 

@@ -1579,6 +1579,32 @@
       }
       .integration-client-models { width: 100%; margin-top: 8px; overflow-wrap: anywhere; }
       #integration-device-status { overflow-wrap: anywhere; }
+      .model-test-layout { display: grid; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 16px; align-items: start; }
+      .model-test-layout > *, .model-test-workspace { min-width: 0; }
+      .model-test-accounts .field { margin: 12px 0; }
+      .model-test-accounts input[type="search"], .model-test-accounts select { width: 100%; min-width: 0; }
+      .model-test-account-list { display: grid; gap: 8px; max-height: 640px; overflow: auto; margin-top: 12px; }
+      .model-test-account-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 8px;
+        align-items: start;
+        padding: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+      .model-test-account-row.is-focused { border-color: var(--accent); background: var(--bg-secondary); }
+      .model-test-account-row input { margin-top: 4px; }
+      .model-test-account-info { min-width: 0; }
+      .model-test-account-info button {
+        padding: 0;
+        border: 0;
+        background: none;
+        text-align: left;
+        white-space: normal;
+        overflow-wrap: anywhere;
+      }
+      .model-test-account-info p { margin: 4px 0 0; overflow-wrap: anywhere; }
       .model-test-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
       .model-test-fields .field { min-width: 0; margin: 0; }
       .model-test-fields input, .model-test-fields select, .model-test-fields textarea { width: 100%; min-width: 0; }
@@ -1594,6 +1620,7 @@
       .model-test-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; }
       .model-test-result { min-width: 0; padding: 16px; border: 1px solid var(--border-color); border-radius: 10px; }
       .model-test-result h3 { margin: 0 0 8px; font-size: 14px; overflow-wrap: anywhere; }
+      .model-test-model-info { overflow-wrap: anywhere; }
       .model-test-result pre {
         white-space: pre-wrap;
         overflow-wrap: anywhere;
@@ -1604,6 +1631,20 @@
         border-radius: 8px;
       }
       .model-test-checks { padding-left: 20px; font-size: 12px; line-height: 1.7; }
+      .model-test-svg-preview {
+        display: block;
+        width: 100%;
+        max-height: 420px;
+        object-fit: contain;
+        margin: 12px 0;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: #fff;
+      }
+      @media (max-width: 980px) {
+        .model-test-layout { grid-template-columns: minmax(0, 1fr); }
+        .model-test-account-list { max-height: 320px; }
+      }
       @media (max-width: 640px) {
         .model-test-fields { grid-template-columns: minmax(0, 1fr); }
       }
@@ -2835,22 +2876,34 @@
         </section>
 
         <section id="tab-model-tests" class="hidden">
+          <div class="model-test-layout">
+          <aside class="card model-test-accounts" aria-labelledby="model-test-account-heading">
+            <h2 id="model-test-account-heading" data-i18n="ui.model_test_accounts">Test accounts</h2>
+                <label class="field"><span data-i18n="ui.model_test_provider">Provider category</span><span class="native-select"><select id="model-test-provider"><option value="all" data-i18n="ui.model_test_provider_all">All providers</option><option value="codex" data-i18n="ui.model_test_provider_codex">Codex</option><option value="claude" data-i18n="ui.model_test_provider_claude">Claude</option><option value="gemini" data-i18n="ui.model_test_provider_gemini">Gemini</option><option value="openai" data-i18n="ui.model_test_provider_openai">OpenAI compatible</option><option value="other" data-i18n="ui.model_test_provider_other">Other</option></select></span></label>
+            <label class="field"><span data-i18n="ui.model_test_search">Search accounts</span><input id="model-test-search" type="search" autocomplete="off" /></label>
+            <div class="row"><button id="model-test-select-visible" type="button" data-i18n="ui.model_test_select_visible">Select matching accounts</button><button id="model-test-selection-clear" type="button" data-i18n="ui.model_test_selection_clear">Clear selection</button></div>
+            <p id="model-test-selection" class="small muted" role="status"></p>
+            <div id="model-test-accounts" class="model-test-account-list"></div>
+          </aside>
+          <div class="model-test-workspace">
           <div class="card">
             <div class="row spread settings-section-header"><h2 data-i18n="ui.model_tests">Model tests</h2><span class="tag plain" data-i18n="ui.model_test_single_request">One request at a time</span></div>
             <p class="access-help" data-i18n="ui.model_test_intro">Compare responses to the same prompt across accounts or models. Tests consume upstream quota. Checks assess this task only, not overall intelligence or the model’s true identity.</p>
             <p class="small muted" data-i18n="ui.model_test_billing">This is a diagnostic request through CPA’s management API. It consumes upstream quota but does not create downstream billing or usage records.</p>
             <div id="model-test-status" class="notice hidden" role="status"></div>
             <div class="model-test-fields">
-              <label class="field"><span data-i18n="ui.model_test_account">Account</span><span class="native-select"><select id="model-test-account" disabled></select></span></label>
-              <label class="field"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" autocomplete="off" disabled /><datalist id="model-test-models"></datalist></label>
+              <label class="field model-test-wide"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" autocomplete="off" disabled /><datalist id="model-test-models"></datalist><span id="model-test-model-hint" class="small muted"></span></label>
               <div id="model-test-proxy" class="model-test-route model-test-wide" role="status"></div>
               <label class="field"><span data-i18n="ui.model_test_preset">Prompt preset</span><span class="native-select"><select id="model-test-preset"><option value="json" data-i18n="ui.model_test_preset_json">Instruction following · exact JSON</option><option value="logic" data-i18n="ui.model_test_preset_logic">Reasoning · constraint puzzle</option><option value="code" data-i18n="ui.model_test_preset_code">Coding · review the response</option><option value="free" data-i18n="ui.model_test_preset_free">Open question · custom prompt</option></select></span></label>
-              <div class="field"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p></div>
+              <div class="field"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p><div id="model-test-sources" class="small muted"></div></div>
               <label class="field model-test-wide"><span data-i18n="ui.model_test_prompt">Prompt (editable)</span><textarea id="model-test-prompt" rows="7" maxlength="16000" spellcheck="false"></textarea><span id="model-test-custom-note" class="small muted hidden" data-i18n="ui.model_test_custom_note">This prompt was edited. Preset assertions are disabled; review the response against your own criteria.</span></label>
             </div>
-            <div class="row"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Run once</button><span id="model-test-running" class="small muted" role="status"></span></div>
+            <p class="small muted" data-i18n="ui.model_test_batch_help">Select up to 50 accounts. Each receives the same model and prompt once, sequentially. Failures are not retried. Stopping or leaving this tab skips pending accounts and lets the current request finish.</p>
+            <div class="row"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Test selected accounts</button><button id="model-test-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button><span id="model-test-running" class="small muted" role="status"></span></div>
           </div>
-          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.model_test_comparison">Response comparison</h2><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div><p class="access-help" data-i18n="ui.model_test_memory">The latest 6 results stay in this page’s memory only. Code in responses is displayed and never executed.</p><div id="model-test-results" class="model-test-results"></div></div>
+          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.model_test_comparison">Response comparison</h2><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div><p class="access-help" data-i18n="ui.model_test_memory">The current batch (up to 50 results) stays in this page’s memory only; starting another batch replaces it. Response code is never executed. SVG previews are static images.</p><p class="access-help" data-i18n="ui.model_test_model_declaration_help">The response model is declared by the upstream for this test. A different name may reflect an alias or model version; matching names do not prove model identity or answer quality. It does not change billing or routing.</p><div id="model-test-results" class="model-test-results"></div></div>
+          </div>
+          </div>
         </section>
 
         <section id="tab-risk" class="hidden">
@@ -3865,6 +3918,11 @@
           $("turn-state-proxies").value = "";
           $("turn-state-rotating").value = "";
           $("model-test-prompt").value = "";
+          $("model-test-model").value = "";
+          $("model-test-provider").value = "all";
+          $("model-test-search").value = "";
+          $("model-test-preset").value = "json";
+          $("model-test-accounts").replaceChildren();
           $("model-test-results").replaceChildren();
           $("model-test-proxy").replaceChildren();
           $("model-test-status").className = "notice hidden";
@@ -4257,6 +4315,7 @@
 
       function showGate(mode, error, preserveProbeIntent = false) {
         stopIntegrationDevice();
+        stopPendingModelTests();
         sessionGeneration++;
         hideNotice();
         hideCostTooltip();
@@ -7083,28 +7142,89 @@
         return { ...catalog, accounts, warnings };
       }
 
+      const MODEL_TEST_BATCH_LIMIT = 50;
+
       function modelTestState() {
-        return (adminUIState.modelTest ||= { running: false, results: [], baselinePrompt: "", preset: "json", error: "" });
+        return (adminUIState.modelTest ||= {
+          running: false,
+          results: [],
+          baselinePrompt: "",
+          preset: "json",
+          error: "",
+          selected: new Set(),
+          focused: "",
+          stopRequested: false
+        });
+      }
+
+      function modelTestAccountKey(account) {
+        return JSON.stringify([account.auth_index || "", account.credential_ref || "", account.auth_id || ""]);
+      }
+
+      function modelTestAccountAvailable(account) { return !!account.auth_index && !!account.supported && !account.disabled; }
+
+      function modelTestProvider(account) {
+        const provider = String(account.provider || "").toLowerCase();
+        if (provider === "codex") return "codex";
+        if (provider === "claude") return "claude";
+        if (provider === "gemini" || provider === "gemini-cli") return "gemini";
+        if (provider === "openai" || provider === "openai-compatibility" || provider.startsWith("openai-compatible-")) return "openai";
+        return "other";
+      }
+
+      function filteredModelTestAccounts() {
+        const category = $("model-test-provider").value, query = $("model-test-search").value.trim().toLowerCase();
+        return (resources.admin.modelTests.value?.accounts || []).filter(
+          (account) =>
+            (category === "all" || modelTestProvider(account) === category) &&
+            (!query ||
+              [account.name, account.provider, account.auth_index, account.source].some((value) =>
+                String(value || "").toLowerCase().includes(query)
+              ))
+        );
       }
 
       function selectedModelTestAccount() {
-        return (resources.admin.modelTests.value?.accounts || []).find((account) => account.auth_index === $("model-test-account").value);
+        return (resources.admin.modelTests.value?.accounts || []).find(
+          (account) => modelTestAccountKey(account) === modelTestState().focused
+        );
+      }
+
+      function modelTestPreset(id) {
+        const entry = resources.admin.modelTests.value?.presets?.find((preset) => preset.id === id);
+        const fallback = MODEL_TEST_PRESETS[id] || MODEL_TEST_PRESETS.free;
+        return entry
+          ? { ...fallback, ...entry, label: entry.label_key || fallback.label, criteria: entry.criteria_key || fallback.criteria }
+          : fallback;
+      }
+
+      function renderModelTestPresetDetails() {
+        const preset = modelTestPreset($("model-test-preset").value);
+        setText($("model-test-criteria"), m(preset.criteria));
+        $("model-test-sources").replaceChildren(
+          ...(preset.sources || []).filter((source) => {
+            try { return new URL(source.url).protocol === "https:"; } catch (_) { return false; }
+          })
+            .map((source) =>
+              el("p", {}, el("a", { href: source.url, target: "_blank", rel: "noopener noreferrer", text: source.title || source.url }))
+            )
+        );
       }
 
       function selectModelTestPreset() {
         const state = modelTestState(), id = $("model-test-preset").value;
-        const preset = MODEL_TEST_PRESETS[id] || MODEL_TEST_PRESETS.free;
+        const preset = modelTestPreset(id);
         state.preset = id;
         const canonical = resources.admin.modelTests.value?.presets?.find((entry) => entry.id === id)?.prompt;
         state.baselinePrompt = typeof canonical === "string" ? canonical : String(m(preset.prompt));
         $("model-test-prompt").value = state.baselinePrompt;
-        setText($("model-test-criteria"), m(preset.criteria));
+        renderModelTestPresetDetails();
         $("model-test-custom-note").classList.add("hidden");
       }
 
-      function renderModelTestProxy(proxy) {
+      function renderModelTestProxy(proxy, accountName) {
         $("model-test-proxy").replaceChildren(
-          el("strong", { text: m("ui.model_test_route") }),
+          el("strong", { text: accountName ? m("ui.model_test_route_for", { account: accountName }) : m("ui.model_test_route") }),
           el("span", {
             text: proxy
               ? m(
@@ -7113,7 +7233,7 @@
                     : proxy.source === "global" ? "ui.model_test_proxy_global" : "ui.model_test_proxy_direct",
                   { endpoint: proxy.endpoint || "" }
                 )
-              : m("ui.model_test_proxy_pending")
+              : m("ui.model_test_batch_route")
           })
         );
       }
@@ -7124,59 +7244,175 @@
         return name;
       }
 
+      function modelTestSVGPreview(output) {
+        if (typeof output !== "string" || output.length > 120000) return "";
+        const text = output.trim().replace(/^```(?:svg|xml)?\s*\n([\s\S]*?)\n```$/i, "$1").trim();
+        if (!text.startsWith("<") || /<!DOCTYPE|<!ENTITY/i.test(text)) return "";
+        const doc = new DOMParser().parseFromString(text, "image/svg+xml"), root = doc.documentElement;
+        if (doc.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== "http://www.w3.org/2000/svg") return "";
+        const elements = new Set([
+          "svg",
+          "g",
+          "path",
+          "rect",
+          "circle",
+          "ellipse",
+          "line",
+          "polyline",
+          "polygon",
+          "text",
+          "tspan",
+          "defs",
+          "linearGradient",
+          "radialGradient",
+          "stop",
+          "clipPath",
+          "mask",
+          "pattern",
+          "symbol",
+          "use",
+          "title",
+          "desc"
+        ]);
+        for (const node of [root, ...root.querySelectorAll("*")]) {
+          if (!elements.has(node.localName) || node.namespaceURI !== root.namespaceURI) {
+            node.remove();
+            continue;
+          }
+          for (const attr of [...node.attributes]) {
+            const name = attr.localName.toLowerCase(), value = attr.value;
+            if (
+              name.startsWith("on") || name === "src" || name === "base" || name === "style" ||
+              (name === "href" && !/^#[A-Za-z_][\w:.-]*$/.test(value)) ||
+              (/url\s*\(/i.test(value) && !/^url\(\s*#[A-Za-z_][\w:.-]*\s*\)$/.test(value))
+            )
+              node.removeAttributeNode(attr);
+          }
+        }
+        // An SVG rendered as an image is additionally isolated from document scripts and external resources.
+        return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(root));
+      }
+
       function renderModelTests() {
         const resource = resources.admin.modelTests, state = modelTestState(), catalog = resource.value;
         const accounts = Array.isArray(catalog?.accounts) ? catalog.accounts : [];
-        const previous = $("model-test-account").value;
-        const selected =
-          (previous ? accounts.find((account) => account.auth_index && account.auth_index === previous) : null) ||
-          accounts.find((account) => account.auth_index && account.supported && !account.disabled) ||
-          accounts[0];
-        $("model-test-account").replaceChildren(
-          ...accounts.map((account) =>
-            el("option", {
-              value: account.auth_index || "missing:" + account.credential_ref,
-              text:
-                (account.name || account.auth_index) + " · " + account.provider +
-                (!account.supported ? " · " + m("ui.model_test_unsupported") : account.disabled ? " · " + m("backend.disabled") : ""),
-              selected: account === selected,
-              disabled: !account.auth_index
-            })
+        const available = new Set(accounts.filter(modelTestAccountAvailable).map(modelTestAccountKey));
+        for (const identity of state.selected) if (!available.has(identity)) state.selected.delete(identity);
+        const focused = selectedModelTestAccount() || accounts.find(modelTestAccountAvailable) || accounts[0];
+        state.focused = focused ? modelTestAccountKey(focused) : "";
+        const filtered = filteredModelTestAccounts(), top = $("model-test-accounts").scrollTop;
+        $("model-test-accounts").replaceChildren(
+          ...(filtered.length
+            ? filtered.map((account) => {
+                const identity = modelTestAccountKey(account), name = account.name || account.auth_index || account.credential_ref;
+                const available = modelTestAccountAvailable(account);
+                const reason = account.disabled
+                  ? m("backend.disabled")
+                  : !available
+                    ? window.billingI18n.serverMessage(account.reason_message, account.reason) || m("ui.model_test_unsupported")
+                    : "";
+                return el(
+                  "div",
+                  { class: "model-test-account-row" + (identity === state.focused ? " is-focused" : "") },
+                  el("input", {
+                    type: "checkbox",
+                    checked: state.selected.has(identity),
+                    disabled: state.running || !available,
+                    "aria-label": m("ui.model_test_select_account", { account: name }),
+                    onchange: (event) => {
+                      if (event.target.checked && state.selected.size >= MODEL_TEST_BATCH_LIMIT) {
+                        state.error = m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT });
+                      } else {
+                        if (event.target.checked) state.selected.add(identity); else state.selected.delete(identity);
+                        state.focused = identity;
+                        state.error = "";
+                      }
+                      renderModelTests();
+                    }
+                  }),
+                  el(
+                    "div",
+                    { class: "model-test-account-info" },
+                    el("button", {
+                      type: "button",
+                      disabled: state.running,
+                      text: name,
+                      "aria-pressed": String(identity === state.focused),
+                      onclick: () => {
+                        state.focused = identity;
+                        state.error = "";
+                        if (available) {
+                          if (state.selected.has(identity)) state.selected.delete(identity);
+                          else if (state.selected.size < MODEL_TEST_BATCH_LIMIT) state.selected.add(identity);
+                          else state.error = m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT });
+                        }
+                        renderModelTests();
+                      }
+                    }),
+                    el("p", { class: "small muted", text: account.provider || m("ui.model_test_provider_other") }),
+                    reason ? el("p", { class: "small muted", text: reason }) : null
+                  )
+                );
+              })
+            : [el("p", { class: "small muted", text: m("ui.model_test_no_matching_accounts") })])
+        );
+        $("model-test-accounts").scrollTop = top;
+        setText(
+          $("model-test-selection"),
+          m("ui.model_test_selection_count", { selected: state.selected.size, visible: filtered.length, total: accounts.length })
+        );
+        $("model-test-select-visible").disabled = state.running || !filtered.some(modelTestAccountAvailable);
+        $("model-test-selection-clear").disabled = state.running || !state.selected.size;
+        const presetID = $("model-test-preset").value || state.preset;
+        const presets =
+          Array.isArray(catalog?.presets) && catalog.presets.length
+            ? catalog.presets
+            : Object.keys(MODEL_TEST_PRESETS).map((id) => ({ id }));
+        $("model-test-preset").replaceChildren(
+          ...presets.map((entry) =>
+            el("option", { value: entry.id, selected: entry.id === presetID, text: m(modelTestPreset(entry.id).label) })
           )
         );
-        for (const id of ["account", "model", "preset", "prompt"]) $("model-test-" + id).disabled = state.running || !catalog;
-        $("model-test-run").disabled = state.running || !selected || !selected.supported || selected.disabled || !catalog;
+        for (const id of ["model", "preset", "prompt"]) $("model-test-" + id).disabled = state.running || !catalog;
+        $("model-test-run").disabled = state.running || !state.selected.size || !catalog;
+        $("model-test-stop").disabled = !state.running || state.stopRequested;
         $("model-test-clear").disabled = state.running || !state.results.length;
         const error =
-          state.error || resource.error ||
-          (!selected && catalog
-            ? m("ui.model_test_no_accounts")
-            : selected && !selected.supported
-              ? window.billingI18n.serverMessage(selected.reason_message, selected.reason) || m("ui.model_test_unsupported")
-              : "") ||
+          state.error || resource.error || (!accounts.length && catalog ? m("ui.model_test_no_accounts") : "") ||
           (catalog?.warnings || []).map(String).join(" ");
         $("model-test-status").className = error ? "notice err show" : "notice hidden";
         setText($("model-test-status"), error);
-        setText($("model-test-running"), state.running ? m("ui.model_test_running") : "");
+        const done = state.results.filter((record) => !["waiting", "running"].includes(record.phase)).length;
+        setText(
+          $("model-test-running"),
+          state.results.length
+            ? m(state.running && state.stopRequested ? "ui.model_test_stopping" : "ui.model_test_batch_progress", {
+                done,
+                total: state.results.length
+              })
+            : ""
+        );
         if (!state.baselinePrompt && catalog) selectModelTestPreset();
-        if (!state.running && state.routeAccount !== selected?.auth_index) {
-          state.routeAccount = selected?.auth_index;
+        if (!state.running && state.routeAccount !== state.focused) {
+          state.routeAccount = state.focused;
           renderModelTestProxy(null);
           $("model-test-models").replaceChildren();
-          if (selected?.supported && !selected.disabled) void loadModelTestHints(selected);
+          if (focused && modelTestAccountAvailable(focused)) void loadModelTestHints(focused);
         }
-        const preset = MODEL_TEST_PRESETS[$("model-test-preset").value] || MODEL_TEST_PRESETS.free;
-        setText($("model-test-criteria"), m(preset.criteria));
+        setText($("model-test-model-hint"), focused ? m("ui.model_test_model_hint", { account: focused.name || focused.auth_index }) : "");
+        renderModelTestPresetDetails();
         $("model-test-custom-note").classList.toggle("hidden", $("model-test-prompt").value === state.baselinePrompt);
         $("model-test-results").replaceChildren(
           ...(state.results.length
             ? state.results.map((record) => {
+                const pending = record.phase === "waiting" || record.phase === "running" || record.phase === "stopped";
                 const assertions = Array.isArray(record.result?.assertions) ? record.result.assertions : [];
                 const passed = assertions.length && assertions.every((check) => check.passed === true);
                 const incomplete = record.result?.outcome === "incomplete";
+                const preview = !pending && record.preset === "pelican" ? modelTestSVGPreview(record.result?.output) : "";
                 return el(
                   "article",
-                  { class: "model-test-result" },
+                  { class: "model-test-result", "data-phase": record.phase, "data-auth-index": record.auth_index },
                   el("h3", { text: record.account + " · " + record.model }),
                   el(
                     "div",
@@ -7184,11 +7420,14 @@
                     el("span", {
                       class:
                         "tag " +
-                        (record.error || record.result?.outcome === "failed" || incomplete
-                          ? "warn"
-                          : assertions.length ? passed ? "ok" : "warn" : "plain"),
-                      text:
-                        record.error || record.result?.outcome === "failed"
+                        (pending
+                          ? "plain"
+                          : record.error || record.result?.outcome === "failed" || incomplete
+                            ? "warn"
+                            : assertions.length ? passed ? "ok" : "warn" : "plain"),
+                      text: pending
+                        ? m("ui.model_test_phase_" + record.phase)
+                        : record.error || record.result?.outcome === "failed"
                           ? m("ui.model_test_failed")
                           : incomplete
                             ? m("ui.model_test_incomplete")
@@ -7196,8 +7435,31 @@
                               ? passed ? m("ui.model_test_passed") : m("ui.model_test_assertion_failed")
                               : m("ui.model_test_manual")
                     }),
-                    el("span", { class: "small muted", text: m((MODEL_TEST_PRESETS[record.preset] || MODEL_TEST_PRESETS.free).label) })
+                    el("span", { class: "small muted", text: m(modelTestPreset(record.preset).label) })
                   ),
+                  record.result
+                    ? el(
+                        "div",
+                        { class: "small model-test-model-info" },
+                        el("p", { text: m("ui.model_test_requested_model", { model: record.result.requested_model || record.model }) }),
+                        el("p", { text: m("ui.model_test_upstream_model", { model: record.result.upstream_model || record.model }) }),
+                        el("p", {
+                          text: m("ui.model_test_declared_model", {
+                            model: record.result.response_model || m("ui.model_test_model_unavailable")
+                          })
+                        }),
+                        el("span", {
+                          class: "tag " + (["different", "conflicting"].includes(record.result.response_model_status) ? "warn" : "plain"),
+                          text: m(
+                            {
+                              matched: "ui.model_test_model_matched",
+                              different: "ui.model_test_model_different",
+                              conflicting: "ui.model_test_model_conflicting"
+                            }[record.result.response_model_status] || "ui.model_test_model_missing"
+                          )
+                        })
+                      )
+                    : null,
                   record.proxy
                     ? el("p", {
                         class: "small muted",
@@ -7231,7 +7493,11 @@
                       )
                     : null,
                   record.result?.output_truncated ? el("p", { class: "small muted", text: m("ui.model_test_truncated") }) : null,
-                  el("pre", { text: record.result?.output || m("ui.model_test_no_output") }),
+                  preview
+                    ? el("img", { class: "model-test-svg-preview", src: preview, alt: m("ui.model_test_svg_preview"), loading: "lazy" })
+                    : null,
+                  preview ? el("p", { class: "small muted", text: m("ui.model_test_svg_review") }) : null,
+                  !pending ? el("pre", { text: record.result?.output || m("ui.model_test_no_output") }) : null,
                   el(
                     "details",
                     {},
@@ -7244,8 +7510,10 @@
         );
       }
 
-      async function readModelTestRoute(account, key) {
+      async function readModelTestRoute(account, key, ensureCurrent = () => {}) {
+        ensureCurrent();
         const global = requireObject(await api("GET", "/v0/management/proxy-url", null, { key, raw: true }), m("ui.model_test_route"));
+        ensureCurrent();
         if (!Object.hasOwn(global, "proxy-url") || typeof global["proxy-url"] !== "string")
           throw new UIError(m("ui.model_test_route_unverified"));
         const descriptor = {};
@@ -7254,6 +7522,7 @@
         if (account.source !== "ai-providers") throw new UIError(m("ui.model_test_route_unverified"));
         if (!MODEL_TEST_NATIVE_RESOURCES.includes(account.config_resource)) throw new UIError(m("ui.model_test_route_unverified"));
         const rows = await readNativeModelTestEntries(account.config_resource, key);
+        ensureCurrent();
         const matches = rows.filter((row) => row.account.auth_index === account.auth_index);
         if (matches.length !== 1) throw new UIError(m("ui.model_test_route_unverified"));
         if (matches[0].account.credential_ref !== account.credential_ref || matches[0].account.auth_id !== account.auth_id)
@@ -7264,10 +7533,13 @@
       }
 
       async function loadModelTestHints(account) {
-        const owner = adminUIState, state = modelTestState();
+        const owner = adminUIState, state = modelTestState(), generation = sessionGeneration, identity = modelTestAccountKey(account);
+        const ensureCurrent = () => {
+          if (owner !== adminUIState || generation !== sessionGeneration || state.routeAccount !== identity) throw new StaleRequestError();
+        };
         try {
-          const route = await readModelTestRoute(account, authKey);
-          if (owner !== adminUIState || state.routeAccount !== account.auth_index) return;
+          const route = await readModelTestRoute(account, authKey, ensureCurrent);
+          ensureCurrent();
           const models = route.config?.models || [];
           const choices = new Map();
           for (const model of models) {
@@ -7277,32 +7549,83 @@
           }
           $("model-test-models").replaceChildren(...[...choices].map(([value, label]) => el("option", { value, label })));
         } catch (error) {
-          if (owner !== adminUIState || state.routeAccount !== account.auth_index || error instanceof StaleRequestError) return;
+          if (
+            owner !== adminUIState || generation !== sessionGeneration || state.routeAccount !== identity ||
+            error instanceof StaleRequestError
+          )
+            return;
           state.error = error.message || m("ui.model_test_route_unverified");
           renderModelTests();
         }
       }
 
+      function stopPendingModelTests() {
+        const state = adminUIState.modelTest;
+        if (!state?.running) return;
+        state.stopRequested = true;
+        for (const record of state.results) if (record.phase === "waiting") record.phase = "stopped";
+        if (currentRole === "admin" && activeTab(false) === "model-tests") renderModelTests();
+      }
+
       async function runModelTest() {
-        const owner = adminUIState, state = modelTestState(), account = selectedModelTestAccount();
-        if (state.running || !account || !account.supported || account.disabled) return;
+        const owner = adminUIState, state = modelTestState();
+        if (state.running) return;
+        const accounts = (resources.admin.modelTests.value?.accounts || []).filter(
+          (account) => state.selected.has(modelTestAccountKey(account)) && modelTestAccountAvailable(account)
+        );
+        if (!accounts.length) throw new UIError(m("ui.model_test_select_required"));
+        if (accounts.length > MODEL_TEST_BATCH_LIMIT) throw new UIError(m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT }));
         const prompt = $("model-test-prompt").value, model = $("model-test-model").value.trim();
         const limit = resources.admin.modelTests.value?.limits?.max_prompt_bytes || 8192;
         if (!model || !prompt.trim()) throw new UIError(m("ui.model_test_required"));
         if (new TextEncoder().encode(prompt).length > limit) throw new UIError(m("ui.model_test_prompt_limit", { limit }));
         const preset = prompt === state.baselinePrompt ? state.preset : "free";
         const key = authKey, generation = sessionGeneration;
-        const record = { account: account.name || account.auth_index, model, prompt, preset, error: "", result: null, proxy: null };
-        let prepared = null, completion = null, started = false;
+        const current = () => owner === adminUIState && generation === sessionGeneration && currentRole === "admin";
+        const ensureCurrent = () => { if (!current() || state.stopRequested) throw new StaleRequestError(); };
+        state.results = accounts.map((account) => ({
+          account: account.name || account.auth_index,
+          auth_index: account.auth_index,
+          model,
+          prompt,
+          preset,
+          phase: "waiting",
+          error: "",
+          result: null,
+          proxy: null
+        }));
         state.running = true;
+        state.stopRequested = false;
         state.error = "";
         renderModelTests();
         try {
-          const route = await readModelTestRoute(account, key);
+          for (let index = 0; index < accounts.length; index++) {
+            if (!current() || state.stopRequested) break;
+            const record = state.results[index];
+            record.phase = "running";
+            renderModelTests();
+            await runModelTestAccount(accounts[index], record, { key, current, ensureCurrent });
+            if (current()) renderModelTests();
+          }
+        } finally {
+          for (const record of state.results) if (record.phase === "waiting") record.phase = "stopped";
+          state.running = false;
+          if (current()) {
+            renderModelTestProxy(null);
+            renderModelTests();
+          }
+        }
+      }
+
+      async function runModelTestAccount(account, record, { key, current, ensureCurrent }) {
+        let prepared = null, completion = null, started = false;
+        try {
+          const route = await readModelTestRoute(account, key, ensureCurrent);
+          ensureCurrent();
           prepared = await plugin(
             "POST",
             "/model-tests/prepare",
-            { auth_index: account.auth_index, model, preset, prompt, ...route },
+            { auth_index: account.auth_index, model: record.model, preset: record.preset, prompt: record.prompt, ...route },
             { key, command: true }
           );
           if (
@@ -7316,8 +7639,8 @@
             throw new UIError(m("ui.invalid_server_response"));
           record.proxy = prepared.proxy;
           if (typeof prepared.model === "string" && prepared.model) record.model = prepared.model;
-          if (owner === adminUIState && generation === sessionGeneration) renderModelTestProxy(record.proxy);
-          if (owner !== adminUIState || generation !== sessionGeneration) throw new StaleRequestError();
+          ensureCurrent();
+          renderModelTestProxy(record.proxy, record.account);
           if (!Number.isFinite(Date.parse(prepared.start_before)) || Date.now() >= Date.parse(prepared.start_before))
             throw new UIError(m("ui.model_test_prepare_expired"));
           started = true;
@@ -7330,25 +7653,27 @@
           if (!Number.isInteger(response?.status_code) || typeof response?.body !== "string")
             throw new UIError(m("ui.invalid_server_response"));
           completion = { test_id: prepared.test_id, status_code: response.status_code, body: response.body };
-        } catch (error) { if (!(error instanceof StaleRequestError)) record.error = error.message || m("ui.model_test_failed"); } finally {
+        } catch (error) {
+          if (error instanceof StaleRequestError && !started) record.phase = "stopped";
+          else if (!(error instanceof StaleRequestError)) record.error = error.message || m("ui.model_test_failed");
+          if (error instanceof AuthError && current()) stopPendingModelTests();
+        } finally {
           if (prepared?.test_id) {
             try {
               record.result = await plugin(
                 "POST",
                 "/model-tests/complete",
                 completion || { test_id: prepared.test_id, ...(started ? { transport_failed: true } : { not_started: true }) },
-                { key, command: true }
+                { key, command: true, auxiliaryCredential: !current() }
               );
-            } catch (error) { if (!(error instanceof StaleRequestError)) record.error = m("ui.model_test_complete_failed"); }
+            } catch (error) {
+              if (!(error instanceof StaleRequestError)) record.error = m("ui.model_test_complete_failed");
+              if (error instanceof AuthError && current()) stopPendingModelTests();
+            }
           }
           prepared = null;
           completion = null;
-          state.running = false;
-          if (owner === adminUIState && generation === sessionGeneration) {
-            state.results = [record, ...state.results].slice(0, 6);
-            state.error = record.error;
-            renderModelTests();
-          }
+          if (record.phase !== "stopped") record.phase = "done";
         }
       }
 
@@ -12770,6 +13095,7 @@
         if (editors.get($("route-picker"))?.saving) return;
         const selected = ADMIN_TAB_IDS.includes(name) ? name : "keys";
         if (selected !== "turn-state") stopTurnStateWork();
+        if (selected !== "model-tests") stopPendingModelTests();
         if (selected !== "keys") $("route-picker").close();
         writePageRoute("admin", selected);
         for (const tab of TABS) {
@@ -12822,7 +13148,23 @@
       };
       $("keys-edit-groups").onclick = () => editKeyGroups([...adminUIState.selectedKeys]);
       $("access-control-save").onclick = saveAccessControl;
-      $("model-test-account").onchange = () => {
+      $("model-test-provider").onchange = renderModelTests;
+      $("model-test-search").oninput = renderModelTests;
+      $("model-test-select-visible").onclick = () => {
+        const state = modelTestState();
+        if (state.running) return;
+        const matches = filteredModelTestAccounts().filter(modelTestAccountAvailable);
+        const selection = new Set([...state.selected, ...matches.map(modelTestAccountKey)]);
+        if (selection.size > MODEL_TEST_BATCH_LIMIT) state.error = m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT });
+        else {
+          state.selected = selection;
+          state.error = "";
+        }
+        renderModelTests();
+      };
+      $("model-test-selection-clear").onclick = () => {
+        if (modelTestState().running) return;
+        modelTestState().selected.clear();
         modelTestState().error = "";
         renderModelTests();
       };
@@ -12831,6 +13173,7 @@
         $("model-test-custom-note").classList.toggle("hidden", $("model-test-prompt").value === modelTestState().baselinePrompt);
       };
       $("model-test-run").onclick = () => guard(runModelTest);
+      $("model-test-stop").onclick = stopPendingModelTests;
       $("model-test-clear").onclick = () => {
         modelTestState().results = [];
         modelTestState().error = "";
@@ -12912,6 +13255,7 @@
           async () => { await writeTurnState("DELETE", "/turn-state/templates", {}, m("ui.fork_turn_state_templates_cleared")); }
         );
       addEventListener("pagehide", stopTurnStateWork);
+      addEventListener("pagehide", stopPendingModelTests);
       addEventListener("pageshow", wakeTurnStateSession);
       addEventListener("focus", wakeTurnStateSession);
       addEventListener("online", wakeTurnStateSession);

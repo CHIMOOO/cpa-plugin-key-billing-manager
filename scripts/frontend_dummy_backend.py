@@ -8,6 +8,7 @@ import random
 import re
 import time
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1456,9 +1457,7 @@ TEAM_DEVICE_LOGINS = {}
 TEAM_NATIVE_CHANNELS = {"codex-api-key": [{"prefix": "other-codex", "api-key": "sk-dummy-codex", "extra-preserve": 123}], "claude-api-key": [{"prefix": "other-claude", "api-key": "sk-dummy-claude", "extra-preserve": 456}]}
 TEAM_NATIVE_CHANNELS["codex-api-key"][0].update({"auth-index": "model-demo-native-codex", "models": [{"name": "gpt-6-astra", "alias": "demo-astra"}]})
 MODEL_TESTS = {}
-MODEL_TEST_PRESETS = [dict(zip(("id", "name", "prompt", "assertion"), row)) for row in re.findall(
-    r'\{"(json|logic|code|free)", "([^"]+)", `([^`]+)`, "([^"]+)"\}',
-    (UI_PATH.parent / "model_test_results.go").read_text(encoding="utf-8"))]
+MODEL_TEST_PRESETS = json.loads((UI_PATH.parent / "model_test_presets.json").read_text(encoding="utf-8"))
 
 
 def model_test_catalog(include_native=False):
@@ -1500,7 +1499,7 @@ def prepare_dummy_model_test(body):
     if proxy != "direct" and not proxy.startswith(("http://", "https://", "socks5://", "socks5h://")):
         return 400, {"error": {"message": "Invalid proxy; no direct fallback is allowed"}}
     test_id = f"{time.time_ns():048x}"
-    MODEL_TESTS[test_id] = {"preset": preset["id"], "account": account, "model": model}
+    MODEL_TESTS[test_id] = {"preset": preset["id"], "account": account, "model": model, "requested_model": body["model"]}
     now = datetime.now(timezone.utc)
     return 200, {"test_id": test_id, "start_before": iso(now + timedelta(seconds=10)),
                  "expires_at": iso(now + timedelta(seconds=90)), "lease_expires_at": iso(now + timedelta(seconds=90)),
@@ -1511,12 +1510,44 @@ def prepare_dummy_model_test(body):
                               "data": json.dumps({"model": model, "input": prompt, "stream": False})}}
 
 
+def model_test_exact_json(actual, expected):
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate JSON key")
+            result[key] = value
+        return result
+
+    def reject_constant(value):
+        raise ValueError("invalid JSON number")
+
+    def parse(value):
+        return json.loads(value, object_pairs_hook=unique_object, parse_int=Decimal,
+                          parse_float=Decimal, parse_constant=reject_constant)
+
+    def equal(left, right):
+        if type(left) is not type(right):
+            return False
+        if isinstance(left, dict):
+            return left.keys() == right.keys() and all(equal(left[key], right[key]) for key in left)
+        if isinstance(left, list):
+            return len(left) == len(right) and all(equal(a, b) for a, b in zip(left, right))
+        return left == right
+
+    try:
+        return equal(parse(actual), parse(expected))
+    except (ValueError, RecursionError, ArithmeticError):
+        return False
+
+
 def complete_dummy_model_test(body):
     lease = MODEL_TESTS.get(body.get("test_id"))
     if not lease:
         return 409, {"error": {"message": "Test expired or already completed"}}
     result = {"test_id": body["test_id"], "outcome": "failed", "output": "", "output_truncated": False,
-              "assertions": [], "usage_available": False}
+              "assertions": [], "usage_available": False, "requested_model": lease["requested_model"],
+              "upstream_model": lease["model"], "response_model": "", "response_model_status": "missing"}
     if body.get("transport_failed"):
         return 200, dict(result, lease_retained=True, reason="Management connection failed; the lease remains until timeout")
     del MODEL_TESTS[body["test_id"]]
@@ -1525,20 +1556,21 @@ def complete_dummy_model_test(body):
     if not 200 <= body.get("status_code", 0) < 300:
         return 200, dict(result, reason="The model did not return a successful response")
     try:
-        output = json.loads(body.get("body", "")).get("output_text", "")
+        parsed = json.loads(body.get("body", ""))
+        output = parsed.get("output_text", "")
+        declared = parsed.get("model", "")
+        if isinstance(declared, str) and declared and len(declared.encode()) <= 256 and not any(ch.isspace() or ord(ch) < 32 for ch in declared):
+            result.update(response_model=declared, response_model_status="matched" if declared == lease["model"] else "different")
     except (ValueError, AttributeError):
         output = ""
     if not isinstance(output, str) or not output:
         return 200, dict(result, reason="No supported model text output")
     result.update(outcome="completed", output=output[:16384], output_truncated=len(output) > 16384)
-    expected = {"json": {"name": "Ada", "total": 42, "tags": ["blue", "red"]},
-                "logic": {"A": 4, "B": 2, "C": 1, "D": 3}}.get(lease["preset"])
+    preset = next((item for item in MODEL_TEST_PRESETS if item["id"] == lease["preset"]), {})
+    expected = preset.get("expected") if preset.get("assertion") == "Exact JSON object" else None
     if expected is not None:
-        try:
-            passed = json.loads(output) == expected
-        except ValueError:
-            passed = False
-        result["assertions"] = [{"name": "Exact JSON object", "passed": passed, "expected": json.dumps(expected)}]
+        passed = not result["output_truncated"] and model_test_exact_json(output, expected)
+        result["assertions"] = [{"name": "Exact JSON object", "passed": passed, "expected": expected}]
     return 200, result
 
 def team_account_runtime():
@@ -2168,10 +2200,10 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("url") == "https://model-test.dummy.invalid/responses":
                 prompt = json.loads(body.get("data", "{}")).get("input", "")
                 preset = next((item["id"] for item in MODEL_TEST_PRESETS if item["prompt"] == prompt), "free")
-                output = {"json": '{"name":"Ada","total":42,"tags":["blue","red"]}',
-                          "logic": '{"A":4,"B":2,"C":1,"D":3}',
-                          "code": "function firstUniqueChar(text) { return null; } // Demo response; review manually."}.get(preset, "Dummy model response for your custom prompt.")
-                self.send_json(200, {"status_code": 200, "body": json.dumps({"output_text": output})})
+                entry = next((item for item in MODEL_TEST_PRESETS if item["id"] == preset), {})
+                output = entry.get("expected") or {"code": "function firstUniqueChar(text) { return null; } // Demo response; review manually.",
+                          "pelican": '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"><circle cx="90" cy="125" r="35" fill="none" stroke="black"/><circle cx="235" cy="125" r="35" fill="none" stroke="black"/><text x="20" y="30">Dummy pelican preview</text></svg>'}.get(preset, "Dummy model response for your custom prompt.")
+                self.send_json(200, {"status_code": 200, "body": json.dumps({"output_text": output, "model": json.loads(body.get("data", "{}")).get("model", "")})})
                 return
             auth_index = body.get("auth_index", "")
             auth_file = next((item for item in AUTH_FILES if item["auth_index"] == auth_index), None)
