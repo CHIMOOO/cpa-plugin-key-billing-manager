@@ -1179,5 +1179,7 @@
   "ui.team_device_completed_before_cancel": "Authorization completed before cancellation and the account was saved. Connect its channel or delete it from Integrations.",
   "ui.team_device_cancel_failed": "Could not confirm cancellation on the server. The pending sign-in expires automatically.",
   "ui.team_quota_unavailable": "Quota unavailable",
-  "ui.team_quota_not_queried": "Quota not queried"
+  "ui.team_quota_not_queried": "Quota not queried",
+  "backend.turn_state_proxy_minimum_invalid": "The minimum retained proxy count must be between 1 and 40000",
+  "backend.turn_state_proxy_removal_save_failed": "Cannot save automatic proxy removal; the proxy was retained and probing will continue"
 }

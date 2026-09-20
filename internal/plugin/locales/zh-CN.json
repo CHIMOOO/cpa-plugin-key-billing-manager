@@ -1179,5 +1179,7 @@
   "ui.team_device_completed_before_cancel": "取消前授权已完成，账号已经保存。请在接入账号页接入渠道，或删除此账号。",
   "ui.team_device_cancel_failed": "未能确认服务端已取消登录，待授权会话会自动过期。",
   "ui.team_quota_unavailable": "额度不可用",
-  "ui.team_quota_not_queried": "额度未查询"
+  "ui.team_quota_not_queried": "额度未查询",
+  "backend.turn_state_proxy_minimum_invalid": "最少保留代理条数必须在 1 至 40000 之间",
+  "backend.turn_state_proxy_removal_save_failed": "无法保存自动丢弃结果，已保留本条代理，继续探测"
 }

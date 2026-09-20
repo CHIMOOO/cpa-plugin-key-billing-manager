@@ -20,22 +20,28 @@ type Credential struct {
 type ProbeResponse struct {
 	Status int
 	Value  string
+	// ProxyFailure is set only by the transport after a connection or proxy
+	// authentication failure, never by upstream account or quota responses.
+	ProxyFailure bool
 }
 
 type ProbeResult struct {
-	Action        string           `json:"action"`
-	Reason        string           `json:"reason"`
-	ReasonMessage messages.Message `json:"reason_message,omitzero"`
-	Account       string           `json:"account,omitempty"`
-	Model         string           `json:"model,omitempty"`
-	Exit          string           `json:"exit,omitempty"`
-	Status        int              `json:"status,omitempty"`
-	Length        int              `json:"length,omitempty"`
-	NextCheckAt   time.Time        `json:"next_check_at"`
-	ProxyIndex    int              `json:"proxy_index,omitempty"`
-	ProxyTotal    int              `json:"proxy_total,omitempty"`
-	ProxyPool     string           `json:"proxy_pool,omitempty"`
-	ProxyAttempt  int              `json:"proxy_attempt,omitempty"`
+	Action              string           `json:"action"`
+	Reason              string           `json:"reason"`
+	ReasonMessage       messages.Message `json:"reason_message,omitzero"`
+	Account             string           `json:"account,omitempty"`
+	Model               string           `json:"model,omitempty"`
+	Exit                string           `json:"exit,omitempty"`
+	Status              int              `json:"status,omitempty"`
+	Length              int              `json:"length,omitempty"`
+	NextCheckAt         time.Time        `json:"next_check_at"`
+	ProxyIndex          int              `json:"proxy_index,omitempty"`
+	ProxyTotal          int              `json:"proxy_total,omitempty"`
+	ProxyPool           string           `json:"proxy_pool,omitempty"`
+	ProxyAttempt        int              `json:"proxy_attempt,omitempty"`
+	ProxyDisposition    string           `json:"proxy_disposition,omitempty"`
+	ProxyRemaining      int              `json:"proxy_remaining,omitempty"`
+	ProxyConfigRevision string           `json:"proxy_config_revision,omitempty"`
 }
 
 type ProbeProgress struct {
@@ -325,16 +331,33 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		t := m.state.Templates[key(c.account, c.model)]
 		m.state.Cooldowns[c.cooldownKey] = cooldown{Until: templateRenewAt(t, m.state.Config), RenewalBucket: key(c.account, c.model)}
 	}
+	oldConfig := m.state.Config
+	removed := m.discardProbeProxyLocked(c, response, &result)
 	// next_check_at is a global scheduling hint, not necessarily this account's
 	// cooldown: another saved account can be probed by the next bounded call.
 	if err := m.persistLocked(); err != nil {
+		m.state.Config = oldConfig
 		m.state.Cooldowns[c.cooldownKey] = oldExitCooldown
 		if hadCooldown {
 			m.state.Cooldowns[accountCooldownKey] = oldCooldown
 		} else {
 			delete(m.state.Cooldowns, accountCooldownKey)
 		}
+		if removed {
+			// Keep the last committed pool when storage fails. Return a safe,
+			// explicit observation so the polling runner can try another exit.
+			result.Action = "error"
+			result.Reason = "Cannot save automatic proxy removal; the proxy was retained and probing will continue"
+			result.ReasonMessage = messages.Literal(result.Reason)
+			result.ProxyDisposition = "retained_persistence_error"
+			result.ProxyRemaining = len(oldConfig.ProbeProxies) + len(oldConfig.ProbeProxiesRotating)
+			return result, nil
+		}
 		return ProbeResult{}, err
+	}
+	if removed {
+		m.configRevision++
+		result.ProxyConfigRevision = m.configRevisionTokenLocked()
 	}
 	return result, nil
 }

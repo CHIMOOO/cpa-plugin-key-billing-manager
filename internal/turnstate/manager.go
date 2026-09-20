@@ -25,24 +25,27 @@ import (
 const Header = "X-Codex-Turn-State"
 
 type Config struct {
-	Enabled              bool     `json:"enabled"`
-	InjectMode           string   `json:"inject_mode"`
-	DryRun               bool     `json:"dry_run"`
-	LearnResponses       bool     `json:"learn_responses"`
-	TemplateLength       int      `json:"template_length"`
-	ReplaceLength        int      `json:"replace_length"`
-	TTLSeconds           int      `json:"ttl_seconds"`
-	RenewBeforeMinutes   int      `json:"renew_before_minutes"`
-	Models               []string `json:"models"`
-	ProbeAccounts        []string `json:"probe_accounts"`
-	ProbeProxies         []string `json:"probe_proxies"`
-	ProbeProxiesRotating []string `json:"probe_proxies_rotating"`
+	Enabled                  bool     `json:"enabled"`
+	InjectMode               string   `json:"inject_mode"`
+	DryRun                   bool     `json:"dry_run"`
+	LearnResponses           bool     `json:"learn_responses"`
+	TemplateLength           int      `json:"template_length"`
+	ReplaceLength            int      `json:"replace_length"`
+	TTLSeconds               int      `json:"ttl_seconds"`
+	RenewBeforeMinutes       int      `json:"renew_before_minutes"`
+	Models                   []string `json:"models"`
+	ProbeAccounts            []string `json:"probe_accounts"`
+	ProbeProxies             []string `json:"probe_proxies"`
+	ProbeProxiesRotating     []string `json:"probe_proxies_rotating"`
+	ProbeDropFailedProxies   bool     `json:"probe_drop_failed_proxies"`
+	ProbeDropDegradedProxies bool     `json:"probe_drop_degraded_proxies"`
+	ProbeMinProxies          int      `json:"probe_min_proxies"`
 }
 
 func DefaultConfig() Config {
 	return Config{InjectMode: "replace-only", LearnResponses: true, TemplateLength: 292,
 		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
-		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}}
+		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10}
 }
 
 type Template struct {
@@ -89,16 +92,17 @@ type Counters struct {
 }
 
 type Status struct {
-	Config             Config         `json:"config"`
-	Templates          []TemplateView `json:"templates"`
-	Counters           Counters       `json:"counters"`
-	LastDecision       Decision       `json:"last_decision"`
-	ProxyCounts        map[string]int `json:"proxy_counts"`
-	ServerTime         time.Time      `json:"server_time"`
-	RenewalLeadSeconds int            `json:"renewal_lead_seconds"`
-	ProbeStats         ProbeStats     `json:"probe_stats"`
-	LastProbe          ProbeResult    `json:"last_probe"`
-	ProbeProgress      ProbeProgress  `json:"probe_progress"`
+	Config              Config         `json:"config"`
+	Templates           []TemplateView `json:"templates"`
+	Counters            Counters       `json:"counters"`
+	LastDecision        Decision       `json:"last_decision"`
+	ProxyCounts         map[string]int `json:"proxy_counts"`
+	ProxyConfigRevision string         `json:"proxy_config_revision"`
+	ServerTime          time.Time      `json:"server_time"`
+	RenewalLeadSeconds  int            `json:"renewal_lead_seconds"`
+	ProbeStats          ProbeStats     `json:"probe_stats"`
+	LastProbe           ProbeResult    `json:"last_probe"`
+	ProbeProgress       ProbeProgress  `json:"probe_progress"`
 }
 
 type pending struct {
@@ -223,6 +227,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.RenewBeforeMinutes < 0 || cfg.RenewBeforeMinutes > 59 || cfg.RenewBeforeMinutes*60 >= cfg.TTLSeconds {
 		return messages.Errorf("Renewal lead must be 0 (automatic) or 1–59 minutes and shorter than the template lifetime")
+	}
+	if cfg.ProbeMinProxies < 1 || cfg.ProbeMinProxies > 2*MaxProxyPoolEntries {
+		return messages.Errorf("The minimum retained proxy count must be between 1 and 40000")
 	}
 	var err error
 	if cfg.Models, err = cleanList(cfg.Models, 100); err != nil {
@@ -385,8 +392,9 @@ func (m *Manager) Status() Status {
 	cfg.Models = append([]string{}, cfg.Models...)
 	cfg.ProbeAccounts = append([]string{}, cfg.ProbeAccounts...)
 	counts := map[string]int{"static": len(cfg.ProbeProxies), "rotating": len(cfg.ProbeProxiesRotating)}
-	// Counts are sufficient for the editor, which never reloads saved secrets.
-	// Returning large masked pools makes every status refresh unnecessarily big.
+	// The editor loads credentials separately through revision-checked pages.
+	// A small revision lets it detect other tabs or a lost deletion response
+	// without returning the full pools on every status refresh.
 	cfg.ProbeProxies, cfg.ProbeProxiesRotating = []string{}, []string{}
 	rows := []TemplateView{}
 	for _, t := range m.state.Templates {
@@ -401,7 +409,8 @@ func (m *Manager) Status() Status {
 		progress = ProbeProgress{Active: true, Result: *m.activeProbe}
 	}
 	return Status{Config: cfg, Templates: rows, Counters: m.counters, LastDecision: m.last, ProxyCounts: counts,
-		ServerTime: now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
+		ProxyConfigRevision: m.configRevisionTokenLocked(),
+		ServerTime:          now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
 		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress}
 }
 

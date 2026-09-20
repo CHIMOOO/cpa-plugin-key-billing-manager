@@ -2,15 +2,18 @@ package turnstate
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -90,7 +93,41 @@ func runHTTPProbe(credential Credential, model, proxy string) (ProbeResponse, er
 		return ProbeResponse{}, err
 	}
 	defer transport.CloseIdleConnections()
-	return doHTTPProbe(client, probeEndpoint, credential, model)
+	var connectStatus atomic.Int32
+	transport.OnProxyConnectResponse = func(_ context.Context, _ *url.URL, _ *http.Request, response *http.Response) error {
+		connectStatus.Store(int32(response.StatusCode))
+		return nil
+	}
+	response, err := doHTTPProbe(client, probeEndpoint, credential, model)
+	if proxy != "" {
+		response.ProxyFailure = response.Status == http.StatusProxyAuthRequired || probeProxyFailure(err, int(connectStatus.Load()))
+	}
+	return response, err
+}
+
+// Account HTTP failures never arrive here as transport errors. CONNECT errors
+// have their own status: a gateway's policy/rate limit is not proof of a broken
+// proxy. Only 407 is an explicit proxy-authentication failure. Local malformed
+// requests, credential errors, and TLS trust errors are also not removal hints.
+func probeProxyFailure(err error, connectStatus int) bool {
+	if err == nil {
+		return false
+	}
+	if connectStatus != 0 && connectStatus != http.StatusOK {
+		return connectStatus == http.StatusProxyAuthRequired
+	}
+	if strings.Contains(err.Error(), "username/password authentication failed") || strings.Contains(err.Error(), "no acceptable authentication methods") {
+		return true
+	}
+	var networkError net.Error
+	if errors.As(err, &networkError) && networkError.Timeout() {
+		return true
+	}
+	var operationError *net.OpError
+	if errors.As(err, &operationError) {
+		return operationError.Op == "dial" || operationError.Op == "proxyconnect" || operationError.Op == "read" || operationError.Op == "write"
+	}
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
 }
 
 func doHTTPProbe(client *http.Client, endpoint string, credential Credential, model string) (ProbeResponse, error) {

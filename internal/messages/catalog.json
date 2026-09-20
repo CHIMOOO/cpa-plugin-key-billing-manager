@@ -997,6 +997,14 @@
     "key": "backend.turn_state_proxy_test_upstream_rejected",
     "formats": []
   },
+  "The minimum retained proxy count must be between 1 and 40000": {
+    "key": "backend.turn_state_proxy_minimum_invalid",
+    "formats": []
+  },
+  "Cannot save automatic proxy removal; the proxy was retained and probing will continue": {
+    "key": "backend.turn_state_proxy_removal_save_failed",
+    "formats": []
+  },
   "The proxy reached the Codex API without using an account": {
     "key": "backend.turn_state_proxy_test_reachable",
     "formats": []
