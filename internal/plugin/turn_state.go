@@ -41,6 +41,10 @@ func codexAuthFile(file hostAuthFile) bool {
 }
 
 func (a *App) getTurnState(_ ManagementRequest) ManagementResponse {
+	// Response learning publishes in memory without delaying the client on
+	// disk. This explicit management call commits pending templates; any save
+	// error remains visible in Status without flooding the plugin log.
+	_ = a.turnState.PersistLearned()
 	status := turnStateStatus{Status: a.turnState.Status(), ProbeAccounts: []turnStateAccount{},
 		ProbeSupported: true, HostRequirement: turnStateHostRequirement}
 	files, err := a.listHostAuthFiles()

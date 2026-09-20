@@ -991,7 +991,7 @@
   "ui.turn_state_test_proxies": "测试连通性",
   "ui.turn_state_remove_failed": "删除无效代理",
   "ui.turn_state_reload_proxies": "重新载入已保存代理（覆盖代理草稿）",
-  "ui.turn_state_proxy_help": "已保存的代理以明文显示；清空文本框并保存即可清空该池。支持 HTTP、HTTPS、SOCKS5、SOCKS5H。静态出口失败后冷却 55 分钟；轮换出口最多连试 10 次，失败后冷却 10 分钟。连通性测试使用当前文本框，删除后需保存才生效。IP 是连通性测试当时观察到的地址，轮换代理采集时可能使用其他 IP。上游 403/429 或降级状态不算无效代理。",
+  "ui.turn_state_proxy_help": "已保存的代理 URL 明文显示，保存空文本框会清空对应池。支持 HTTP、HTTPS、SOCKS5、SOCKS5H。失败的静态出口冷却 55 分钟；每个账号与模型的轮换池在 10 分钟窗口内共用 10 次机会，增加 URL 不会扩大预算。各桶轮流探测，避免坏账号阻塞续期。连通性检测和手动删除针对文本框内容，删除后需保存；连通不保证采集成功，轮换出口可能变化。 成功后按模板续采时间重新开启预算。",
   "ui.turn_state_direct": "直连",
   "ui.turn_state_invalid_proxy": "无效代理地址",
   "ui.turn_state_account": "账号 / 模型",
@@ -1351,5 +1351,14 @@
   "ui.group_account_switch_unverified": "已发送账号状态修改，但尚未核验最终状态。请先刷新账号列表再重试。",
   "ui.group_account_enabled": "已启用账号，对所有绑定分组生效。",
   "ui.group_account_disabled": "已停用账号，所有绑定分组的新请求均不再选择它。",
-  "ui.group_account_zero_weight": "权重为 0；启用账号不会修改其权重。"
+  "ui.group_account_zero_weight": "权重为 0；启用账号不会修改其权重。",
+  "ui.state_path_turn_state_runtime": "State 模板与冷却记录",
+  "ui.state_learn_save_failed": "业务学习模板未能保存（待保存 {count} 个），内存缓存仍可用。刷新状态可重试；成功保存前重启可能丢失这些新模板。",
+  "ui.state_learn_pending": "{count} 个业务学习模板已缓存到内存，等待下一次管理同步或探测保存。",
+  "ui.state_learn_persistence_help": "探测模板会立即保存；业务响应学习先写入内存，在管理同步或探测时保存，避免响应等待磁盘。",
+  "backend.turn_state_response_cached": "已缓存有效的业务响应模板；管理同步时将持久化保存",
+  "ui.state_renewal_continuity": "提前续采不会重置旧模板有效期；成功后切换到新模板，失败则保留旧模板至原到期时间。多账号可能排队或等待冷却，上游持续失败仍可能导致有效模板断档。",
+  "ui.state_renewing_valid": "续采中 · 旧模板仍可用",
+  "ui.state_renew_due_in": "距离续采窗口 {minutes} 分钟",
+  "ui.state_renew_due_now": "已进入续采窗口 · 等待采集"
 }

@@ -2630,6 +2630,8 @@
           <div class="card">
             <div class="row spread settings-section-header"><div><h3 data-i18n="ui.state_readiness">Bucket readiness</h3><p id="turn-state-template-summary" class="small muted"></p></div><div class="row"><button id="turn-state-clear-cooldowns" type="button" data-i18n="ui.state_clear_cooldowns">Clear cooldowns</button><button id="turn-state-clear-templates" class="danger" type="button" disabled data-i18n="ui.fork_clear_templates">Clear templates</button></div></div>
             <p class="access-help" data-i18n="ui.state_readiness_help">Each cell is one account × model. Use Actions to collect, test, clear cooldowns or remove its template. Remaining validity is shown in minutes.</p>
+            <p class="access-help" data-i18n="ui.state_renewal_continuity">Early renewal does not reset the current template's expiry. A successful new template replaces it; a failed attempt keeps the old template until its original expiry. Buckets may wait for other accounts or cooldowns, and persistent upstream failures can still leave a gap.</p>
+            <p id="turn-state-persistence-status" class="small muted" role="status"></p>
             <div id="turn-state-templates" class="turn-state-table"></div>
           </div>
           <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button data-state-save="scope" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
@@ -2644,7 +2646,7 @@
               </div>
               <div id="turn-state-proxy-load-status" class="small muted" role="status"></div><button id="turn-state-proxy-reload" type="button" class="hidden" data-i18n="ui.turn_state_reload_proxies">Reload saved proxies (replace proxy drafts)</button>
               <p class="access-help" data-i18n="ui.turn_state_pool_limits">Each pool supports up to 20,000 proxies; total settings size is limited to 16 MiB. Failed uploads keep the previous settings.</p>
-              <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes; rotating exits retry up to 10 times and cool down for 10 minutes. Connectivity testing checks the current editor; removal takes effect after saving. IP is the address observed during the connectivity test; rotating proxies may use another IP for collection. Upstream 403/429 or degraded states do not count as invalid proxies.</p>
+              <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes. Each account/model rotating pool shares 10 attempts per 10-minute window across all URLs. Buckets take turns so failed accounts do not prevent renewal. Connectivity checks and manual removal use the editor and require saving. Reachability does not guarantee collection; rotating exits may change. A successful collection restarts the budget at its next scheduled renewal.</p>
               <h4 data-i18n="ui.state_proxy_pruning">Automatic proxy removal during collection</h4>
               <div class="access-controls">
                 <label class="toggle-filter"><input id="turn-state-drop-failed" type="checkbox" disabled /><span data-i18n="ui.state_drop_failed">Discard failed proxies</span></label>
@@ -8885,15 +8887,29 @@
                   template.source === "probe"
                     ? m("ui.turn_state_source_probe")
                     : template.source === "response" ? m("ui.turn_state_source_response") : m("ui.turn_state_source_legacy");
+                const remainingMS = Date.parse(template.expires_at) - now;
+                const leadSeconds = state.renewal_lead_seconds;
+                const renewalMS = Number.isFinite(leadSeconds) && leadSeconds >= 0 ? remainingMS - leadSeconds * 1000 : null;
+                const progress = state.probe_progress;
+                const renewing = progress?.active && progress.result?.account === account && progress.result?.model === model;
                 return el(
                   "td",
                   {},
                   el("strong", {
                     class: Date.parse(template.expires_at) - now <= (state.renewal_lead_seconds || 0) * 1000 ? "tag warn" : "",
-                    text: m("ui.turn_state_remaining_minutes", {
-                      minutes: turnStateMinutes((Date.parse(template.expires_at) - now) / 60000)
-                    })
+                    text: m("ui.turn_state_remaining_minutes", { minutes: turnStateMinutes(Math.max(0.1, remainingMS / 60000)) })
                   }),
+                  renewing
+                    ? el("div", { class: "small", text: m("ui.state_renewing_valid") })
+                    : inScope && renewalMS !== null
+                      ? el("div", {
+                          class: "small muted",
+                          text:
+                            renewalMS > 0
+                              ? m("ui.state_renew_due_in", { minutes: turnStateMinutes(Math.max(0.1, renewalMS / 60000)) })
+                              : m("ui.state_renew_due_now")
+                        })
+                      : null,
                   el("div", { class: "small muted", text: m("ui.turn_state_template_detail", { length: template.length, source }) }),
                   template.exit
                     ? el("div", {
@@ -9280,6 +9296,14 @@
           m(!state.config.enabled ? "ui.state_disabled_badge" : state.config.dry_run ? "ui.state_observe_badge" : "ui.state_inject_badge")
         );
         setText($("turn-state-draft-status"), adminUIState.turnStateDirty ? m("ui.state_apply_unsaved") : m("ui.state_apply_saved"));
+        setText(
+          $("turn-state-persistence-status"),
+          state.persistence_error
+            ? m("ui.state_learn_save_failed", { count: state.pending_learned_count || 0 })
+            : state.pending_learned_count
+              ? m("ui.state_learn_pending", { count: state.pending_learned_count })
+              : m("ui.state_learn_persistence_help")
+        );
         document.querySelector(".state-save-bar").classList.toggle("has-changes", !!adminUIState.turnStateDirty);
         $("turn-state-clear-cooldowns").disabled =
           !!adminUIState.turnStateSaving || turnStateProbe.inFlight || turnStateDiagnostics.running || turnStateDiagnostics.inFlight;

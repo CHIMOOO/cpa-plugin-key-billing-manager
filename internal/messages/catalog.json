@@ -1263,5 +1263,9 @@
   "The API key's direct model rules and exclusive group have no models in common; access is denied": {
     "key": "backend.groups.exclusive_models_empty",
     "formats": []
+  },
+  "A valid response template was cached; management synchronization will persist it": {
+    "key": "backend.turn_state_response_cached",
+    "formats": []
   }
 }

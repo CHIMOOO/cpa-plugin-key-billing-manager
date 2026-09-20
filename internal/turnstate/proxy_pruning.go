@@ -3,8 +3,8 @@ package turnstate
 // discardProbeProxyLocked applies the optional policy to the exact configured
 // URL and pool used by this probe. The caller holds probeMu and mu and commits
 // the pool and cooldown changes in the same persistence transaction.
-func (m *Manager) discardProbeProxyLocked(c probeCandidate, response ProbeResponse, result *ProbeResult) bool {
-	cfg := &m.state.Config
+func discardProbeProxy(state *diskState, c probeCandidate, response ProbeResponse, result *ProbeResult) bool {
+	cfg := &state.Config
 	failed := response.ProxyFailure && (response.Status == 0 || response.Status == 407)
 	if c.proxy == "" || !(cfg.ProbeDropFailedProxies && failed || cfg.ProbeDropDegradedProxies && result.Action == "degraded") {
 		return false

@@ -18,10 +18,14 @@ func templateRenewAt(t Template, cfg Config) time.Time {
 // Legacy v0.0.5 cooldowns have no success marker and remain in force until their
 // original expiry; guessing from their deadline could reset a failed exit.
 func (m *Manager) rescheduleRenewalsLocked() {
-	for k, c := range m.state.Cooldowns {
-		if t, ok := m.state.Templates[c.RenewalBucket]; c.RenewalBucket != "" && ok {
-			c.Until = templateRenewAt(t, m.state.Config)
-			m.state.Cooldowns[k] = c
+	rescheduleRenewals(&m.state)
+}
+
+func rescheduleRenewals(state *diskState) {
+	for k, c := range state.Cooldowns {
+		if t, ok := state.Templates[c.RenewalBucket]; c.RenewalBucket != "" && ok {
+			c.Until = templateRenewAt(t, state.Config)
+			state.Cooldowns[k] = c
 		}
 	}
 }

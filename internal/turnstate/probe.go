@@ -147,34 +147,54 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 			m.probeStats.Failed++
 		}
 	}()
+	m.writerMu.Lock()
 	m.mu.Lock()
 	now := m.now()
 	m.pruneLocked(now)
-	candidate, result, ok := m.selectProbeLocked(account, model, now, available)
+	next := cloneState(m.state)
+	selector := Manager{state: next, lastMissingBucket: m.lastMissingBucket, lastRenewBucket: m.lastRenewBucket, renewalBurst: m.renewalBurst}
+	// A large pool may require scanning many cooling exits. Scan an immutable
+	// snapshot outside the business mutex; probeMu still fixes configuration
+	// and writerMu fixes the persisted cooldown state for this selection.
+	m.mu.Unlock()
+	pruneState(&next, now)
+	candidate, result, ok := selector.selectProbeLocked(account, model, now, available)
+	m.mu.Lock()
 	if !ok {
 		m.mu.Unlock()
+		m.writerMu.Unlock()
 		return result, nil
 	}
-	old, existed := m.state.Cooldowns[candidate.cooldownKey]
 	reserved := cooldown{Until: now.Add(55 * time.Minute)}
 	if candidate.rotating {
-		reserved = cooldown{Until: now.Add(10 * time.Minute), Attempts: old.Attempts + 1}
-	}
-	m.state.Cooldowns[candidate.cooldownKey] = reserved
-	if err := m.persistLocked(); err != nil {
-		if existed {
-			m.state.Cooldowns[candidate.cooldownKey] = old
-		} else {
-			delete(m.state.Cooldowns, candidate.cooldownKey)
+		budget := rotatingBudget(next, candidate.account, candidate.model, now)
+		if !budget.Until.After(now) {
+			budget = cooldown{Until: now.Add(10 * time.Minute)}
 		}
+		budget.Attempts++
+		next.Cooldowns[rotatingBudgetKey(candidate.account, candidate.model)] = budget
+		reserved = cooldown{Until: budget.Until, Attempts: 1}
+	}
+	next.Cooldowns[candidate.cooldownKey] = reserved
+	if err := m.commitStateLocked(next, false, ""); err != nil {
 		m.mu.Unlock()
+		m.writerMu.Unlock()
 		return ProbeResult{}, err
+	}
+	m.lastProbeBucket = key(candidate.account, candidate.model)
+	if t, exists := m.state.Templates[m.lastProbeBucket]; exists && m.usableLocked(t, now) {
+		m.lastRenewBucket = m.lastProbeBucket
+		m.renewalBurst++
+	} else {
+		m.renewalBurst = 0
+		m.lastMissingBucket = m.lastProbeBucket
 	}
 	progress := candidate.progress()
 	progress.Action = "probing"
 	m.activeProbe = &progress
 	m.probeStats.Attempts++
 	m.mu.Unlock()
+	m.writerMu.Unlock()
 	defer func() {
 		m.mu.Lock()
 		m.activeProbe = nil
@@ -190,6 +210,36 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 		return m.finishProbe(candidate, response, "The probe connection failed or exceeded 25 seconds; check the proxy and the network", 2*time.Second)
 	}
 	return m.finishProbe(candidate, response, "", 2*time.Second)
+}
+
+func rotatingBudgetKey(account, model string) string {
+	hash := sha256.Sum256([]byte(key(account, model)))
+	return "rotating:" + fmt.Sprintf("%x", hash)
+}
+
+// A bucket has one retry budget across the entire rotating pool. Existing
+// per-exit counters are conservatively combined when upgrading, so a restart
+// or adding another URL cannot multiply the account's upstream attempts.
+func rotatingBudget(state diskState, account, model string, now time.Time) cooldown {
+	if budget, exists := state.Cooldowns[rotatingBudgetKey(account, model)]; exists {
+		if budget.Until.After(now) {
+			return budget
+		}
+		return cooldown{}
+	}
+	var budget cooldown
+	for _, proxy := range state.Config.ProbeProxiesRotating {
+		previous := state.Cooldowns[proxyKey(account, model, proxy, true)]
+		if previous.RenewalBucket != "" || !previous.Until.After(now) {
+			continue
+		}
+		budget.Attempts += previous.Attempts
+		if previous.Until.After(budget.Until) {
+			budget.Until = previous.Until
+		}
+	}
+	budget.Attempts = min(10, budget.Attempts)
+	return budget
 }
 
 func (m *Manager) selectProbeLocked(account, model string, now time.Time, available func(string) bool) (probeCandidate, ProbeResult, bool) {
@@ -215,56 +265,105 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 	if len(statics) == 0 && len(cfg.ProbeProxiesRotating) == 0 {
 		statics = []string{""}
 	}
-	fresh := 0
-	availableAccounts := 0
-	for _, a := range accounts {
-		if available != nil && !available(a) {
+	earlier := func(at time.Time) {
+		if at.After(now) && at.Before(result.NextCheckAt) {
+			result.NextCheckAt = at
+		}
+	}
+	var renewing, missing []probeCandidate
+	fresh, eligible := 0, 0
+	for _, selectedAccount := range accounts {
+		if available != nil && !available(selectedAccount) {
 			continue
 		}
-		availableAccounts++
-		for _, model := range models {
-			if t, ok := m.state.Templates[key(a, model)]; ok {
-				renewAt := templateRenewAt(t, cfg)
+		eligible++
+		for _, selectedModel := range models {
+			template, hasTemplate := m.state.Templates[key(selectedAccount, selectedModel)]
+			hasTemplate = hasTemplate && m.usableLocked(template, now)
+			if hasTemplate {
+				renewAt := templateRenewAt(template, cfg)
 				if renewAt.After(now) {
 					fresh++
-					if renewAt.Before(result.NextCheckAt) {
-						result.NextCheckAt = renewAt
-					}
+					earlier(renewAt)
 					continue
 				}
 			}
-			if c := m.state.Cooldowns[accountKey(a)]; c.Until.After(now) {
-				if c.Until.Before(result.NextCheckAt) {
-					result.NextCheckAt = c.Until
-				}
+			if rest := m.state.Cooldowns[accountKey(selectedAccount)]; rest.Until.After(now) {
+				earlier(rest.Until)
 				continue
 			}
-			for poolIndex, pool := range [][]string{statics, cfg.ProbeProxiesRotating} {
-				for index, proxy := range pool {
-					rotating := poolIndex == 1
-					k := proxyKey(a, model, proxy, rotating)
-					c := m.state.Cooldowns[k]
-					if c.Until.After(now) && (!rotating || c.Attempts >= 10) {
-						if c.Until.Before(result.NextCheckAt) {
-							result.NextCheckAt = c.Until
+			var candidate probeCandidate
+			found := false
+			for index, proxy := range statics {
+				id := proxyKey(selectedAccount, selectedModel, proxy, false)
+				if rest := m.state.Cooldowns[id]; rest.Until.After(now) {
+					earlier(rest.Until)
+					continue
+				}
+				candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, index: index + 1, total: len(statics) + len(cfg.ProbeProxiesRotating), attempt: 1}
+				found = true
+				break
+			}
+			if !found && len(cfg.ProbeProxiesRotating) > 0 {
+				budget := rotatingBudget(m.state, selectedAccount, selectedModel, now)
+				if budget.Until.After(now) && budget.Attempts >= 10 {
+					earlier(budget.Until)
+				} else {
+					for offset := 0; offset < len(cfg.ProbeProxiesRotating); offset++ {
+						index := (budget.Attempts + offset) % len(cfg.ProbeProxiesRotating)
+						proxy := cfg.ProbeProxiesRotating[index]
+						id := proxyKey(selectedAccount, selectedModel, proxy, true)
+						rest := m.state.Cooldowns[id]
+						if rest.RenewalBucket != "" && rest.Until.After(now) {
+							earlier(rest.Until)
+							continue
 						}
-						continue
+						candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: true, index: len(statics) + index + 1, total: len(statics) + len(cfg.ProbeProxiesRotating), attempt: budget.Attempts + 1}
+						found = true
+						break
 					}
-					attempt := 1
-					if rotating {
-						index += len(statics)
-						attempt += c.Attempts
-					}
-					return probeCandidate{account: a, model: model, proxy: proxy, cooldownKey: k, rotating: rotating,
-						index: index + 1, total: len(statics) + len(cfg.ProbeProxiesRotating), attempt: attempt}, ProbeResult{}, true
+				}
+			}
+			if found {
+				if hasTemplate {
+					renewing = append(renewing, candidate)
+				} else {
+					missing = append(missing, candidate)
 				}
 			}
 		}
 	}
-	if available != nil && availableAccounts == 0 {
+	if available != nil && eligible == 0 {
 		return probeCandidate{}, ProbeResult{Action: "error", Reason: "No eligible Codex OAuth accounts are available", NextCheckAt: now.Add(time.Minute)}, false
 	}
-	if fresh == availableAccounts*len(models) {
+	// Renew active business buckets first, with a bounded burst so a persistently
+	// bad renewal cannot starve new buckets. Within each class every bucket gets
+	// one attempt before an earlier bucket gets another, regardless of pool size.
+	candidates, cursor := missing, m.lastMissingBucket
+	if len(renewing) > 0 && (len(missing) == 0 || m.renewalBurst < 3) {
+		candidates, cursor = renewing, m.lastRenewBucket
+	}
+	if len(candidates) > 0 {
+		selected := 0
+		// Compare against the configured order even when the prior bucket is now
+		// fresh/cooling and therefore absent from this call's candidate set.
+		order := make(map[string]int, len(accounts)*len(models))
+		for ai, a := range accounts {
+			for mi, md := range models {
+				order[key(a, md)] = ai*len(models) + mi
+			}
+		}
+		if previous, exists := order[cursor]; exists {
+			for index, candidate := range candidates {
+				if order[key(candidate.account, candidate.model)] > previous {
+					selected = index
+					break
+				}
+			}
+		}
+		return candidates[selected], ProbeResult{}, true
+	}
+	if fresh == eligible*len(models) {
 		result.Action, result.Reason = "fresh", "All templates are fresh; probing resumes shortly before expiry"
 	}
 	return probeCandidate{}, result, false
@@ -279,9 +378,13 @@ func renewalLead(ttl int) time.Duration {
 }
 
 func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure string, rest time.Duration) (ProbeResult, error) {
+	m.writerMu.Lock()
+	defer m.writerMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
+	next := cloneState(m.state)
+	pruneState(&next, now)
 	result := c.progress()
 	result.Status, result.Length, result.NextCheckAt = response.Status, len(response.Value), now.Add(2*time.Second)
 	switch {
@@ -296,64 +399,62 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	case response.Status != 200:
 		result.ReasonMessage = messages.New("The upstream returned HTTP %d; no template was harvested", response.Status)
 		result.Action, result.Reason = "error", result.ReasonMessage.Text
-	case len(response.Value) == m.state.Config.TemplateLength:
+	case len(response.Value) == next.Config.TemplateLength:
 		issued, parsed := issuedAt(response.Value)
-		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued}
-		if !parsed || !m.usableLocked(incoming, now) {
+		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now}
+		if !parsed || !usableWithConfig(incoming, next.Config, now) {
 			result.Action, result.Reason = "error", "The response length matches, but its Fernet timestamp is invalid, in the future, or expired"
 			break
 		}
-		if previous, exists := m.state.Templates[key(c.account, c.model)]; exists && m.usableLocked(previous, now) && !issued.After(previous.IssuedAt) {
+		bucket := key(c.account, c.model)
+		if previous, exists := next.Templates[bucket]; exists && usableWithConfig(previous, next.Config, now) && !issued.After(previous.IssuedAt) {
 			result.Action, result.Reason = "unchanged", "The upstream returned the same or an older template; its original expiry was not extended"
 			break
 		}
-		if err := m.learnFromLocked(c.account, c.model, response.Value, now, "probe", maskProxy(c.proxy)); err != nil {
-			return ProbeResult{}, err
-		}
-		if t, ok := m.state.Templates[key(c.account, c.model)]; ok && t.Value == response.Value && t.IssuedAt.Equal(issued) && m.usableLocked(t, now) {
-			result.Action, result.Reason = "harvested", "A valid template was harvested and saved for this account and model"
-		} else {
-			result.Action, result.Reason = "error", "The response template was not saved or renewed"
-		}
-	case len(response.Value) == m.state.Config.ReplaceLength:
+		next.Templates[bucket] = incoming
+		result.Action, result.Reason = "harvested", "A valid template was harvested and saved for this account and model"
+	case len(response.Value) == next.Config.ReplaceLength:
 		result.Action, result.Reason = "degraded", "A degraded-length state was received and not saved; the next probe follows the exit pool retry rules"
 	default:
 		result.Action, result.Reason = "error", "The response did not contain a turn-state of the configured template length"
 	}
-	accountCooldownKey := accountKey(c.account)
-	oldCooldown, hadCooldown := m.state.Cooldowns[accountCooldownKey]
-	m.state.Cooldowns[accountCooldownKey] = cooldown{Until: now.Add(rest)}
-	oldExitCooldown := m.state.Cooldowns[c.cooldownKey]
+	next.Cooldowns[accountKey(c.account)] = cooldown{Until: now.Add(rest)}
 	if result.Action == "harvested" {
-		// A successful exit may be reused when its template needs renewal.
-		// Keeping the failure budget of 55 minutes would outlive short TTLs,
-		// and even the default TTL when the returned template is already old.
-		t := m.state.Templates[key(c.account, c.model)]
-		m.state.Cooldowns[c.cooldownKey] = cooldown{Until: templateRenewAt(t, m.state.Config), RenewalBucket: key(c.account, c.model)}
+		bucket := key(c.account, c.model)
+		next.Cooldowns[c.cooldownKey] = cooldown{Until: templateRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
+		if c.rotating {
+			// A successful bucket starts a fresh attempt budget when its new
+			// template is due. Failure budgets must not postpone short-TTL
+			// renewals or preserve nine old failures after a successful tenth.
+			next.Cooldowns[rotatingBudgetKey(c.account, c.model)] = cooldown{Until: templateRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
+		}
 	}
-	oldConfig := m.state.Config
-	removed := m.discardProbeProxyLocked(c, response, &result)
-	// next_check_at is a global scheduling hint, not necessarily this account's
-	// cooldown: another saved account can be probed by the next bounded call.
-	if err := m.persistLocked(); err != nil {
-		m.state.Config = oldConfig
-		m.state.Cooldowns[c.cooldownKey] = oldExitCooldown
-		if hadCooldown {
-			m.state.Cooldowns[accountCooldownKey] = oldCooldown
-		} else {
-			delete(m.state.Cooldowns, accountCooldownKey)
+	removed := discardProbeProxy(&next, c, response, &result)
+	if err := m.commitStateLocked(next, removed, ""); err != nil {
+		if response.Status == 401 || response.Status == 403 || response.Status == 429 {
+			// Upstream refusals are safety observations, not a tentative admin
+			// edit. Keep the account pause in memory even on a disk failure,
+			// and retry its persistence through management synchronization.
+			id := accountKey(c.account)
+			pause := cooldown{Until: now.Add(rest)}
+			if previous := m.state.Cooldowns[id]; previous.Until.After(pause.Until) {
+				pause = previous
+			}
+			m.state.Cooldowns[id] = pause
+			m.runtimeDirty = true
 		}
 		if removed {
-			// Keep the last committed pool when storage fails. Return a safe,
-			// explicit observation so the polling runner can try another exit.
 			result.Action = "error"
 			result.Reason = "Cannot save automatic proxy removal; the proxy was retained and probing will continue"
 			result.ReasonMessage = messages.Literal(result.Reason)
 			result.ProxyDisposition = "retained_persistence_error"
-			result.ProxyRemaining = len(oldConfig.ProbeProxies) + len(oldConfig.ProbeProxiesRotating)
+			result.ProxyRemaining = len(m.state.Config.ProbeProxies) + len(m.state.Config.ProbeProxiesRotating)
 			return result, nil
 		}
 		return ProbeResult{}, err
+	}
+	if result.Action == "harvested" {
+		m.recordLocked("harvest", "A valid template was saved", c.account, c.model, now)
 	}
 	if removed {
 		m.configRevision++

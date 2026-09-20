@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -103,12 +102,15 @@ type Status struct {
 	ProbeStats          ProbeStats     `json:"probe_stats"`
 	LastProbe           ProbeResult    `json:"last_probe"`
 	ProbeProgress       ProbeProgress  `json:"probe_progress"`
+	PendingLearnedCount int            `json:"pending_learned_count"`
+	PersistenceError    string         `json:"persistence_error,omitempty"`
 }
 
 type pending struct {
 	Account string
 	Model   string
 	At      time.Time
+	Epoch   uint64
 }
 
 type cooldown struct {
@@ -118,36 +120,52 @@ type cooldown struct {
 }
 
 type diskState struct {
-	Version   int                 `json:"version"`
-	Config    Config              `json:"config"`
-	Templates map[string]Template `json:"templates"`
-	Cooldowns map[string]cooldown `json:"cooldowns,omitempty"`
+	Version      int                 `json:"version"`
+	CheckpointID string              `json:"checkpoint_id,omitempty"`
+	Config       Config              `json:"config"`
+	Templates    map[string]Template `json:"templates"`
+	Cooldowns    map[string]cooldown `json:"cooldowns,omitempty"`
 }
 
 // Manager never starts goroutines or timers. Expiry and cooldown pruning run
 // synchronously inside host callbacks. Raw state is never returned by Status.
 type Manager struct {
-	mu              sync.Mutex
-	probeMu         sync.Mutex
-	path            string
-	state           diskState
-	pending         map[string]pending
-	counters        Counters
-	last            Decision
-	uploads         map[string]*configUpload
-	configRevision  uint64
-	revisionToken   string
-	revisionTokenAt uint64
-	now             func() time.Time
-	runProbe        func(Credential, string, string) (ProbeResponse, error)
-	activeProbe     *ProbeResult
-	probeStats      ProbeStats
-	lastProbe       ProbeResult
+	mu                sync.Mutex
+	probeMu           sync.Mutex
+	writerMu          sync.Mutex
+	path              string
+	state             diskState
+	pending           map[string]pending
+	counters          Counters
+	last              Decision
+	uploads           map[string]*configUpload
+	configRevision    uint64
+	revisionToken     string
+	revisionTokenAt   uint64
+	now               func() time.Time
+	runProbe          func(Credential, string, string) (ProbeResponse, error)
+	activeProbe       *ProbeResult
+	probeStats        ProbeStats
+	lastProbe         ProbeResult
+	basePath          string
+	baseDigest        string
+	dirtyTemplates    map[string]Template
+	templateEpoch     uint64
+	allTemplateEpoch  uint64
+	clearedTemplates  map[string]uint64
+	lastProbeBucket   string
+	lastMissingBucket string
+	lastRenewBucket   string
+	renewalBurst      int
+	prunedAt          time.Time
+	writeState        func(string, []byte) error
+	persistenceError  string
+	runtimeDirty      bool
 }
 
 func New() *Manager {
 	return &Manager{state: diskState{Version: 1, Config: DefaultConfig(), Templates: map[string]Template{}, Cooldowns: map[string]cooldown{}},
-		pending: map[string]pending{}, now: time.Now, runProbe: runHTTPProbe}
+		pending: map[string]pending{}, dirtyTemplates: map[string]Template{}, clearedTemplates: map[string]uint64{}, now: time.Now, runProbe: runHTTPProbe}
 }
 
 // Configure stores turn-state data beside (not inside) the billing database.
@@ -162,50 +180,86 @@ func (m *Manager) Configure(billingPath string) error {
 func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 	m.probeMu.Lock()
 	defer m.probeMu.Unlock()
+	m.writerMu.Lock()
+	defer m.writerMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	path := billingPath + ".turn-state.json"
 	if path == m.path {
 		if apply != nil {
-			return apply()
+			m.mu.Unlock()
+			err := apply()
+			m.mu.Lock()
+			return err
 		}
 		return nil
 	}
+	// Loading/validating a different sidecar and the companion configuration
+	// must not hold the mutex used by active business requests.
+	m.mu.Unlock()
 	state := diskState{Version: 1, Config: DefaultConfig(), Templates: map[string]Template{}, Cooldowns: map[string]cooldown{}}
-	raw, err := os.ReadFile(path)
-	if err == nil {
-		if err := json.Unmarshal(raw, &state); err != nil {
+	base := ""
+	load := func() error {
+		raw, err := os.ReadFile(path)
+		if err == nil {
+			base = stateDigest(raw)
+			if err := json.Unmarshal(raw, &state); err != nil {
+				return messages.Errorf("Invalid turn-state state file")
+			}
+			if state.Version != 1 {
+				return messages.Errorf("Unsupported turn-state state file version")
+			}
+			// Correct only the shipped legacy default. Operator aliases, custom
+			// selections and intentionally empty scopes remain unchanged.
+			if len(state.Config.Models) == 2 && state.Config.Models[0] == "gpt6" && state.Config.Models[1] == "gpt-5.6-sol" {
+				state.Config.Models = DefaultConfig().Models
+			}
+			if err := validateConfig(&state.Config); err != nil {
+				return messages.Errorf("Invalid turn-state state configuration: %w", err)
+			}
+			if err := os.Chmod(path, 0o600); err != nil {
+				return messages.Errorf("Cannot restrict turn-state state file permissions")
+			}
+		} else if !os.IsNotExist(err) {
+			return messages.Errorf("Cannot read the turn-state state file")
+		} else if _, runtimeErr := os.Stat(path + ".runtime.json"); runtimeErr == nil || !os.IsNotExist(runtimeErr) {
+			// Restoring an overlay without its base must fail explicitly instead
+			// of silently treating durable templates as an empty new setup.
 			return messages.Errorf("Invalid turn-state state file")
 		}
-		if state.Version != 1 {
-			return messages.Errorf("Unsupported turn-state state file version")
+		if state.Templates == nil {
+			state.Templates = map[string]Template{}
 		}
-		// Correct only the shipped legacy default. Operator aliases, custom
-		// selections and intentionally empty scopes remain unchanged.
-		if len(state.Config.Models) == 2 && state.Config.Models[0] == "gpt6" && state.Config.Models[1] == "gpt-5.6-sol" {
-			state.Config.Models = DefaultConfig().Models
+		if state.Cooldowns == nil {
+			state.Cooldowns = map[string]cooldown{}
 		}
-		if err := validateConfig(&state.Config); err != nil {
-			return messages.Errorf("Invalid turn-state state configuration: %w", err)
+		if base != "" {
+			if err := loadRuntime(path, base, &state); err != nil {
+				return err
+			}
 		}
-		if err := os.Chmod(path, 0o600); err != nil {
-			return messages.Errorf("Cannot restrict turn-state state file permissions")
+		if apply != nil {
+			if err := apply(); err != nil {
+				return err
+			}
 		}
-	} else if !os.IsNotExist(err) {
-		return messages.Errorf("Cannot read the turn-state state file")
+		return nil
 	}
-	if state.Templates == nil {
-		state.Templates = map[string]Template{}
-	}
-	if state.Cooldowns == nil {
-		state.Cooldowns = map[string]cooldown{}
-	}
-	if apply != nil {
-		if err := apply(); err != nil {
-			return err
-		}
+	err := load()
+	m.mu.Lock()
+	if err != nil {
+		return err
 	}
 	m.path, m.state = path, state
+	m.basePath, m.baseDigest = path, base
+	m.dirtyTemplates = map[string]Template{}
+	m.persistenceError = ""
+	m.runtimeDirty = false
+	m.templateEpoch++
+	m.allTemplateEpoch = m.templateEpoch
+	m.clearedTemplates = map[string]uint64{}
+	m.lastProbeBucket, m.lastRenewBucket, m.lastMissingBucket = "", "", ""
+	m.prunedAt = time.Time{}
 	m.uploads = nil
 	m.configRevision++
 	m.pending = map[string]pending{}
@@ -308,6 +362,8 @@ func (m *Manager) Update(raw []byte) error {
 	// Probe holds this same gate for the whole bounded HTTP call.
 	m.probeMu.Lock()
 	defer m.probeMu.Unlock()
+	m.writerMu.Lock()
+	defer m.writerMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.updateLocked(raw)
@@ -317,53 +373,61 @@ func (m *Manager) updateLocked(raw []byte) error {
 	if len(raw) > MaxConfigBytes {
 		return messages.Errorf("Turn-state settings must not exceed 16 MiB")
 	}
-	cfg := cloneConfig(m.state.Config)
-	input := struct {
-		*Config
-		ExpectedRevision string `json:"expected_revision,omitempty"`
-	}{Config: &cfg}
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&input); err != nil {
-		return messages.Errorf("Invalid turn-state configuration format")
-	}
-	if decoder.Decode(&struct{}{}) != io.EOF {
-		return messages.Errorf("Turn-state configuration must contain exactly one JSON object")
-	}
-	if input.ExpectedRevision != "" && input.ExpectedRevision != m.configRevisionTokenLocked() {
-		return messages.Errorf("Settings changed since proxies were loaded; reload the saved proxies and retry")
-	}
-	if err := validateConfig(&cfg); err != nil {
-		return err
-	}
-	for _, pool := range [][]string{cfg.ProbeProxies, cfg.ProbeProxiesRotating} {
-		for _, proxy := range pool {
-			if strings.Contains(proxy, "***") {
-				return messages.Errorf("Enter the complete proxy URL; omit the proxy field to preserve its current value")
+	currentConfig := m.state.Config
+	currentRevision := m.configRevisionTokenLocked()
+	m.mu.Unlock()
+	cfg := cloneConfig(currentConfig)
+	validate := func() error {
+		input := struct {
+			*Config
+			ExpectedRevision string `json:"expected_revision,omitempty"`
+		}{Config: &cfg}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&input); err != nil {
+			return messages.Errorf("Invalid turn-state configuration format")
+		}
+		if decoder.Decode(&struct{}{}) != io.EOF {
+			return messages.Errorf("Turn-state configuration must contain exactly one JSON object")
+		}
+		if input.ExpectedRevision != "" && input.ExpectedRevision != currentRevision {
+			return messages.Errorf("Settings changed since proxies were loaded; reload the saved proxies and retry")
+		}
+		if err := validateConfig(&cfg); err != nil {
+			return err
+		}
+		for _, pool := range [][]string{cfg.ProbeProxies, cfg.ProbeProxiesRotating} {
+			for _, proxy := range pool {
+				if strings.Contains(proxy, "***") {
+					return messages.Errorf("Enter the complete proxy URL; omit the proxy field to preserve its current value")
+				}
 			}
 		}
+		return nil
 	}
-	old := m.state.Config
-	oldTemplates := m.state.Templates
-	oldCooldowns := m.state.Cooldowns
-	m.state.Cooldowns = make(map[string]cooldown, len(oldCooldowns))
-	for k, v := range oldCooldowns {
-		m.state.Cooldowns[k] = v
-	}
-	m.state.Templates = make(map[string]Template, len(oldTemplates))
-	for k, v := range oldTemplates {
-		m.state.Templates[k] = v
-	}
-	m.state.Config = cfg
-	if old.TTLSeconds != cfg.TTLSeconds || old.RenewBeforeMinutes != cfg.RenewBeforeMinutes {
-		m.rescheduleRenewalsLocked()
-	}
-	m.pruneLocked(m.now())
-	if err := m.persistLocked(); err != nil {
-		m.state.Config = old
-		m.state.Templates = oldTemplates
-		m.state.Cooldowns = oldCooldowns
+	err := validate()
+	m.mu.Lock()
+	if err != nil {
 		return err
+	}
+	next := cloneState(m.state)
+	// A larger TTL must not resurrect a template that had already expired
+	// under the previously active policy, even between lazy cleanup passes.
+	pruneState(&next, m.now())
+	next.Config = cfg
+	pruneState(&next, m.now())
+	if currentConfig.TTLSeconds != cfg.TTLSeconds || currentConfig.RenewBeforeMinutes != cfg.RenewBeforeMinutes {
+		rescheduleRenewals(&next)
+	}
+	if err := m.commitStateLocked(next, true, ""); err != nil {
+		return err
+	}
+	// Existing in-flight responses cannot repopulate templates invalidated by
+	// a template-rule change after the new settings become active.
+	if currentConfig.TTLSeconds != cfg.TTLSeconds || currentConfig.TemplateLength != cfg.TemplateLength || currentConfig.LearnResponses != cfg.LearnResponses || currentConfig.Enabled != cfg.Enabled {
+		m.templateEpoch++
+		m.allTemplateEpoch = m.templateEpoch
+		m.clearedTemplates = map[string]uint64{}
 	}
 	m.configRevision++
 	return nil
@@ -398,6 +462,9 @@ func (m *Manager) Status() Status {
 	cfg.ProbeProxies, cfg.ProbeProxiesRotating = []string{}, []string{}
 	rows := []TemplateView{}
 	for _, t := range m.state.Templates {
+		if !m.usableLocked(t, now) {
+			continue
+		}
 		expiresAt := t.IssuedAt.Add(time.Duration(cfg.TTLSeconds) * time.Second)
 		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt,
 			ExpiresAt: expiresAt, Length: len(t.Value), RemainingSeconds: int64(expiresAt.Sub(now) / time.Second),
@@ -409,6 +476,7 @@ func (m *Manager) Status() Status {
 		progress = ProbeProgress{Active: true, Result: *m.activeProbe}
 	}
 	return Status{Config: cfg, Templates: rows, Counters: m.counters, LastDecision: m.last, ProxyCounts: counts,
+		PendingLearnedCount: len(m.dirtyTemplates), PersistenceError: m.persistenceError,
 		ProxyConfigRevision: m.configRevisionTokenLocked(),
 		ServerTime:          now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
 		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress}
@@ -478,16 +546,28 @@ func issuedAt(value string) (time.Time, bool) {
 }
 
 func (m *Manager) usableLocked(t Template, now time.Time) bool {
+	return usableWithConfig(t, m.state.Config, now)
+}
+
+func usableWithConfig(t Template, cfg Config, now time.Time) bool {
 	issued, ok := issuedAt(t.Value)
-	return ok && validBucket(t.Account, t.Model) && len(t.Value) == m.state.Config.TemplateLength && issued.Equal(t.IssuedAt) &&
-		!issued.After(now) && now.Sub(issued) < time.Duration(m.state.Config.TTLSeconds)*time.Second
+	return ok && validBucket(t.Account, t.Model) && len(t.Value) == cfg.TemplateLength && issued.Equal(t.IssuedAt) &&
+		!issued.After(now) && now.Sub(issued) < time.Duration(cfg.TTLSeconds)*time.Second
 }
 
 func (m *Manager) pruneLocked(now time.Time) {
+	// Request admission validates its exact template independently. Full cache
+	// cleanup is opportunistic, at most once per minute, not once per token or
+	// request and never by a background task.
+	if !m.prunedAt.IsZero() && !now.Before(m.prunedAt) && now.Sub(m.prunedAt) < time.Minute {
+		return
+	}
+	m.prunedAt = now
 	m.pruneConfigUploadsLocked()
 	for k, t := range m.state.Templates {
 		if k != key(t.Account, t.Model) || !m.usableLocked(t, now) {
 			delete(m.state.Templates, k)
+			delete(m.dirtyTemplates, k)
 		}
 	}
 	for id, p := range m.pending {
@@ -525,11 +605,11 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 		return nil, nil
 	}
 	if requestID != "" && len(m.pending) < 4096 {
-		m.pending[requestID] = pending{Account: account, Model: model, At: now}
+		m.pending[requestID] = pending{Account: account, Model: model, At: now, Epoch: m.templateEpoch}
 	}
 	value := headerValue(headers)
 	t, ok := m.state.Templates[key(account, model)]
-	if !ok {
+	if !ok || !m.usableLocked(t, now) {
 		m.recordLocked("pass", "There is no valid template for this account and model", account, model, now)
 		return nil, nil
 	}
@@ -566,7 +646,7 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 	m.pruneLocked(now)
 	p, remembered := m.pending[requestID]
 	delete(m.pending, requestID)
-	if !remembered {
+	if !remembered || p.Epoch < m.allTemplateEpoch || p.Epoch < m.clearedTemplates[key(p.Account, p.Model)] {
 		if headerValue(headers) != "" {
 			m.recordLocked("skip", "The Codex request has no verifiable account attribution", account, model, now)
 		}
@@ -610,16 +690,8 @@ func (m *Manager) learnFromLocked(account, model, value string, now time.Time, s
 	}
 	m.state.Templates[k] = Template{Account: account, Model: model, Value: value, IssuedAt: timestamp,
 		Source: source, Exit: exit, HarvestedAt: now}
-	if err := m.persistLocked(); err != nil {
-		if exists {
-			m.state.Templates[k] = old
-		} else {
-			delete(m.state.Templates, k)
-		}
-		m.recordLocked("error", "Cannot save the template", account, model, now)
-		return err
-	}
-	m.recordLocked("harvest", "A valid template was saved", account, model, now)
+	m.dirtyTemplates[k] = m.state.Templates[k]
+	m.recordLocked("harvest", "A valid response template was cached; management synchronization will persist it", account, model, now)
 	return nil
 }
 
@@ -633,23 +705,22 @@ func (m *Manager) Clear(account, model string) error {
 	// Clear must not race with a probe whose response is about to be committed.
 	m.probeMu.Lock()
 	defer m.probeMu.Unlock()
+	m.writerMu.Lock()
+	defer m.writerMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if (account == "") != (model == "") {
 		return messages.Errorf("Both account and model are required to clear a single template")
 	}
-	old := m.state.Templates
-	m.state.Templates = map[string]Template{}
-	for k, t := range old {
-		if account != "" && k != key(account, model) {
-			m.state.Templates[k] = t
-		}
+	next := cloneState(m.state)
+	scope := "*"
+	if account == "" {
+		next.Templates = map[string]Template{}
+	} else {
+		scope = key(account, model)
+		delete(next.Templates, scope)
 	}
-	if err := m.persistLocked(); err != nil {
-		m.state.Templates = old
-		return err
-	}
-	return nil
+	return m.commitStateLocked(next, false, scope)
 }
 
 func (m *Manager) recordLocked(action, reason, account, model string, now time.Time) {
@@ -678,33 +749,4 @@ func headerValue(headers http.Header) string {
 		}
 	}
 	return ""
-}
-
-func (m *Manager) persistLocked() error {
-	if m.path == "" {
-		return messages.Errorf("The turn-state state file has not been configured")
-	}
-	if err := os.MkdirAll(filepath.Dir(m.path), 0o700); err != nil {
-		return messages.Errorf("Cannot create the turn-state state directory")
-	}
-	raw, err := json.Marshal(m.state)
-	if err != nil {
-		return messages.Errorf("Cannot encode the turn-state state")
-	}
-	f, err := os.CreateTemp(filepath.Dir(m.path), ".turn-state-*")
-	if err != nil {
-		return messages.Errorf("Cannot create a temporary turn-state file")
-	}
-	defer os.Remove(f.Name())
-	if _, err = f.Write(raw); err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil || closeErr != nil {
-		return messages.Errorf("Cannot write the turn-state state")
-	}
-	if err := os.Rename(f.Name(), m.path); err != nil {
-		return messages.Errorf("Cannot replace the turn-state state file")
-	}
-	return nil
 }

@@ -93,6 +93,8 @@ func (m *Manager) CommitConfigUpload(id string) error {
 	// Match Update's ordering so a probe cannot write across a config commit.
 	m.probeMu.Lock()
 	defer m.probeMu.Unlock()
+	m.writerMu.Lock()
+	defer m.writerMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pruneConfigUploadsLocked()

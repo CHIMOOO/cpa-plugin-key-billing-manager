@@ -17,6 +17,8 @@ func (m *Manager) ClearCooldowns(account, model string) (int, error) {
 	}
 	m.probeMu.Lock()
 	defer m.probeMu.Unlock()
+	m.writerMu.Lock()
+	defer m.writerMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
@@ -24,6 +26,7 @@ func (m *Manager) ClearCooldowns(account, model string) (int, error) {
 	selected := map[string]bool{}
 	if account != "" {
 		selected[accountKey(account)] = true
+		selected[rotatingBudgetKey(account, model)] = true
 		selected[proxyKey(account, model, "", false)] = true
 		for _, proxy := range m.state.Config.ProbeProxies {
 			selected[proxyKey(account, model, proxy, false)] = true
@@ -45,9 +48,9 @@ func (m *Manager) ClearCooldowns(account, model string) (int, error) {
 	if cleared == 0 {
 		return 0, nil
 	}
-	m.state.Cooldowns = next
-	if err := m.persistLocked(); err != nil {
-		m.state.Cooldowns = old
+	candidate := cloneState(m.state)
+	candidate.Cooldowns = next
+	if err := m.commitStateLocked(candidate, false, ""); err != nil {
 		return 0, err
 	}
 	return cleared, nil

@@ -196,7 +196,7 @@ func TestClearWaitsForInFlightProbe(t *testing.T) {
 	}
 }
 
-func TestProbePersistenceFailureRollsBackCooldown(t *testing.T) {
+func TestProbePersistenceFailureRetainsKnownAccountRefusal(t *testing.T) {
 	m, _ := newTestManager(t)
 	directory := filepath.Join(t.TempDir(), "directory")
 	if err := os.Mkdir(directory, 0o700); err != nil {
@@ -211,8 +211,8 @@ func TestProbePersistenceFailureRollsBackCooldown(t *testing.T) {
 	if _, err := m.Probe("", "", dummyCredential); err == nil {
 		t.Fatal("expected persistence failure")
 	}
-	if _, exists := m.state.Cooldowns[accountKey("account-a")]; exists {
-		t.Fatal("failed persistence left account cooldown mutation")
+	if _, exists := m.state.Cooldowns[accountKey("account-a")]; !exists {
+		t.Fatal("failed persistence discarded a known account refusal")
 	}
 }
 

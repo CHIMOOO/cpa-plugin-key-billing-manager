@@ -991,7 +991,7 @@
   "ui.turn_state_test_proxies": "Test connectivity",
   "ui.turn_state_remove_failed": "Remove failed proxies",
   "ui.turn_state_reload_proxies": "Reload saved proxies (replace proxy drafts)",
-  "ui.turn_state_proxy_help": "Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes; rotating exits retry up to 10 times and cool down for 10 minutes. Connectivity testing checks the current editor; removal takes effect after saving. IP is the address observed during the connectivity test; rotating proxies may use another IP for collection. Upstream 403/429 or degraded states do not count as invalid proxies.",
+  "ui.turn_state_proxy_help": "Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes. Each account/model rotating pool shares 10 attempts per 10-minute window across all URLs. Buckets take turns so failed accounts do not prevent renewal. Connectivity checks and manual removal use the editor and require saving. Reachability does not guarantee collection; rotating exits may change. A successful collection restarts the budget at its next scheduled renewal.",
   "ui.turn_state_direct": "Direct",
   "ui.turn_state_invalid_proxy": "Invalid proxy address",
   "ui.turn_state_account": "Account / model",
@@ -1351,5 +1351,14 @@
   "ui.group_account_switch_unverified": "The account change was sent but its final state could not be verified. Refresh the account list before retrying.",
   "ui.group_account_enabled": "Account enabled for all bound groups.",
   "ui.group_account_disabled": "Account disabled; new requests in all bound groups will exclude it.",
-  "ui.group_account_zero_weight": "Weight is zero; enabling this account does not change its weight."
+  "ui.group_account_zero_weight": "Weight is zero; enabling this account does not change its weight.",
+  "ui.state_path_turn_state_runtime": "State templates and cooldowns",
+  "ui.state_learn_save_failed": "Could not save learned templates ({count} pending). The memory cache remains available; refresh status to retry. Restarting before a successful save can lose these new templates.",
+  "ui.state_learn_pending": "{count} learned templates are cached in memory, awaiting the next management synchronization or probe save.",
+  "ui.state_learn_persistence_help": "Probes save templates immediately. Business response learning uses memory first and persists on management synchronization or a probe, keeping disk writes out of the response path.",
+  "backend.turn_state_response_cached": "A valid response template was cached; management synchronization will persist it",
+  "ui.state_renewal_continuity": "Early renewal does not reset the current template's expiry. A successful new template replaces it; a failed attempt keeps the old template until its original expiry. Buckets may wait for other accounts or cooldowns, and persistent upstream failures can still leave a gap.",
+  "ui.state_renewing_valid": "Renewing · the existing template is still valid",
+  "ui.state_renew_due_in": "Renewal window in {minutes} min",
+  "ui.state_renew_due_now": "Renewal window open · awaiting collection"
 }
