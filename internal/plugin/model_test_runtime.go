@@ -143,10 +143,9 @@ func modelTestAccountView(file hostAuthFile) modelTestAccount {
 	if !view.Supported {
 		view.Reason = "This account has no supported native model test protocol"
 	}
-	if view.Disabled {
-		view.Supported = false
-		view.Reason = "Enable this account before testing it"
-	}
+	// A management API-call targets this exact credential and bypasses normal
+	// account selection. Disabled accounts remain available for diagnostics;
+	// preparing a test never changes their business-routing enabled state.
 	view.ReasonMessage = messages.Literal(view.Reason)
 	return view
 }
@@ -219,8 +218,8 @@ func (a *App) modelTestAccount(index string) (hostAuthFile, error) {
 // not a claim that host.auth.get_runtime independently verified the index.
 func (a *App) modelTestSnapshotAccount(input modelTestPrepareInput) (hostAuthFile, error) {
 	cfg := input.Config
-	if cfg == nil || cfg.AuthIndex != input.AuthIndex || cfg.Disabled == nil || *cfg.Disabled || cfg.AuthID == "" || cfg.CredentialRef != billing.CredentialFingerprint(cfg.AuthID) {
-		return hostAuthFile{}, errors.New("Refresh the current enabled native account configuration and its exact auth index")
+	if cfg == nil || cfg.AuthIndex != input.AuthIndex || cfg.Disabled == nil || cfg.AuthID == "" || cfg.CredentialRef != billing.CredentialFingerprint(cfg.AuthID) {
+		return hostAuthFile{}, errors.New("Refresh the current native account configuration and its exact auth index")
 	}
 	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
 	kind := ""
@@ -237,7 +236,7 @@ func (a *App) modelTestSnapshotAccount(input modelTestPrepareInput) (hostAuthFil
 	if kind == "" || len(provider) > 160 || !regexp.MustCompile("^"+regexp.QuoteMeta(kind)+`:[a-f0-9]{12}(?:-[1-9][0-9]*)?$`).MatchString(cfg.AuthID) {
 		return hostAuthFile{}, errors.New("The native account identifier does not match its provider")
 	}
-	if saved, ok := a.store.ConfigCredentials()[cfg.CredentialRef]; ok && (saved.Disabled || !strings.EqualFold(saved.Provider, provider)) {
+	if saved, ok := a.store.ConfigCredentials()[cfg.CredentialRef]; ok && (saved.Disabled != *cfg.Disabled || !strings.EqualFold(saved.Provider, provider)) {
 		return hostAuthFile{}, errors.New("This native account conflicts with the current synchronized credential inventory")
 	}
 	a.routingMu.Lock()
@@ -247,7 +246,7 @@ func (a *App) modelTestSnapshotAccount(input modelTestPrepareInput) (hostAuthFil
 	if knownRef != "" && knownRef != cfg.CredentialRef || knownIDRef != "" && knownIDRef != cfg.CredentialRef {
 		return hostAuthFile{}, errors.New("This native account index conflicts with an observed host identity")
 	}
-	return hostAuthFile{ID: cfg.AuthID, AuthIndex: input.AuthIndex, Provider: provider, Source: "config", RuntimeOnly: true, BaseURL: cfg.BaseURL}, nil
+	return hostAuthFile{ID: cfg.AuthID, AuthIndex: input.AuthIndex, Provider: provider, Source: "config", RuntimeOnly: true, BaseURL: cfg.BaseURL, Disabled: *cfg.Disabled}, nil
 }
 
 func (a *App) prepareModelTest(req ManagementRequest) ManagementResponse {
@@ -286,8 +285,8 @@ func (a *App) prepareModelTest(req ManagementRequest) ManagementResponse {
 	account := modelTestAccountView(file)
 	account.IdentitySource = identitySource
 	if cfg := input.Config; cfg != nil {
-		if cfg.Disabled != nil && *cfg.Disabled || cfg.AuthID != "" && cfg.AuthID != file.ID || cfg.AuthIndex != "" && cfg.AuthIndex != file.AuthIndex || cfg.CredentialRef != "" && cfg.CredentialRef != account.CredentialRef {
-			return modelTestError(409, "The submitted native configuration does not match the selected enabled account")
+		if cfg.Disabled != nil && *cfg.Disabled != account.Disabled || cfg.AuthID != "" && cfg.AuthID != file.ID || cfg.AuthIndex != "" && cfg.AuthIndex != file.AuthIndex || cfg.CredentialRef != "" && cfg.CredentialRef != account.CredentialRef {
+			return modelTestError(409, "The submitted native configuration does not match the selected account")
 		}
 	}
 	if !account.Supported {

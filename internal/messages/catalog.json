@@ -83,7 +83,7 @@
     "key": "backend.model_test_integration_record",
     "formats": []
   },
-  "Refresh the current enabled native account configuration and its exact auth index": {
+  "Refresh the current native account configuration and its exact auth index": {
     "key": "backend.model_test_refresh_native_identity",
     "formats": []
   },
@@ -119,7 +119,7 @@
     "key": "backend.model_test_host_unsupported",
     "formats": []
   },
-  "The submitted native configuration does not match the selected enabled account": {
+  "The submitted native configuration does not match the selected account": {
     "key": "backend.model_test_configuration_mismatch",
     "formats": []
   },

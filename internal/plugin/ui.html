@@ -1585,6 +1585,24 @@
       }
       .integration-client-models { width: 100%; margin-top: 8px; overflow-wrap: anywhere; }
       #integration-device-status { overflow-wrap: anywhere; }
+      .settings-dialog.state-quality-dialog { width: min(1160px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
+      .state-quality-layout { display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 20px; align-items: start; }
+      .state-quality-layout > * { min-width: 0; }
+      .state-quality-dialog .model-test-account-list { max-height: 480px; }
+      .state-quality-dialog .field input { width: 100%; min-width: 0; }
+      .state-quality-presets { display: grid; gap: 10px; }
+      .state-quality-preset { padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 8px; min-width: 0; }
+      .state-quality-preset > label { cursor: pointer; }
+      .state-quality-preset details { margin-top: 8px; font-size: 12px; }
+      .state-quality-preset pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+      .state-quality-result details { margin-top: 12px; }
+      .state-quality-result h4 { margin: 14px 0 8px; }
+      .state-quality-dialog .dialog-actions { gap: 10px; flex-wrap: wrap; }
+      #state-quality-status, #state-quality-progress, .state-quality-result { overflow-wrap: anywhere; }
+      @media (max-width: 760px) {
+        .state-quality-layout { grid-template-columns: minmax(0, 1fr); }
+        .state-quality-dialog .model-test-account-list { max-height: 240px; }
+      }
       .model-test-layout { display: grid; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 16px; align-items: start; }
       .model-test-layout > *, .model-test-workspace { min-width: 0; }
       .model-test-accounts .field { margin: 12px 0; }
@@ -1598,19 +1616,14 @@
         padding: 10px;
         border: 1px solid var(--border-color);
         border-radius: 8px;
+        cursor: pointer;
       }
       .model-test-account-row.is-focused { border-color: var(--accent); background: var(--bg-secondary); }
+      .model-test-account-row:has(input:disabled) { cursor: default; }
       .model-test-account-row input { margin-top: 4px; }
       .model-test-account-info { min-width: 0; }
-      .model-test-account-info button {
-        padding: 0;
-        border: 0;
-        background: none;
-        text-align: left;
-        white-space: normal;
-        overflow-wrap: anywhere;
-      }
-      .model-test-account-info p { margin: 4px 0 0; overflow-wrap: anywhere; }
+      .model-test-account-name { display: block; overflow-wrap: anywhere; }
+      .model-test-account-detail { display: block; margin-top: 4px; overflow-wrap: anywhere; }
       .model-test-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
       .model-test-fields .field { min-width: 0; margin: 0; }
       .model-test-fields input, .model-test-fields select, .model-test-fields textarea { width: 100%; min-width: 0; }
@@ -2704,7 +2717,7 @@
             <div id="turn-state-observation-buckets" class="turn-state-table state-response-table"></div>
             <details class="state-logs"><summary data-i18n="ui.state_observation_events">Recent response State events</summary><div id="turn-state-observation-events" class="turn-state-table state-response-table"></div></details>
           </div>
-          <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button data-state-save="scope" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
+          <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button id="turn-state-quality-test" type="button" data-i18n="ui.state_quality_open">Check model quality</button><button data-state-save="scope" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
             <p class="access-help" data-i18n="ui.fork_select_accounts_for_active_probing_including_disabled_codex_accounts_probi">Select accounts for active probing, including disabled Codex accounts. Probing does not change account enablement. No selection means no active probes; learning from normal responses follows the switch above.</p>
             <p class="access-help" data-i18n="ui.state_upstream_http_help">Saving or starting collection turns off upstream WebSocket for the selected accounts and verifies HTTP/SSE routing. Clients may still connect to CPA through WebSocket. Existing sessions may need one reconnect; removing an account from collection does not turn its upstream WebSocket back on.</p>
             <div id="turn-state-transport-status" class="small muted" role="status"></div>
@@ -2763,6 +2776,22 @@
             <p class="access-help" data-i18n="ui.state_image_isolation_help">CPA image generation and edit endpoints do not require or learn conversational State. Group permissions, quotas and concurrency still apply. Image model support, uploads and timeouts are provided by CPA and the upstream.</p>
             <p id="turn-state-host-requirement" class="access-help" data-i18n="ui.fork_http_sse_injection_requires_cliproxyapi_v7_3_4_or_a_version_that_forwards">HTTP / SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards Turn State request headers. Older versions may report injection without forwarding it upstream. Reused WebSocket connections carry headers only at a new handshake.</p>
 </div>
+          <dialog id="state-quality-dialog" class="settings-dialog state-quality-dialog" aria-labelledby="state-quality-title">
+            <div class="row spread"><h2 id="state-quality-title" data-i18n="ui.state_quality_title">State model quality checks</h2><button id="state-quality-close" type="button" data-i18n="ui.state_quality_close">Close</button></div>
+            <p class="access-help" data-i18n="ui.state_quality_intro">Run a few tasks against selected Codex accounts without leaving State. This spends the accounts’ upstream quota and uses saved State settings and the account/global proxy route, not the collection proxy pools. Automatic collection keeps running; these tests do not count against its hourly budget. Testing does not collect or repair State, enable accounts, or create downstream billing records.</p>
+            <p class="access-help" data-i18n="ui.state_quality_limits">Results assess each task only, not overall intelligence or model identity. JSON, logic and Boolean tasks are selected by default; SVG and code require manual review. Requests run serially, once each. Stop or close skips pending tasks and lets the current request finish.</p>
+            <div id="state-quality-status" class="notice hidden" role="status"></div>
+            <div class="state-quality-layout">
+              <aside><h3 data-i18n="ui.state_quality_accounts">Accounts to check</h3><p class="small muted" data-i18n="ui.state_quality_selection_help">Starts with the accounts selected on State. Changes here affect only this test batch; disabled accounts can be diagnosed without enabling them.</p><div id="state-quality-accounts" class="model-test-account-list"></div></aside>
+              <div>
+                <label class="field"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="state-quality-model" list="state-quality-models" autocomplete="off" /><datalist id="state-quality-models"></datalist></label>
+                <h3 data-i18n="ui.state_quality_presets">Tasks (multiple selection)</h3><div id="state-quality-presets" class="state-quality-presets"></div>
+              </div>
+            </div>
+            <p id="state-quality-total" class="small muted" role="status"></p>
+            <div class="row dialog-actions"><button id="state-quality-run" class="primary" type="button" disabled data-i18n="ui.state_quality_run">Run selected tasks</button><button id="state-quality-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button><span id="state-quality-progress" class="small muted" role="status"></span></div>
+            <h3 data-i18n="ui.state_quality_results">Results by task</h3><p class="access-help" data-i18n="ui.state_quality_results_help">The batch stays in page memory; a new batch replaces it. Expand a result to inspect the exact answer, expected result, model declaration and proxy route. Model declarations do not prove identity or answer quality; response code is never executed.</p><div id="state-quality-results" class="model-test-results"></div>
+          </dialog>
           <p class="small muted turn-state-attribution"><span data-i18n="ui.fork_based_on">Based on</span> <a href="https://github.com/arden-aaai/cpa-plugin-codex-turn-state" target="_blank" rel="noopener noreferrer">cpa-plugin-codex-turn-state</a></p>
           <p class="small muted turn-state-attribution"><span data-i18n="ui.state_related_project">Related State project</span> <a href="https://github.com/NanSsye/ccodex-sleep-state" target="_blank" rel="noopener noreferrer" data-i18n="ui.state_related_project_name">NanSsye/ccodex-sleep-state</a></p>
         </section>
@@ -2955,7 +2984,7 @@
               <div class="field"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p><div id="model-test-sources" class="small muted"></div></div>
               <label class="field model-test-wide"><span data-i18n="ui.model_test_prompt">Prompt (editable)</span><textarea id="model-test-prompt" rows="7" maxlength="16000" spellcheck="false"></textarea><span id="model-test-custom-note" class="small muted hidden" data-i18n="ui.model_test_custom_note">This prompt was edited. Preset assertions are disabled; review the response against your own criteria.</span></label>
             </div>
-            <p class="small muted" data-i18n="ui.model_test_batch_help">Select up to 50 accounts. Each receives the same model and prompt once, sequentially. Failures are not retried. Stopping or leaving this tab skips pending accounts and lets the current request finish.</p>
+            <p class="small muted" data-i18n="ui.model_test_batch_help">Click anywhere on an account card to select it. Only accounts with a supported test protocol are shown; disabled accounts can be tested without enabling them for traffic. Select up to 50 accounts. Each receives the same model and prompt once, sequentially. Failures are not retried. Stopping or leaving this tab skips pending accounts and lets the current request finish.</p>
             <div class="row"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Test selected accounts</button><button id="model-test-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button><span id="model-test-running" class="small muted" role="status"></span></div>
           </div>
           <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.model_test_comparison">Response comparison</h2><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div><p class="access-help" data-i18n="ui.model_test_memory">The current batch (up to 50 results) stays in this page’s memory only; starting another batch replaces it. Response code is never executed. SVG previews are static images.</p><p class="access-help" data-i18n="ui.model_test_model_declaration_help">The response model is declared by the upstream for this test. A different name may reflect an alias or model version; matching names do not prove model identity or answer quality. It does not change billing or routing.</p><div id="model-test-results" class="model-test-results"></div></div>
@@ -3983,6 +4012,10 @@
           $("model-test-results").replaceChildren();
           $("model-test-proxy").replaceChildren();
           $("model-test-status").className = "notice hidden";
+          $("state-quality-results").replaceChildren();
+          $("state-quality-accounts").replaceChildren();
+          $("state-quality-presets").replaceChildren();
+          $("state-quality-model").value = "";
         }
         const account = role === "account";
         destroyAnalysisCharts(account);
@@ -4046,6 +4079,11 @@
 
       async function api(method, path, body, opts) {
         const generation = sessionGeneration;
+        // Only a prepared model-test lease may cross logout for cleanup. Its
+        // caller must recheck the session before sending any upstream request.
+        const retainPreparedLease =
+          opts?.retainPreparedLease === true && opts?.command === true && method === "POST" &&
+          path === PLUGIN_BASE + "/model-tests/prepare";
         const init = { method, cache: "no-store", headers: { Authorization: "Bearer " + (opts?.key ?? authKey) } };
         const timeoutMS = Number(opts?.timeoutMS ?? 30000);
         const controller = new AbortController();
@@ -4060,7 +4098,7 @@
         try {
           resp = await fetch(location.origin + path, init);
           text = await resp.text();
-          if (generation !== sessionGeneration) throw new StaleRequestError();
+          if (generation !== sessionGeneration && !(retainPreparedLease && resp.ok)) throw new StaleRequestError();
         } catch (error) {
           if (generation !== sessionGeneration) throw new StaleRequestError();
           if (controller.signal.aborted) throw new UIError(m("ui.request_timed_out"));
@@ -7314,7 +7352,9 @@
         return JSON.stringify([account.auth_index || "", account.credential_ref || "", account.auth_id || ""]);
       }
 
-      function modelTestAccountAvailable(account) { return !!account.auth_index && !!account.supported && !account.disabled; }
+      function modelTestAccountAvailable(account) { return !!account.auth_index && !!account.supported; }
+
+      function modelTestAccounts() { return (resources.admin.modelTests.value?.accounts || []).filter(modelTestAccountAvailable); }
 
       function modelTestProvider(account) {
         const provider = String(account.provider || "").toLowerCase();
@@ -7327,7 +7367,7 @@
 
       function filteredModelTestAccounts() {
         const category = $("model-test-provider").value, query = $("model-test-search").value.trim().toLowerCase();
-        return (resources.admin.modelTests.value?.accounts || []).filter(
+        return modelTestAccounts().filter(
           (account) =>
             (category === "all" || modelTestProvider(account) === category) &&
             (!query ||
@@ -7338,9 +7378,7 @@
       }
 
       function selectedModelTestAccount() {
-        return (resources.admin.modelTests.value?.accounts || []).find(
-          (account) => modelTestAccountKey(account) === modelTestState().focused
-        );
+        return modelTestAccounts().find((account) => modelTestAccountKey(account) === modelTestState().focused);
       }
 
       function modelTestPreset(id) {
@@ -7448,7 +7486,7 @@
 
       function renderModelTests() {
         const resource = resources.admin.modelTests, state = modelTestState(), catalog = resource.value;
-        const accounts = Array.isArray(catalog?.accounts) ? catalog.accounts : [];
+        const accounts = modelTestAccounts();
         const available = new Set(accounts.filter(modelTestAccountAvailable).map(modelTestAccountKey));
         for (const identity of state.selected) if (!available.has(identity)) state.selected.delete(identity);
         const focused = selectedModelTestAccount() || accounts.find(modelTestAccountAvailable) || accounts[0];
@@ -7456,7 +7494,7 @@
         const filtered = filteredModelTestAccounts(), top = $("model-test-accounts").scrollTop;
         $("model-test-accounts").replaceChildren(
           ...(filtered.length
-            ? filtered.map((account) => {
+            ? filtered.map((account, index) => {
                 const identity = modelTestAccountKey(account), name = account.name || account.auth_index || account.credential_ref;
                 const available = modelTestAccountAvailable(account);
                 const reason = account.disabled
@@ -7465,14 +7503,16 @@
                     ? window.billingI18n.serverMessage(account.reason_message, account.reason) || m("ui.model_test_unsupported")
                     : "";
                 return el(
-                  "div",
+                  "label",
                   { class: "model-test-account-row" + (identity === state.focused ? " is-focused" : "") },
                   el("input", {
+                    id: "model-test-choice-" + index,
                     type: "checkbox",
                     checked: state.selected.has(identity),
                     disabled: state.running || !available,
                     "aria-label": m("ui.model_test_select_account", { account: name }),
                     onchange: (event) => {
+                      const focused = document.activeElement === event.target;
                       if (event.target.checked && state.selected.size >= MODEL_TEST_BATCH_LIMIT) {
                         state.error = m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT });
                       } else {
@@ -7481,29 +7521,18 @@
                         state.error = "";
                       }
                       renderModelTests();
+                      if (focused) $("model-test-choice-" + index)?.focus({ preventScroll: true });
                     }
                   }),
                   el(
-                    "div",
+                    "span",
                     { class: "model-test-account-info" },
-                    el("button", {
-                      type: "button",
-                      disabled: state.running,
-                      text: name,
-                      "aria-pressed": String(identity === state.focused),
-                      onclick: () => {
-                        state.focused = identity;
-                        state.error = "";
-                        if (available) {
-                          if (state.selected.has(identity)) state.selected.delete(identity);
-                          else if (state.selected.size < MODEL_TEST_BATCH_LIMIT) state.selected.add(identity);
-                          else state.error = m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT });
-                        }
-                        renderModelTests();
-                      }
+                    el("strong", { class: "model-test-account-name", text: name }),
+                    el("span", {
+                      class: "small muted model-test-account-detail",
+                      text: account.provider || m("ui.model_test_provider_other")
                     }),
-                    el("p", { class: "small muted", text: account.provider || m("ui.model_test_provider_other") }),
-                    reason ? el("p", { class: "small muted", text: reason }) : null
+                    reason ? el("span", { class: "small muted model-test-account-detail", text: reason }) : null
                   )
                 );
               })
@@ -7680,7 +7709,6 @@
         if (matches.length !== 1) throw new UIError(m("ui.model_test_route_unverified"));
         if (matches[0].account.credential_ref !== account.credential_ref || matches[0].account.auth_id !== account.auth_id)
           throw new UIError(m("ui.model_test_route_unverified"));
-        if (matches[0].account.disabled) throw new UIError(m("ui.model_test_account_disabled"));
         descriptor.config = matches[0].config;
         return descriptor;
       }
@@ -7770,7 +7798,11 @@
         }
       }
 
-      async function runModelTestAccount(account, record, { key, current, ensureCurrent }) {
+      async function runModelTestAccount(
+        account,
+        record,
+        { key, current, ensureCurrent, onProxy = renderModelTestProxy, onAuthError = stopPendingModelTests }
+      ) {
         let prepared = null, completion = null, started = false;
         try {
           const route = await readModelTestRoute(account, key, ensureCurrent);
@@ -7779,10 +7811,14 @@
             "POST",
             "/model-tests/prepare",
             { auth_index: account.auth_index, model: record.model, preset: record.preset, prompt: record.prompt, ...route },
-            { key, command: true }
+            { key, command: true, retainPreparedLease: true }
           );
           if (
             !prepared?.test_id || !prepared.api_call || prepared.api_call.auth_index !== account.auth_index ||
+            prepared.account?.auth_index !== account.auth_index ||
+            prepared.account?.credential_ref !== account.credential_ref ||
+            prepared.account?.provider !== account.provider ||
+            prepared.account?.source !== account.source ||
             prepared.api_call.method !== "POST" ||
             typeof prepared.api_call.proxy_url !== "string" ||
             !prepared.api_call.proxy_url.trim() ||
@@ -7793,7 +7829,7 @@
           record.proxy = prepared.proxy;
           if (typeof prepared.model === "string" && prepared.model) record.model = prepared.model;
           ensureCurrent();
-          renderModelTestProxy(record.proxy, record.account);
+          onProxy(record.proxy, record.account);
           if (!Number.isFinite(Date.parse(prepared.start_before)) || Date.now() >= Date.parse(prepared.start_before))
             throw new UIError(m("ui.model_test_prepare_expired"));
           started = true;
@@ -7809,7 +7845,7 @@
         } catch (error) {
           if (error instanceof StaleRequestError && !started) record.phase = "stopped";
           else if (!(error instanceof StaleRequestError)) record.error = error.message || m("ui.model_test_failed");
-          if (error instanceof AuthError && current()) stopPendingModelTests();
+          if (error instanceof AuthError && current()) onAuthError();
         } finally {
           if (prepared?.test_id) {
             try {
@@ -7821,12 +7857,426 @@
               );
             } catch (error) {
               if (!(error instanceof StaleRequestError)) record.error = m("ui.model_test_complete_failed");
-              if (error instanceof AuthError && current()) stopPendingModelTests();
+              if (error instanceof AuthError && current()) onAuthError();
             }
           }
           prepared = null;
           completion = null;
           if (record.phase !== "stopped") record.phase = "done";
+        }
+      }
+
+      const STATE_QUALITY_PRESETS = ["json", "logic", "code", "pelican", "candy", "boolean", "tracking"];
+
+      function stateQualityPreset(id, state = adminUIState.stateQuality) {
+        const preset = state?.catalog?.presets?.find((entry) => entry.id === id);
+        return preset ? { ...preset, label: preset.label_key, criteria: preset.criteria_key } : null;
+      }
+
+      function stateQualityDetail(key, summary, children, openSet) {
+        return el(
+          "details",
+          {
+            open: openSet.has(key),
+            ontoggle: (event) => {
+              if (!event.target.isConnected) return;
+              if (event.target.open) openSet.add(key); else openSet.delete(key);
+            }
+          },
+          el("summary", { text: summary }),
+          children
+        );
+      }
+
+      function renderStateQualityResults(state) {
+        $("state-quality-results").replaceChildren(
+          ...(state.results.length
+            ? state.results.map((record, index) => {
+                const waiting = ["waiting", "running", "stopped"].includes(record.phase);
+                const checks = Array.isArray(record.result?.assertions) ? record.result.assertions : [];
+                const failed = !!record.error || !["completed", "incomplete"].includes(record.result?.outcome);
+                const incomplete = record.result?.outcome === "incomplete" || record.result?.output_truncated === true;
+                const manual = ["code", "pelican"].includes(record.preset) || !checks.length;
+                const passed = checks.length > 0 && checks.every((check) => check.passed === true);
+                const label = waiting
+                  ? m("ui.model_test_phase_" + record.phase)
+                  : failed
+                    ? m("ui.model_test_failed")
+                    : incomplete
+                      ? m("ui.model_test_incomplete")
+                      : manual ? m("ui.state_quality_manual") : passed ? m("ui.state_quality_passed") : m("ui.state_quality_not_passed");
+                const preview = record.phase === "done" && record.preset === "pelican" ? modelTestSVGPreview(record.result?.output) : "";
+                const modelStatus =
+                  {
+                    matched: "ui.model_test_model_matched",
+                    different: "ui.model_test_model_different",
+                    conflicting: "ui.model_test_model_conflicting"
+                  }[record.result?.response_model_status] || "ui.model_test_model_missing";
+                return el(
+                  "article",
+                  {
+                    class: "model-test-result state-quality-result",
+                    "data-phase": record.phase,
+                    "data-preset": record.preset,
+                    "data-auth-index": record.auth_index
+                  },
+                  el("h3", { text: record.account + " · " + record.model }),
+                  el(
+                    "div",
+                    { class: "row" },
+                    el("span", {
+                      class: "tag " + (waiting ? "plain" : failed || incomplete ? "warn" : manual ? "plain" : passed ? "ok" : "warn"),
+                      text: label
+                    }),
+                    el("span", { class: "small muted", text: m(record.presetLabel) })
+                  ),
+                  record.error ? el("p", { class: "small", text: record.error }) : null,
+                  record.result?.reason
+                    ? el("p", {
+                        class: "small",
+                        text: window.billingI18n.serverMessage(record.result.reason_message, record.result.reason)
+                      })
+                    : null,
+                  record.result?.lease_retained ? el("p", { class: "small muted", text: m("ui.model_test_lease_retained") }) : null,
+                  stateQualityDetail(
+                    "result-" + index,
+                    m("ui.state_quality_result_details"),
+                    [
+                      el("h4", { text: m("ui.state_quality_response") }),
+                      el("pre", { text: record.result?.output || m("ui.model_test_no_output") }),
+                      record.result?.output_truncated ? el("p", { class: "small muted", text: m("ui.model_test_truncated") }) : null,
+                      preview
+                        ? el("img", { class: "model-test-svg-preview", src: preview, alt: m("ui.model_test_svg_preview"), loading: "lazy" })
+                        : null,
+                      preview ? el("p", { class: "small muted", text: m("ui.model_test_svg_review") }) : null,
+                      el("h4", { text: m("ui.model_test_criteria") }),
+                      el("p", { class: "small", text: m(record.criteria) }),
+                      record.expected ? el("pre", { text: record.expected }) : null,
+                      checks.length
+                        ? el(
+                            "ul",
+                            { class: "model-test-checks" },
+                            checks.map((check) =>
+                              el("li", {
+                                text: m(check.passed ? "ui.model_test_check_pass" : "ui.model_test_check_fail", {
+                                  name: modelTestAssertionLabel(check.name)
+                                })
+                              })
+                            )
+                          )
+                        : null,
+                      el("h4", { text: m("ui.state_quality_model_route") }),
+                      el("p", {
+                        class: "small",
+                        text: m("ui.model_test_requested_model", { model: record.result?.requested_model || record.model })
+                      }),
+                      el("p", {
+                        class: "small",
+                        text: m("ui.model_test_upstream_model", { model: record.result?.upstream_model || record.model })
+                      }),
+                      el("p", {
+                        class: "small",
+                        text: m("ui.model_test_declared_model", {
+                          model: record.result?.response_model || m("ui.model_test_model_unavailable")
+                        })
+                      }),
+                      el("p", { class: "small muted", text: m(modelStatus) }),
+                      el("p", {
+                        class: "small muted",
+                        text: record.proxy
+                          ? m(
+                              record.proxy.source === "account"
+                                ? "ui.model_test_proxy_account"
+                                : record.proxy.source === "global" ? "ui.model_test_proxy_global" : "ui.model_test_proxy_direct",
+                              { endpoint: record.proxy.endpoint || "" }
+                            )
+                          : m("ui.state_quality_route_pending")
+                      }),
+                      el("h4", { text: m("ui.model_test_sent_prompt") }),
+                      el("pre", { text: record.prompt })
+                    ],
+                    state.openResults
+                  )
+                );
+              })
+            : [el("p", { class: "small muted", text: m("ui.model_test_empty") })])
+        );
+      }
+
+      function renderStateQualityTests() {
+        const state = adminUIState.stateQuality;
+        if (!state || !$("state-quality-dialog").open) return;
+        const busy = state.loading || state.running;
+        const selected = state.accounts.filter((row) => state.selected.has(row.id));
+        const unavailable = selected.length !== state.selected.size || selected.some((row) => !row.account);
+        const total = state.selected.size * state.presets.size;
+        const tooMany = total > MODEL_TEST_BATCH_LIMIT;
+        const status = state.loading
+          ? m("ui.state_quality_loading")
+          : state.error ||
+            (unavailable
+              ? m("ui.state_quality_unavailable_selected")
+              : tooMany
+                ? m("ui.state_quality_limit", { total, limit: MODEL_TEST_BATCH_LIMIT })
+                : !state.accounts.some((row) => row.account) ? m("ui.state_quality_none_available") : "");
+        $("state-quality-status").className = status ? "notice show" + (state.loading ? "" : " err") : "notice hidden";
+        setText($("state-quality-status"), status);
+        $("state-quality-model").disabled = busy;
+        $("state-quality-model").value = state.model;
+        $("state-quality-run").disabled = busy || !state.catalog || !total || tooMany || unavailable || !state.model.trim();
+        $("state-quality-stop").disabled = !state.running || state.stopRequested;
+        setText(
+          $("state-quality-total"),
+          m("ui.state_quality_total", { accounts: state.selected.size, presets: state.presets.size, total, limit: MODEL_TEST_BATCH_LIMIT })
+        );
+        const done = state.results.filter((record) => !["waiting", "running"].includes(record.phase)).length;
+        setText(
+          $("state-quality-progress"),
+          state.results.length
+            ? m(state.running && state.stopRequested ? "ui.model_test_stopping" : "ui.model_test_batch_progress", {
+                done,
+                total: state.results.length
+              })
+            : ""
+        );
+        const top = $("state-quality-accounts").scrollTop;
+        $("state-quality-accounts").replaceChildren(
+          ...state.accounts.map((row, index) =>
+            el(
+              "label",
+              { class: "model-test-account-row" },
+              checkboxControl({
+                input: el("input", {
+                  id: "state-quality-account-" + index,
+                  type: "checkbox",
+                  value: row.id,
+                  checked: state.selected.has(row.id),
+                  disabled: busy || (!row.account && !state.selected.has(row.id)),
+                  onchange: (event) => {
+                    if (event.target.checked && row.account) state.selected.add(row.id); else state.selected.delete(row.id);
+                    state.error = "";
+                    renderStateQualityTests();
+                    $("state-quality-account-" + index)?.focus({ preventScroll: true });
+                  }
+                })
+              }),
+              el(
+                "span",
+                { class: "model-test-account-info" },
+                el("strong", { class: "model-test-account-name", text: row.label }),
+                row.disabled
+                  ? el("span", { class: "small muted model-test-account-detail", text: m("ui.state_quality_disabled_account") })
+                  : null,
+                row.reason ? el("span", { class: "small muted model-test-account-detail", text: row.reason }) : null
+              )
+            )
+          )
+        );
+        $("state-quality-accounts").scrollTop = top;
+        $("state-quality-presets").replaceChildren(
+          ...STATE_QUALITY_PRESETS.map((id) => {
+            const preset = stateQualityPreset(id, state);
+            if (!preset) return null;
+            const sources = (preset.sources || []).filter((source) => {
+              try { return new URL(source.url).protocol === "https:"; } catch (_) { return false; }
+            });
+            return el(
+              "section",
+              { class: "state-quality-preset" },
+              el(
+                "label",
+                { class: "row" },
+                checkboxControl({
+                  input: el("input", {
+                    id: "state-quality-preset-" + id,
+                    type: "checkbox",
+                    value: id,
+                    checked: state.presets.has(id),
+                    disabled: busy,
+                    onchange: (event) => {
+                      if (event.target.checked) state.presets.add(id); else state.presets.delete(id);
+                      state.error = "";
+                      renderStateQualityTests();
+                      $("state-quality-preset-" + id)?.focus({ preventScroll: true });
+                    }
+                  })
+                }),
+                el("strong", { text: m(preset.label) }),
+                ["code", "pelican"].includes(id) ? el("span", { class: "tag plain", text: m("ui.state_quality_manual") }) : null
+              ),
+              stateQualityDetail(
+                id,
+                m("ui.state_quality_preset_details"),
+                [
+                  el("pre", { text: preset.prompt }),
+                  el("p", { class: "small", text: m(preset.criteria) }),
+                  preset.expected ? el("pre", { text: preset.expected }) : null,
+                  ...sources.map((source) =>
+                    el(
+                      "p",
+                      { class: "small" },
+                      el("a", { href: source.url, target: "_blank", rel: "noopener noreferrer", text: source.title || source.url })
+                    )
+                  ),
+                  !sources.length ? el("p", { class: "small muted", text: m("ui.state_quality_original_preset") }) : null
+                ],
+                state.openPresets
+              )
+            );
+          }).filter(Boolean)
+        );
+        renderStateQualityResults(state);
+      }
+
+      async function openStateQualityTests() {
+        if (currentRole !== "admin" || activeTab(false) !== "turn-state") return;
+        const dialog = $("state-quality-dialog"), previous = adminUIState.stateQuality;
+        if (previous?.running || previous?.loading) {
+          if (!dialog.open) dialog.showModal();
+          renderStateQualityTests();
+          return;
+        }
+        const owner = adminUIState, generation = sessionGeneration;
+        const current = () => owner === adminUIState && generation === sessionGeneration && currentRole === "admin";
+        const saved = resources.admin.turnState.value;
+        const selected = new Set(owner.turnStateAccounts || saved?.config?.probe_accounts || []);
+        const state = (owner.stateQuality = {
+          running: false,
+          stopRequested: false,
+          loading: true,
+          error: "",
+          catalog: null,
+          selected,
+          presets: new Set(["json", "logic", "boolean"]),
+          accounts: [],
+          model: saved?.config?.models?.[0] || "",
+          results: previous?.results || [],
+          openResults: previous?.openResults || new Set(),
+          openPresets: new Set()
+        });
+        $("state-quality-models").replaceChildren(...(saved?.config?.models || []).map((model) => el("option", { value: model })));
+        if (!dialog.open) dialog.showModal();
+        renderStateQualityTests();
+        try {
+          if (!saved) throw new UIError(m("ui.state_quality_state_unavailable"));
+          const catalog = await fetchModelTestCatalog();
+          if (!current() || owner.stateQuality !== state || !dialog.open || activeTab(false) !== "turn-state") return;
+          state.catalog = catalog;
+          const source = [...saved.probe_accounts];
+          for (const id of selected) if (!source.some((account) => account.account === id)) source.push({ account: id, label: id });
+          state.accounts = await Promise.all(
+            source.map(async (account) => {
+              const id = account.account;
+              const ref = typeof id === "string" && id ? "sha256:" + (await sha256Hex("cpa-key-billing:credential:v1\0" + id)) : "";
+              const matches =
+                ref && account.auth_index ? catalog.accounts.filter((candidate) => candidate.auth_index === account.auth_index) : [];
+              const match =
+                matches.length === 1 && matches[0].provider === "codex" && matches[0].source === "auth-files" &&
+                matches[0].credential_ref === ref &&
+                modelTestAccountAvailable(matches[0])
+                  ? matches[0]
+                  : null;
+              return {
+                id,
+                label: account.label || id,
+                disabled: account.disabled || match?.disabled,
+                account: match,
+                reason: match
+                  ? ""
+                  : matches.length === 1 && matches[0].reason ? matches[0].reason : m("ui.state_quality_identity_unavailable")
+              };
+            })
+          );
+          if (!current() || owner.stateQuality !== state) return;
+          resources.admin.modelTests.value = catalog;
+          state.presets = new Set([...state.presets].filter((id) => stateQualityPreset(id, state)));
+        } catch (error) {
+          if (current() && !(error instanceof StaleRequestError)) state.error = error.message || m("ui.state_quality_load_failed");
+        } finally {
+          state.loading = false;
+          if (current() && owner.stateQuality === state) renderStateQualityTests();
+        }
+      }
+
+      function stopStateQualityTests() {
+        const state = adminUIState.stateQuality;
+        if (!state?.running) return;
+        state.stopRequested = true;
+        for (const record of state.results) if (record.phase === "waiting") record.phase = "stopped";
+        renderStateQualityTests();
+      }
+
+      async function runStateQualityTests() {
+        const owner = adminUIState, state = owner.stateQuality;
+        if (!state || state.running || state.loading || !$("state-quality-dialog").open) return;
+        const accounts = state.accounts.filter((row) => state.selected.has(row.id));
+        const presets = STATE_QUALITY_PRESETS.filter((id) => state.presets.has(id)).map((id) => stateQualityPreset(id, state));
+        const total = accounts.length * presets.length, model = state.model.trim();
+        if (!accounts.length || !presets.length || !model) throw new UIError(m("ui.state_quality_selection_required"));
+        if (accounts.length !== state.selected.size || accounts.some((row) => !row.account))
+          throw new UIError(m("ui.state_quality_unavailable_selected"));
+        if (total > MODEL_TEST_BATCH_LIMIT) throw new UIError(m("ui.state_quality_limit", { total, limit: MODEL_TEST_BATCH_LIMIT }));
+        const promptLimit = state.catalog?.limits?.max_prompt_bytes || 8192;
+        if (
+          presets.some(
+            (preset) =>
+              !preset || typeof preset.prompt !== "string" || !preset.prompt.trim() ||
+              new TextEncoder().encode(preset.prompt).length > promptLimit
+          )
+        )
+          throw new UIError(m("ui.model_test_prompt_limit", { limit: promptLimit }));
+        const key = authKey, generation = sessionGeneration;
+        const current = () => owner === adminUIState && generation === sessionGeneration && currentRole === "admin";
+        const ensureCurrent = () => {
+          if (!current() || state.stopRequested || !$("state-quality-dialog").open || activeTab(false) !== "turn-state")
+            throw new StaleRequestError();
+        };
+        const queue = accounts.flatMap((row) =>
+          presets.map((preset) => ({
+            account: row.account,
+            record: {
+              account: row.label,
+              auth_index: row.account.auth_index,
+              model,
+              prompt: preset.prompt,
+              preset: preset.id,
+              presetLabel: preset.label,
+              criteria: preset.criteria,
+              expected: preset.expected,
+              phase: "waiting",
+              error: "",
+              result: null,
+              proxy: null
+            }
+          }))
+        );
+        state.results = queue.map((item) => item.record);
+        state.openResults = new Set();
+        state.running = true;
+        state.stopRequested = false;
+        state.error = "";
+        renderStateQualityTests();
+        try {
+          for (const { account, record } of queue) {
+            if (!current() || state.stopRequested || !$("state-quality-dialog").open || activeTab(false) !== "turn-state") break;
+            record.phase = "running";
+            renderStateQualityTests();
+            await runModelTestAccount(account, record, {
+              key,
+              current,
+              ensureCurrent,
+              onProxy: (proxy) => {
+                record.proxy = proxy;
+                if (current()) renderStateQualityTests();
+              },
+              onAuthError: () => { if (current()) stopStateQualityTests(); }
+            });
+            if (current()) renderStateQualityTests();
+          }
+        } finally {
+          for (const record of state.results) if (record.phase === "waiting") record.phase = "stopped";
+          state.running = false;
+          if (current()) renderStateQualityTests();
         }
       }
 
@@ -10435,6 +10885,8 @@
 
       function stopTurnStateWork() {
         // Cancel only local reads/tests. Never send PUT enabled=false here.
+        stopStateQualityTests();
+        $("state-quality-dialog").close();
         clearTimeout(turnStateRunner.timer);
         turnStateRunner.timer = 0;
         turnStateRunner.loading = false;
@@ -13461,6 +13913,22 @@
       };
       $("keys-edit-groups").onclick = () => editKeyGroups([...adminUIState.selectedKeys]);
       $("access-control-save").onclick = saveAccessControl;
+      $("turn-state-quality-test").onclick = () => guard(openStateQualityTests);
+      $("state-quality-model").oninput = () => {
+        const state = adminUIState.stateQuality;
+        if (!state || state.running) return;
+        state.model = $("state-quality-model").value;
+        state.error = "";
+        renderStateQualityTests();
+      };
+      $("state-quality-run").onclick = () => guard(runStateQualityTests);
+      $("state-quality-stop").onclick = stopStateQualityTests;
+      $("state-quality-close").onclick = () => {
+        stopStateQualityTests();
+        $("state-quality-dialog").close();
+      };
+      $("state-quality-dialog").addEventListener("cancel", stopStateQualityTests);
+      $("state-quality-dialog").addEventListener("close", stopStateQualityTests);
       $("model-test-provider").onchange = renderModelTests;
       $("model-test-search").oninput = renderModelTests;
       $("model-test-select-visible").onclick = () => {

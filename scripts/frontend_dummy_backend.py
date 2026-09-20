@@ -658,6 +658,14 @@ def dummy_template_fingerprint(template):
     return hashlib.sha256(json.dumps([template["account"], template["model"], template.get("issued_at", template["expires_at"])], separators=(",", ":")).encode()).hexdigest()
 
 
+def dummy_state_auth_index(credential):
+    return next((file["auth_index"] for file in AUTH_FILES if file["credential_ref"] == credential["ref"]), "state-" + credential["ref"])
+
+
+def dummy_state_credential_ref(account_id):
+    return "sha256:" + hashlib.sha256(("cpa-key-billing:credential:v1\0" + account_id).encode()).hexdigest()
+
+
 def turn_state_view():
     config = dict(TURN_STATE_CONFIG)
     for field in ("probe_proxies", "probe_proxies_rotating"):
@@ -678,7 +686,7 @@ def turn_state_view():
             "host_requirement": ui_message("backend.turn_state_host_requirement")["message"],
             "host_requirement_message": {"message_key": "backend.turn_state_host_requirement"},
             "probe_accounts": [{"account": item["ref"], "label": item["display_name"],
-                                "auth_index": item["ref"], "upstream_transport_known": True,
+                                "auth_index": dummy_state_auth_index(item), "upstream_transport_known": True,
                                 "upstream_websockets": TURN_STATE_WEBSOCKETS.get(item["ref"], False),
                                 "disable_websockets_patch": {"name": item["ref"], "websockets": False},
                                 "disabled": bool(item.get("disabled")) or item.get("status", "").lower() == "disabled"}
@@ -1491,18 +1499,22 @@ MODEL_TEST_PRESETS = json.loads((UI_PATH.parent / "model_test_presets.json").rea
 
 
 def model_test_catalog(include_native=False):
-    accounts = [{"auth_index": file["auth_index"], "credential_ref": file["credential_ref"], "name": file["name"],
+    accounts = [{"auth_index": file["auth_index"], "credential_ref": dummy_state_credential_ref(file["credential_ref"]), "name": file["name"],
                  "provider": file["category"], "source": "auth-files", "disabled": file["disabled"],
-                 "supported": file["category"] == "codex" and not file["disabled"],
+                 "supported": file["category"] == "codex",
                  "reason": "Only Codex OAuth is supported for file-account tests" if file["category"] != "codex" else ""}
                 for file in AUTH_FILES]
+    for item in CREDENTIALS:
+        if item["provider"] == "codex" and item["source"] == "auth-files" and not any(file["credential_ref"] == item["ref"] for file in AUTH_FILES):
+            accounts.append({"auth_index": dummy_state_auth_index(item), "credential_ref": dummy_state_credential_ref(item["ref"]),
+                             "name": item["display_name"], "provider": "codex", "source": "auth-files", "disabled": item["disabled"], "supported": True})
     if include_native:
         accounts.append({"auth_index": "model-demo-native-codex", "credential_ref": "sha256:" + "c" * 64,
                          "name": "Native Codex demo", "provider": "codex", "source": "ai-providers",
                          "supported": True, "disabled": False})
     accounts.append({"auth_index": "model-demo-disabled", "credential_ref": "sha256:" + "8" * 64,
                      "name": "Disabled account demo", "provider": "codex", "source": "auth-files",
-                     "supported": False, "disabled": True, "reason": "Enable this account before testing it"})
+                     "supported": True, "disabled": True})
     return {"accounts": accounts, "presets": MODEL_TEST_PRESETS, "usage_available": False,
             "limits": {"max_active": 4, "max_prompt_bytes": 8192, "lease_seconds": 90,
                        "send_within_seconds": 10, "max_response_bytes": 1048576}}
@@ -1519,6 +1531,8 @@ def prepare_dummy_model_test(body):
     if preset["id"] != "free" and prompt != preset["prompt"]:
         return 400, {"error": {"message": "Use the custom preset after editing a test prompt"}}
     config = body.get("config") or {}
+    if account["source"] == "ai-providers" and config.get("credential_ref"):
+        account = dict(account, credential_ref=config["credential_ref"], provider=config.get("provider", account["provider"]), disabled=bool(config.get("disabled")))
     model = body["model"]
     for mapping in config.get("models", []):
         if model == mapping.get("alias"):
