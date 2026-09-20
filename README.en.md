@@ -8,52 +8,84 @@
   </p>
   <p><strong>English</strong> · <a href="./README.md">简体中文</a></p>
 </div>
-<img src="images/example.png" alt="API Key Team Manager dashboard" width="100%" />
 
-## Features
+**Plugin ID: `cpa-team-manager` · Store name: API Key 团队管理 (API Key Team Manager) · Releases: [CHIMOOO/cpa-plugin-key-billing-manager](https://github.com/CHIMOOO/cpa-plugin-key-billing-manager)**
 
-- Spending, token, and request quotas with independent or shared reset schedules.
-- A dedicated **Subscription Plans** tab with separate quota pools for one model, several models, or a model family; each key keeps independent balances.
-- Long-context pricing tiers and per-key concurrency limits.
-- Routing rules and direct model/credential permissions.
-- A dedicated **API Key Groups** tab, multiple groups per key, per-group enable switches, and bulk membership editing.
-- Optional rejection of all ungrouped API keys.
-- Account integrations for OpenCode Go / Zen, CommandCode, and Cline Pass, with supported subscription quota queries and publishing into CPA providers.
-- Per-account usage and concurrency controls, plus exact credential-linked quota chips in groups.
-- Local content risk rules with observe/pre-block modes, model filters, and hash memory.
-- A dedicated **Codex Turn State** tab with template collection, configurable injection modes, and static/rotating proxy pools.
-- Reference prices from [models.dev](https://models.dev/) and custom overrides.
-- English and Simplified Chinese. Standalone pages remember the selected language; embedded pages follow the management host.
+This independent fork of [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing) extends downstream billing, subscriptions, and routing with team groups, account integrations and concurrency, upstream quota queries, local risk rules, and Codex Turn State. The original MIT copyright notice is retained. This project's `v0.0.x` releases and the original project's versions are separate release lines.
 
-## How it works
+[Install](#installation) · [Migrate older releases](#migrating-this-projects-v007-or-earlier) · [Account integrations](#account-integrations-and-concurrency) · [Codex Turn State](#codex-turn-state) · [Changelog](Changelog.md)
 
-The plugin checks quotas, concurrency, and access rules before upstream execution. CLIProxyAPI supplies usage through `usage.handle`; this is the sole source for billing, latency, and failure records. Request completion releases concurrency slots.
+## Feature guide
 
-Turn State collection reads response headers without reconstructing usage from response bodies. Plugin work is synchronous within host calls. The plugin creates no background goroutines, timers, or refresh tasks; the management page triggers successive bounded probes.
+| Page | Capabilities |
+| --- | --- |
+| API Key / API Key Groups | Per-key concurrency and model/account permissions; multiple groups per key; group switches; account chips show actual available 5-hour and weekly upstream quota |
+| Subscription Plans | Spending, token, and request limits; all-model, exact-model, or model-family pools; independent or shared reset schedules |
+| Account Integrations | OpenCode Go / Zen, CommandCode, and Cline Pass; publish supported models and query upstream-provided subscription quotas |
+| Accounts | Per-account requests, successes/failures, tokens, cost, current concurrency, and concurrency limits |
+| Codex Turn State | Account/model-specific collection, renewal, injection, and valid-bucket protection; static/rotating proxies, ten concurrent connectivity checks, optional automatic removal |
+| Model Tests | Single-request diagnostics, original prompt presets, response comparison, explicit proxy routing, and no execution of generated code |
+| Risk Center | Local keyword/model rules, observe/pre-block modes, and hash memory without persisting prompt text |
+| Analysis / Request Events / Error Events | Host-reported usage, cost, latency, and failures; billing is never inferred from raw response bodies |
+| Settings | Routing, prices, long-context tiers, logs, and persistence risk diagnostics |
 
-## Requirements
-
-- CLIProxyAPI **7.2.143 or later**, built with plugin support.
-- Codex Turn State HTTP/SSE injection requires **7.3.4 or the equivalent request-header forwarding fix**. The 7.2.143 HTTP executor drops the header even if plugin counters report injection.
-- Active Turn State probing uses Go's built-in HTTP client; server-side `curl` is not required.
+English and Simplified Chinese are supported. Standalone pages have a language selector; embedded pages follow CPAMC / CPAMP. API key holders can use a separate page to view their own subscriptions and usage.
 
 ## Installation
 
-Run the installer from your CLIProxyAPI directory.
+### Requirements
 
-On macOS or Linux:
+- CLIProxyAPI (CPA) **7.2.143 or later**, built with plugin support. No-plugin builds cannot load this library.
+- **For Codex Turn State, use CPA 7.3.4 or an equivalent request-header forwarding fix, with HTTP/SSE.** The 7.2.143 Codex executor drops the header, so plugin injection counters alone cannot prove delivery upstream. Protected accounts do not support reused WebSocket sessions.
+- Release packages cover Windows, macOS, and Linux on amd64 / arm64. Probing uses Go's built-in HTTP client; no server-side `curl` installation is required.
+- Users of this fork's v0.0.7 or earlier should follow the old-ID migration below before installing, so a new default database is not mistaken for lost data.
+
+### Recommended: add this project's third-party registry
+
+Add the **raw registry URL**, not the repository homepage:
+
+```text
+https://raw.githubusercontent.com/CHIMOOO/cpa-plugin-key-billing-manager/main/registry.json
+```
+
+1. Sign in to your management panel with the management key and open its configuration editor. Current panels expose the source input here:
+
+   | Panel | Registry input |
+   | --- | --- |
+   | CLI Proxy API Management Center (CPAMC) | Configuration → Visual → Advanced & Experimental → Plugins → Third-party plugin sources (`plugins.store-sources`) |
+   | CPA Manager Plus (CPAMP) | Configuration / Configuration file → Visual → System configuration → Plugin store sources; one URL per line |
+
+2. Append the URL without removing existing sources, enable the plugin system, and save the configuration.
+3. Open **Plugin Store**, refresh, and search for `cpa-team-manager` or **API Key 团队管理**. Verify author **CHIMOOO** and this repository, choose a published release, and install it.
+4. Under **Plugins / Installed plugins**, enable this plugin and configure `state_file` as described below. Both the global and per-plugin switches must be enabled. Restart the actual CPA service or container when prompted; refreshing the browser does not apply a library upgrade.
+5. Open the plugin's **API Key 团队管理** menu/resource and check its footer version. A direct resource URL is provided below if the menu is unavailable.
+
+The input locations are verified against the current [CPAMC configuration source](https://github.com/router-for-me/Cli-Proxy-API-Management-Center/blob/main/src/features/config/components/sections/SectionAdvanced.tsx) and [CPAMP configuration source](https://github.com/seakee/CPA-Manager-Plus/blob/main/apps/web/src/components/config/VisualConfigEditor.tsx). Names can vary between panel versions. If your panel lacks the input, merge this into the existing `plugins` section of `config.yaml`, retaining other settings:
+
+```yaml
+plugins:
+  enabled: true
+  store-sources:
+    - https://raw.githubusercontent.com/CHIMOOO/cpa-plugin-key-billing-manager/main/registry.json
+```
+
+The host retains its built-in official source. Adding this registry does not depend on official-store acceptance. `registry.json` describes published releases; it neither builds workspace changes nor loads source files. See the local build instructions below for unreleased changes and the [CPAMP plugin manual](https://github.com/seakee/CPA-Manager-Plus/blob/main/apps/docs/en/manual/plugins.md) for restart/resource-path behavior.
+
+### Manual installation
+
+Stop CPA and run the installer from its working directory. Linux / macOS:
 
 ```sh
 curl -LsSf https://raw.githubusercontent.com/CHIMOOO/cpa-plugin-key-billing-manager/main/install.sh | sh
 ```
 
-On Windows, stop CLIProxyAPI first and run in PowerShell:
+Windows PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/CHIMOOO/cpa-plugin-key-billing-manager/main/install.ps1 | iex
 ```
 
-These scripts install this fork's release into `plugins/`. Restart CLIProxyAPI after installation or an upgrade. Alternatively, download this fork's [release archive](https://github.com/CHIMOOO/cpa-plugin-key-billing-manager/releases/latest), or add its `registry.json` to the CPA plugin store.
+The scripts install this repository's published library into the current directory's `plugins/`. Alternatively, download the matching OS/architecture package from [Releases](https://github.com/CHIMOOO/cpa-plugin-key-billing-manager/releases/latest), verify it against that release's `checksums.txt`, and extract the library:
 
 ```text
 plugins/cpa-team-manager.so       # Linux
@@ -61,18 +93,18 @@ plugins/cpa-team-manager.dylib    # macOS
 plugins/cpa-team-manager.dll      # Windows
 ```
 
-Unreleased workspace changes require a local build; the registry installs published release assets.
+If you use a custom `plugins.dir`, put the library in that directory. Save the configuration and start CPA; library upgrades also require a restart. Avoid duplicate copies of the same plugin ID in the root and platform subdirectories.
 
-The store display name is **API Key 团队管理** (API Key Team Manager). Search terms include `api-key`, `team`, `billing`, `quota`, `subscription`, `routing`, `codex`, and `turn-state`. Starting with v0.0.8, the plugin ID, configuration key, library filename, and routes use the independent ID `cpa-team-manager` to avoid colliding with the original project.
+### Migrating this project's v0.0.7 or earlier
 
-### Upgrading this project's v0.0.7 or earlier
+Starting with **v0.0.8**, this fork changed its plugin ID, configuration key, library name, and resource routes from `cpa-key-billing` to `cpa-team-manager` to distinguish it from the original project. These steps concern older releases of this fork; they do not imply arbitrary upstream releases are interchangeable.
 
-1. Stop CPA. Back up its configuration, the existing `state_file` database, and the adjacent `.turn-state.json` file.
-2. Move this project's old `cpa-key-billing.so`, `.dylib`, or `.dll` out of the plugin loading directory. Do not enable both copies of the billing and scheduling hooks.
-3. Rename this project's key under `plugins.configs` to `cpa-team-manager` and **keep the full original `state_file` path**, for example `plugins/cpa-key-billing-state-v1.db`. The new ID defaults to a new database and does not automatically take over old data.
-4. Install the new library, start CPA, and check the existing groups, subscriptions, and buckets at the new URL below. Credential fingerprints remain compatible, preserving existing bindings.
+1. **Stop CPA and back up** `config.yaml`, the original `state_file` database, and its adjacent `.turn-state.json`. Include `.account-runtime.json` and `.risk-control.json` if present.
+2. Move this fork's old `cpa-key-billing.so`, `.dylib`, or `.dll` out of the loading directory. Do not load both copies of the billing and scheduling hooks.
+3. Rename this project's key under `plugins.configs` to `cpa-team-manager` and **retain the exact original `state_file` path**, for example `plugins/cpa-key-billing-state-v1.db`. Do not rename the database or its adjacent state files. The new ID defaults to a new path and does not automatically adopt old data.
+4. Install the new library, start CPA, and verify existing groups, subscriptions, usage, and buckets at the new URL. Credential fingerprints remain compatible, preserving bindings.
 
-New installations can use the configuration below. This project and the original plugin must use separate data files; never point two active plugins at the same database. To roll back, stop CPA and restore the backup and old plugin configuration.
+Run one plugin responsible for these billing, scheduling, and restriction hooks in a CPA instance. Never let different plugins share an active database. To roll back, stop CPA and restore the pre-upgrade database, state files, and matching old configuration before starting the old library.
 
 ## Configuration
 
@@ -90,7 +122,17 @@ plugins:
 
 When `codex_fast_mode_billing` is enabled, Codex upstream requests with `service_tier=priority` are billed at **2.5 times** the standard cost.
 
-Back up the database before upgrading, together with the adjacent `<state_file>.turn-state.json`. v0.0.7 upgrades supported databases to schema v19 to preserve the new scoped-quota semantics. Do not open the migrated database with an older plugin; restore the pre-upgrade backup when rolling back. Legacy JSON/SQLite files from upstream v0.8.4 or earlier require a new state file.
+Compatibility is determined by the data format, not by confusing upstream release numbers with this fork's versions. This project's v0.0.7 introduced SQLite schema v19 for scoped-quota semantics. Supported, structurally valid v10–v18 databases migrate to v19. Earlier JSON files and unknown/incompatible SQLite formats are not promised automatic migration: retain a backup and use a new `state_file` on an unsupported-format error rather than forcing its schema version. Older plugins must not open a migrated database; restore the backup when rolling back.
+
+Stop CPA before backing up these files:
+
+| File | Data |
+| --- | --- |
+| SQLite database at `state_file` | Keys, groups, plans, billing, and usage history |
+| `<state_file>.turn-state.json` | Templates, proxies, and collection settings |
+| `<state_file>.account-runtime.json` | Per-account concurrency and bucket-protection settings |
+| `<state_file>.risk-control.json` | Risk rules, events, and hash memory |
+| CPA configuration and `auth-dir` | Provider channels, integration credentials, and pending credential migrations |
 
 ## Access
 
@@ -129,7 +171,7 @@ Back up the files, mount plugin/data directories persistently, and retain plugin
 
 Use **API Key Groups** to manage groups, membership, access control, and the ungrouped-key policy. Groups can bind routing rules and/or directly select credentials and models. A key may belong to multiple groups and also have its own routing rules or direct permissions.
 
-Selections cycle through unselected, allowed, and denied. Permissions from all enabled groups and the key itself are combined: allowlists are unioned, denylists are unioned, and denials win. An empty model allowlist does not restrict models. **For a managed key, an empty credential allowlist grants no upstream access.** Empty groups grant no access. Saving a key's direct permissions and then clearing every selection still means no upstream access.
+Click a model or credential row to cycle through unselected, allowed, and denied; Enter and Space work as well. No status dropdown is needed. Advanced dynamic category rules and API-key assignments are expanded by default. Permissions from all enabled groups and the key itself are combined: allowlists are unioned, denylists are unioned, and denials win. An empty model allowlist does not restrict models. **For a managed key, an empty credential allowlist grants no upstream access.** Empty groups grant no access. Saving a key's direct permissions and then clearing every selection still means no upstream access.
 
 Selecting a credential category authorizes current and future credentials in that category. Select individual files instead when only specific accounts should be allowed. Searches and category filters do not clear hidden selections; bulk selection affects only the currently displayed individual credentials.
 
@@ -166,6 +208,23 @@ Refresh quotas on demand. Only returned windows, percentages, or balances are di
 
 Per-account concurrency limits range from 0–1000; 0 is unlimited. Both upstream-account and downstream-key limits apply. Streaming requests hold their slot until completion, disconnection, or a retry switches accounts. Back up `<state_file>.account-runtime.json` with the database.
 
+## Model tests
+
+**Model Tests** compares a selected account/model's response to a single prompt. It sends a **diagnostic request through CPA's management API**, not the complete downstream API-key path, so it does not replace business tests of key groups, routing, and subscription limits. It consumes upstream quota. This path emits no `usage.handle` record, creates no downstream usage/billing entry, and does not present response-reported token counts, cost, or TTFT as authoritative telemetry.
+
+Model tests require a **CPA 7.3.4-compatible host with schema 6**. Supported accounts are exactly identifiable **Codex OAuth auth files** and CPA-native **OpenAI-compatible, Codex / Responses, Claude, and Gemini API-key channels**. Configured accounts are matched against a freshly read native management configuration, their account index, and an exact fingerprint; older hosts may omit them from the auth-file inventory, so that inventory is not the only source. Other OAuth types such as Claude or Antigravity, disabled accounts, missing/duplicate indexes, and unsupported custom headers or protocols are refused. Channels published by Account Integrations must satisfy the same requirements; credential-storage helper records cannot execute requests.
+
+1. Select an account and enter the actual upstream model ID. Configured channels provide known models and aliases; execution rereads the configuration and resolves an unambiguous alias to its original model.
+2. Choose a preset: **Exact JSON** checks structure and deterministic values; **Constraint reasoning** checks the unique solution to an original puzzle; **Code review** and **Custom prompt** show output for manual evaluation. Editing a preset makes it a custom test instead of applying the original assertions. Prompts are limited to 8192 UTF-8 bytes.
+3. Click **Run once**. Each page sends one request at a time with no automatic retry. Repeat with another account/model to compare results. Generated code is displayed as text and never executed.
+4. The latest six results remain only in the current page's memory and can be cleared. Reloading, signing out, or closing the page does not retain this history. Passing a check establishes only that this response met the stated task; it does not verify overall intelligence, actual model identity, or the quality of future requests.
+
+**The network route is explicit: account proxy → global proxy → explicit direct connection.** An account explicitly configured for direct access overrides the global proxy. Every run rereads the current settings and displays the selected source and redacted endpoint. Unverified global settings, invalid proxies, or connection failures never silently fall back to direct access.
+
+The plugin applies local risk rules, valid-State checks, and per-account concurrency to the diagnostic. Preparation has a short send deadline; expired preparations require a new test rather than using a nearly expired template. Normal completion releases the slot. If the management connection fails, the upstream may still be running, so the slot remains conservatively reserved until the bounded lease expires and a later host call cleans it up. No background test loop is created.
+
+Ordinary status APIs do not return raw State values. Preparing a single administrator test may temporarily return the State header required by that request. The page uses it for that call without saving it, complete proxy credentials, or API keys in test history. Response bodies are used only to extract/display model text, never to create business billing or failure telemetry.
+
 ## Risk center
 
 Local keyword checks are disabled by default and can be scoped to models. Observe mode records matches; pre-block mode refuses matches before upstream execution. Pre-block also refuses uninspectable payloads, including missing, unsupported, or oversized input. Inspection accepts up to 1 MiB JSON and 64 KiB recognized text; it does not inspect image/audio content or fetch external links.
@@ -192,13 +251,35 @@ Protected accounts require a verified CPA 7.3.4-compatible host with header forw
 | Template / replacement lengths | Default 292 / 312 |
 | TTL | Default 3600 seconds from the token's embedded issuance time; receiving the same token does not extend its lifetime |
 
+### First-time setup
+
+1. Select the Codex OAuth accounts and exact models you will use. Credentials, model access, and upstream quota must be valid; State does not replenish exhausted quota.
+2. Enter one complete proxy URL per line in the correct static or rotating pool. Connectivity testing runs up to 10 requests concurrently. Reachability alone does not mean a valid bucket has been collected.
+3. Enable injection and turn off observation. Choose `always` for clients without a State header; `replace-only` requires a replaceable header. Use a CPA 7.3.4-compatible host and HTTP/SSE. Default bucket protection refuses business traffic through unready accounts.
+4. Click **Save all settings**, then **Start probing**, and keep the collection page open. Reloads resume the task, transient failures retry after 3–60 seconds, and saving settings preserves the running task. Expired management login pauses requests until you sign in again. Explicit Stop or sign-out clears the task.
+5. Confirm the intended account/model bucket has positive remaining minutes and a successful collection log. Send business requests through this CPA and inspect insertion/replacement decisions. The matching template must belong to the same account/model; this is not a guarantee of answer quality.
+
+A degraded length of 312 means no valid template was saved. The runner tries other eligible exits or waits for cooldowns. Fresh/cooling results mean waiting, not completion. Closing the page, leaving the collection tab, or suspending the device pauses browser-driven work. Returning, regaining focus, or restoring connectivity rechecks ownership and resumes the saved task without another Start click. There is no detached server runner.
+
+### Automatic proxy removal
+
+**Discard abnormal IPs** and **Discard degraded IPs** default to off. The first removes confirmed proxy connection, timeout, or proxy-authentication failures; the second removes entries that returned a degraded State length. Account 401/403/429 responses and missing credentials never qualify as broken proxies.
+
+Enabling either option reveals the minimum retained proxy count: default 10, range 1–40000, counted across both pools. At the floor, probing continues without removal; the feature never empties the pools and silently switches to direct access. Removal targets the exact URL in its original pool, preserving other sessions on the same gateway. For rotating proxies it removes that URL entry, not a permanent egress-IP identity.
+
+Automatic removals are saved immediately and logged with the remaining count. Failed writes retain the proxy and probing continues. Editors follow the updated pools unless there are unsaved edits, which are preserved with a reload notice. Manual **Remove failed proxies** after connectivity testing only edits the draft and still requires Save. Copy the list first if you need a recovery copy.
+
+### Accounts and templates
+
 Templates are isolated by CPA's selected account and actual upstream model. `always` does not create templates or share them between accounts/models. `pass` can mean the request already carries the current template; inspect its reason. Header-length classification follows the upstream project's heuristic and is not an independent measurement of answer quality.
 
 Select accounts and models, save, then start probing with this page open. **Disabled Codex OAuth accounts are selectable for collection** and are labeled as disabled. Probing does not enable them for business traffic or change CPA's global proxy. Deleted or unsupported accounts are skipped; stale saved selections remain removable. Probing requires a valid OAuth token; expired credentials need a CPA refresh or a new login.
 
 Each static proxy URL represents one exit and cools down for 55 minutes after failure. A rotating URL can be tried up to 10 times before a 10-minute cooldown. Successful collection schedules renewal from the token's actual issuance time and TTL. Set the renewal lead to an integer such as 10 or 20 minutes, strictly shorter than the TTL. The default `renew_before_minutes=0` preserves the automatic lead: 5 minutes, or one quarter of a shorter TTL. Changing it reschedules successful exits without resetting failure cooldowns. Existing cooldowns from older versions lack a success marker and retain their original deadline once after upgrading.
 
-The account × model matrix displays remaining validity in minutes, missing selected buckets, and still-valid templates outside the selected scope. Account and proxy controls are expanded by default. Saved HTTP, HTTPS, SOCKS5, and SOCKS5H URLs, including credentials, load into editable textareas. Only changed pools are submitted; emptying a loaded textarea and saving clears that pool. Status responses still contain counts only. A separate management-only endpoint reads complete proxy URLs in bounded pages with caching disabled.
+### Matrix, logs, and self-tests
+
+The account × model matrix displays remaining validity in minutes, missing selected buckets, and still-valid templates outside the selected scope. Account and proxy controls are expanded by default. Saved HTTP, HTTPS, SOCKS5, and SOCKS5H URLs, including credentials, load into editable textareas. Only changed pools are submitted; emptying a loaded textarea and saving clears that pool. Status responses contain counts and a configuration revision, not the complete proxy lists. A separate management-only endpoint reads complete proxy URLs in bounded pages with caching disabled.
 
 Account/model selections, proxies, injection, and renewal settings share dirty-state feedback and **Save all settings** controls at the top and in each section. Failed saves preserve drafts. Bucket readiness displays proxy IP/host and port plainly while hiding authentication; a rotating gateway address is not proof of the actual egress IP.
 
@@ -206,17 +287,23 @@ The dashboard separates probe results, bucket readiness, and business decisions:
 
 Clearing cooldowns requires confirmation and removes failure waits while preserving valid templates and normal renewal schedules. The next probe may immediately spend account quota or proxy traffic and trigger throttling again; clearing does not remove upstream limits. A targeted reset also clears the account-wide rejection pause, as explained in the confirmation.
 
+### Connectivity and large proxy lists
+
 Test each pool to see progress, masked proxy addresses, and sampled exit IPs when available. Tests use no account credentials or account quota and check connectivity to the Codex API. Only connection or proxy-authentication failures qualify for removal; upstream 403/429 and inconclusive results are retained. Removing failed proxies edits the draft; click Save to apply it. Live collection progress and logs show the actual selected proxy position/total and masked address, with retry counts for rotating proxies. Successful templates retain their masked collection address. A proxy endpoint is not necessarily the actual exit IP; a rotating proxy's diagnostic IP describes that sample only, not a later collection request.
 
 Each pool supports up to 20,000 proxies, with a 16 MiB limit for the complete configuration. The management page automatically uploads large settings in chunks of about 16 KiB per request to avoid typical ingress `413 Request Entity Too Large` limits. Settings take effect atomically after the complete upload passes validation. Interrupted uploads preserve the previous configuration and the editor draft for retry. Changes made by another page after proxies were loaded or during upload cause a conflict; reload the saved proxy lists using the retry button, edit, and save again. Incomplete uploads stay in memory and are discarded on subsequent calls after 15 minutes of inactivity; they are never written to the state file.
+
+### Execution and storage boundaries
 
 Active probing uses Go's built-in HTTP client to send a direct upstream request using the selected account, with a 25-second total timeout. Each probe opens a new connection and closes the response and connection after reading the headers, so rotating proxies can assign a new exit on every attempt. **It consumes upstream quota and is not billed to a downstream CPA API key.** Continuous work remains browser-driven: a reload restores the task; leaving the page pauses it, with resumption on return. Tabs on the same origin and management identity coordinate ownership. Stop clears the saved intent, while the current request finishes or times out. With all pages closed, no background server job runs. Configuration changes and template clearing wait for an in-flight probe to finish.
 
 HTTP/SSE injection needs CPA 7.3.4 or the equivalent forwarding fix. WebSocket headers apply only to a new handshake, not each message over a reused connection. WebSocket handshake responses are not part of HTTP/SSE response learning; active probing can collect templates first.
 
-Settings, proxies, and templates live in `<state_file>.turn-state.json` next to the billing database. The file is restricted to the current system user. Management APIs never return raw templates. The management-only proxy reader returns complete proxy URLs, including passwords, for the editable textareas; ordinary status and collection logs remain redacted. Enable either this integration or the standalone Turn State plugin to avoid competing header rewrites.
+Settings, proxies, and templates live in `<state_file>.turn-state.json` next to the billing database. The file is restricted to the current system user. Ordinary status APIs do not return raw templates. The management-only proxy reader returns complete proxy URLs, including passwords, for the editable textareas; ordinary status and collection logs remain redacted. Enable either this integration or the standalone Turn State plugin to avoid competing header rewrites.
 
 ## Rejection responses
+
+The `type` / `code` columns describe OpenAI-compatible responses. Native Anthropic requests use their corresponding error envelope.
 
 | Condition | HTTP status | `type` | `code` |
 | --- | --- | --- | --- |
@@ -226,10 +313,23 @@ Settings, proxies, and templates live in `<state_file>.turn-state.json` next to 
 | Ungrouped-key policy, only disabled/empty groups, or unauthorized final credential | `403` | `permission_error` | `access_denied` |
 | No available authorized credential | `503` | `server_error` | `internal_server_error` |
 | Bound routing rule missing or invalid | `503` | `server_error` | `routing_configuration_error` |
+| Per-account concurrency limit reached | `429` | `rate_limit_error` | `rate_limit_exceeded` |
+| Protected account has no injectable valid template | `503` | `cpa_key_billing_error` | `turn_state_required` |
+| Incompatible State host / unsupported WebSocket session | `503` | `cpa_key_billing_error` | `turn_state_host_unsupported` / `turn_state_websocket_unsupported` |
+| Scoped quota cannot resolve a dynamic model | `503` | `cpa_key_billing_error` | `quota_model_unresolved` |
+| Risk rule rejection | Default `403`; configurable 4xx | `permission_error` | `content_policy_violation` |
+
+Some error types retain `cpa_key_billing_error` for client compatibility; this does not indicate the old plugin ID is loaded.
 
 For `/v1/responses` WebSocket requests, CPA closes the connection on plugin rejection instead of returning these HTTP response bodies.
 
-## Local development
+## Implementation boundaries and development
+
+CPA's `usage.handle` is the sole source of usage, billing, latency, and upstream failure details. Business response bodies are not parsed to reconstruct usage. Admission checks enforce request policies; scheduling and final-account checks enforce credential access, per-account concurrency, and valid-template protection. Completion hooks release concurrency and perform lifecycle bookkeeping.
+
+Work completes synchronously inside host calls. The plugin does not own background goroutines, timers, or refreshers. The management page drives collection loops, quota refreshes, and authorization polling; closing it leaves no detached loop on the server. Saved billing, access, and State policies still apply to normal business requests in CPA.
+
+### Local build and debugging
 
 Use Go 1.24+ and a C compiler. On Windows, use MinGW-w64 GCC:
 
@@ -248,7 +348,9 @@ CGO_ENABLED=1 go build -buildvcs=false -tags cshared -buildmode=c-shared -o dist
 
 Stop CPA, replace the library in its `plugins/` directory, and restart. Do not keep duplicate libraries with the same plugin ID. The UI is embedded in the library, so UI edits also require a rebuild and restart. Use an isolated configuration, database, and dummy credentials for testing. See [AGENTS.md](AGENTS.md) for repository checks.
 
-## Acknowledgments
+## License and origins
+
+This project uses the [MIT License](LICENSE) and retains the original **Hao Wang** copyright and license notice. Third-party reference revisions and licenses are documented in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
 - [haowang02/cpa-plugin-key-billing](https://github.com/haowang02/cpa-plugin-key-billing), the original fork source. Upstream v1.3.12 localization ([594c3b1](https://github.com/haowang02/cpa-plugin-key-billing/commit/594c3b1922edb6ce38058b4b1dc2707023ed0cf3)) is adapted while preserving this fork's group permissions and Turn State integration.
 - [cpa-plugin-codex-turn-state](https://github.com/arden-aaai/cpa-plugin-codex-turn-state), the source of the integrated template collection and injection feature.
