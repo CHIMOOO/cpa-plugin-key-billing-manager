@@ -831,6 +831,21 @@
     "key": "backend.groups.invalid_group_id",
     "formats": []
   },
+  "Group routing mode must be ordinary, exclusive, or common": {
+    "key": "backend.groups.invalid_routing_mode",
+    "formats": []
+  },
+  "An API key can belong to only one enabled exclusive group; groups %q and %q conflict": {
+    "key": "backend.groups.exclusive_conflict",
+    "formats": [
+      "%q",
+      "%q"
+    ]
+  },
+  "The API key's direct model rules and exclusive group have no models in common; access is denied": {
+    "key": "backend.groups.exclusive_models_empty",
+    "formats": []
+  },
   "Group name is required and must not exceed %d bytes": {
     "key": "backend.groups.group_name_is_required_and_must_not_exceed_d_bytes",
     "formats": [
@@ -1245,27 +1260,52 @@
     "key": "backend.turn_state_proxy_test_reachable",
     "formats": []
   },
-  "Group routing mode must be ordinary, exclusive, or common": {
-    "key": "backend.groups.invalid_routing_mode",
-    "formats": []
-  },
-  "An API key can belong to only one enabled exclusive group; groups %q and %q conflict": {
-    "key": "backend.groups.exclusive_conflict",
-    "formats": [
-      "%q",
-      "%q"
-    ]
-  },
-  "The API key's direct model rules and exclusive group have no models in common; access is denied": {
-    "key": "backend.groups.exclusive_models_empty",
+  "Turn State requires CLIProxyAPI v7.3.4-compatible HTTP/SSE forwarding. Protected Codex accounts must disable upstream WebSocket mode. Downstream WebSocket clients can then use the host's HTTP/SSE bridge, with State injected on every turn. Existing upstream WebSocket continuations may need one reconnect after this change.": {
+    "key": "backend.turn_state_host_requirement",
     "formats": []
   },
   "A valid response template was cached; management synchronization will persist it": {
     "key": "backend.turn_state_response_cached",
     "formats": []
   },
-  "Turn State requires CLIProxyAPI v7.3.4-compatible HTTP/SSE forwarding. Protected Codex accounts must disable upstream WebSocket mode. Downstream WebSocket clients can then use the host's HTTP/SSE bridge, with State injected on every turn. Existing upstream WebSocket continuations may need one reconnect after this change.": {
-    "key": "backend.turn_state_host_requirement",
+  "Specify whether server collection is enabled": {
+    "key": "backend.state_runner_specify_enabled",
+    "formats": []
+  },
+  "Invalid server collector identity": {
+    "key": "backend.state_runner_invalid_identity",
+    "formats": []
+  },
+  "Another server collector owns the active lease": {
+    "key": "backend.state_runner_owned",
+    "formats": []
+  },
+  "A server collection probe is already running": {
+    "key": "backend.state_runner_busy",
+    "formats": []
+  },
+  "Stop server collection before starting a manual probe": {
+    "key": "backend.state_runner_manual_blocked",
+    "formats": []
+  },
+  "Server collection could not complete this probe; it will retry": {
+    "key": "backend.state_runner_probe_retry",
+    "formats": []
+  },
+  "Cannot save server collection settings": {
+    "key": "backend.state_runner_save_failed",
+    "formats": []
+  },
+  "Cannot read server collection settings": {
+    "key": "backend.state_runner_read_failed",
+    "formats": []
+  },
+  "Invalid server collection settings": {
+    "key": "backend.state_runner_invalid_control",
+    "formats": []
+  },
+  "Cannot secure server collection settings": {
+    "key": "backend.state_runner_permission_failed",
     "formats": []
   }
 }

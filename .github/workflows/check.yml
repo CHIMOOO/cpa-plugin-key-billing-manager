@@ -92,6 +92,13 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+      - name: Build standalone State collector
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build -trimpath -o "$RUNNER_TEMP/cpa-state-collector" ./cmd/cpa-state-collector
+          "$RUNNER_TEMP/cpa-state-collector" --help
+
       - name: Check embedded UI JavaScript
         run: |
           ui_script="$RUNNER_TEMP/cpa-key-billing-ui.js"

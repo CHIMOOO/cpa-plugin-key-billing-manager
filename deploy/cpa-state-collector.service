@@ -1,0 +1,24 @@
+[Unit]
+Description=CPA State collection scheduler
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=yes
+Environment=CPA_URL=http://127.0.0.1:8317
+EnvironmentFile=-/etc/cpa-state-collector/collector.env
+LoadCredential=management-key:/etc/cpa-state-collector/management-key
+ExecStart=/usr/local/bin/cpa-state-collector --url ${CPA_URL} --management-key-file %d/management-key
+Restart=always
+RestartSec=5
+TimeoutStopSec=50
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

@@ -18,6 +18,13 @@ func TestTurnStateSelfTestPinsHostAccountAndNeverHarvests(t *testing.T) {
 	calls := 0
 	app.SetHostCaller(func(method string, input any) (json.RawMessage, error) {
 		calls++
+		if !app.turnStateRunner.status().InFlight {
+			t.Fatal("self-test did not reserve the manual diagnostic gate")
+		}
+		if finish, allowed := app.beginManualTurnStateProbe(); allowed {
+			finish()
+			t.Fatal("a second diagnostic entered while self-test was executing")
+		}
 		if method == hostAuthList {
 			return mustMarshal(t, hostAuthListResponse{Files: []hostAuthFile{{ID: "dummy-account", AuthIndex: "dummy-index", Provider: "codex"}}}), nil
 		}
@@ -37,6 +44,41 @@ func TestTurnStateSelfTestPinsHostAccountAndNeverHarvests(t *testing.T) {
 	}
 	if len(app.turnState.Status().Templates) != 0 || app.turnState.Status().ProbeStats.Attempts != 0 || strings.Contains(string(response.Body), "dummy-secret") || strings.Contains(string(response.Body), rpcTurnStateTemplate()) {
 		t.Fatal("self-test harvested or leaked response")
+	}
+	if app.turnStateRunner.status().InFlight {
+		t.Fatal("finished self-test retained the manual diagnostic gate")
+	}
+}
+
+func TestTurnStateSelfTestRejectsRunningAndDrainingCollector(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		enabled  bool
+		inFlight bool
+	}{
+		{"enabled", true, false},
+		{"running", true, true},
+		{"draining", false, true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			app := newConfiguredApp(t)
+			app.turnStateRunner.mu.Lock()
+			app.turnStateRunner.control.Enabled = test.enabled
+			app.turnStateRunner.inFlight = test.inFlight
+			app.turnStateRunner.mu.Unlock()
+			app.SetHostCaller(func(string, any) (json.RawMessage, error) {
+				t.Fatal("blocked diagnostic made a host call")
+				return nil, nil
+			})
+			unconfirmed := app.selfTestTurnState(ManagementRequest{Body: []byte(`{"account":"dummy-account","model":"model-a"}`)})
+			if unconfirmed.StatusCode != http.StatusBadRequest {
+				t.Fatal("confirmation must be validated before reserving the gate")
+			}
+			response := app.selfTestTurnState(ManagementRequest{Body: []byte(`{"account":"dummy-account","model":"model-a","confirm":true}`)})
+			if response.StatusCode != http.StatusConflict || !strings.Contains(string(response.Body), "runner_active") {
+				t.Fatalf("collector/self-test overlap accepted: %d %s", response.StatusCode, response.Body)
+			}
+		})
 	}
 }
 

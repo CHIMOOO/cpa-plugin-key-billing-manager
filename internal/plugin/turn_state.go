@@ -25,14 +25,15 @@ type turnStateAccount struct {
 
 type turnStateStatus struct {
 	turnstate.Status
-	ProbeAccounts                        []turnStateAccount `json:"probe_accounts"`
-	ProbeSupported                       bool               `json:"probe_supported"`
-	ProbeUnavailableReason               string             `json:"probe_unavailable_reason,omitempty"`
-	ProbeUnavailableMessage              messages.Message   `json:"probe_unavailable_message,omitzero"`
-	HostRequirement                      string             `json:"host_requirement"`
-	HostRequirementMessage               messages.Message   `json:"host_requirement_message,omitzero"`
-	UpstreamWebsocketPatchPath           string             `json:"upstream_websocket_patch_path"`
-	UpstreamWebsocketManagementSupported bool               `json:"upstream_websocket_management_supported"`
+	ProbeAccounts                        []turnStateAccount    `json:"probe_accounts"`
+	ProbeSupported                       bool                  `json:"probe_supported"`
+	ProbeUnavailableReason               string                `json:"probe_unavailable_reason,omitempty"`
+	ProbeUnavailableMessage              messages.Message      `json:"probe_unavailable_message,omitzero"`
+	HostRequirement                      string                `json:"host_requirement"`
+	HostRequirementMessage               messages.Message      `json:"host_requirement_message,omitzero"`
+	UpstreamWebsocketPatchPath           string                `json:"upstream_websocket_patch_path"`
+	UpstreamWebsocketManagementSupported bool                  `json:"upstream_websocket_management_supported"`
+	Runner                               turnStateRunnerStatus `json:"runner"`
 }
 
 func codexAuthFile(file hostAuthFile) bool {
@@ -78,6 +79,7 @@ func (a *App) getTurnState(_ ManagementRequest) ManagementResponse {
 		}
 	}
 	status.HostRequirementMessage = messages.Literal(status.HostRequirement)
+	status.Runner = a.turnStateRunner.status()
 	status.ProbeUnavailableMessage = messages.Literal(status.ProbeUnavailableReason)
 	return JSONResponse(http.StatusOK, status)
 }
@@ -104,6 +106,15 @@ func (a *App) clearTurnState(req ManagementRequest) ManagementResponse {
 }
 
 func (a *App) probeTurnState(req ManagementRequest) ManagementResponse {
+	finish, allowed := a.beginManualTurnStateProbe()
+	if !allowed {
+		return JSONError(http.StatusConflict, "runner_active", "Stop server collection before starting a manual probe")
+	}
+	defer finish()
+	return a.executeTurnStateProbe(req)
+}
+
+func (a *App) executeTurnStateProbe(req ManagementRequest) ManagementResponse {
 	var input struct {
 		Account string `json:"account"`
 		Model   string `json:"model"`

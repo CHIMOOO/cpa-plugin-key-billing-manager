@@ -1,0 +1,25 @@
+# Linux host-network example. For a shared Docker network, remove network_mode
+# and set CPA_URL to the CPA service's origin, such as http://cpa:8317.
+services:
+  state-collector:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.state-collector
+      args:
+        VERSION: ${CPA_COLLECTOR_VERSION:-dev}
+    restart: unless-stopped
+    network_mode: host
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      CPA_URL: ${CPA_URL:-http://127.0.0.1:8317}
+    command: ["--management-key-file", "/run/secrets/cpa_management_key"]
+    secrets: [cpa_management_key]
+    stop_grace_period: 50s
+
+secrets:
+  cpa_management_key:
+    # Must be readable by container UID 65532. Keep this file outside the repo.
+    file: ${CPA_MANAGEMENT_KEY_FILE:?Set the absolute path of the management key file}

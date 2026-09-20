@@ -2608,11 +2608,11 @@
               <li><strong data-i18n="ui.state_guide_account_title">Choose accounts and models</strong><p data-i18n="ui.state_guide_account">Select valid Codex accounts with available quota and enter the exact upstream model IDs used by your requests. A template belongs to one account and model.</p></li>
               <li><strong data-i18n="ui.state_guide_proxy_title">Set up and test proxies</strong><p data-i18n="ui.state_guide_proxy">Put fixed exits in the static pool and URLs that change exit on each connection in the rotating pool. Test connectivity; reachable does not mean a valid State was collected.</p></li>
               <li><strong data-i18n="ui.state_guide_injection_title">Enable actual injection</strong><p data-i18n="ui.state_guide_injection">Enable injection and turn off Observe only. Use always when your client sends no State header. Default protection blocks business traffic on selected accounts until a usable bucket is ready.</p></li>
-              <li><strong data-i18n="ui.state_guide_verify_title">Save, collect and verify</strong><p data-i18n="ui.state_guide_verify">Save all settings, start probing and keep this page open. Look for a collection success log and remaining validity above 0 minutes for the right account and model. Then make a business request and check that the injection counter increases.</p></li>
+              <li><strong data-i18n="ui.state_guide_verify_title">Save, collect and verify</strong><p data-i18n="ui.state_guide_verify">Install the server collector, save all settings to verify upstream HTTP/SSE, then start collection. Confirm the collector is online and inspect bucket validity and injection counters. Finally verify a complete business response; a collected header alone does not prove stability.</p></li>
             </ol>
             <details><summary data-i18n="ui.state_guide_more">Results, page refresh and automatic proxy removal</summary>
               <p data-i18n="ui.state_guide_results">Length 312 (or your configured degraded length) is not a successful collection. Waiting for renewal or proxy cooldown means the task is still running; it resumes when due. State does not restore exhausted account quota or guarantee response quality.</p>
-              <p data-i18n="ui.state_guide_session">Refreshing this page resumes a saved task and transient connection errors retry automatically. Closing the page pauses browser-driven probing; reopen it to continue. Stop clears the saved task intent, not existing templates. Login expiry or invalid settings require attention before collection can continue.</p>
+              <p data-i18n="ui.state_guide_session">The server keeps collection intent and recent logs. Refreshing, leaving this tab, closing the browser or signing out does not stop collection. Stop saves a server-side stop command. If the collector or CPA restarts, the service reconnects and resumes enabled collection.</p>
               <p data-i18n="ui.state_guide_pruning">Automatic proxy removal is off by default. If enabled and saved, it immediately saves each removal while keeping at least the configured total across both pools (default 10). The separate Remove failed proxies action after a connectivity test edits the text boxes and needs Save all settings.</p>
             </details>
           </div>
@@ -2620,7 +2620,9 @@
           <div class="card turn-state-console" id="turn-state-card">
             <div class="row spread settings-section-header"><h3 data-i18n="ui.state_probe_console">Probe console</h3><div class="row"><button id="turn-state-probe-start" class="primary" type="button" disabled data-i18n="ui.fork_start_probing">Start probing</button><button id="turn-state-probe-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-refresh" type="button" disabled data-i18n="ui.fork_refresh_status">Refresh status</button></div></div>
             <div id="turn-state-session-status" class="notice hidden" role="status"></div>
-            <p class="access-help" data-i18n="ui.state_runner_help">Probes consume account quota. This browser page drives the schedule; closing it pauses probing. Existing templates and request injection continue on the server.</p>
+            <p class="access-help" data-i18n="ui.state_runner_help">Probes consume account quota. Install the collector on your CPA server, save the collection scope, then click Start. The collector keeps working when this page closes; Stop prevents further requests after the current probe finishes.</p>
+            <p class="access-help" data-i18n="ui.state_server_install">Install cpa-state-collector from this plugin release as a systemd service or Docker sidecar on the CPA server. Configure its CPA URL and management credential. This page only observes and controls that service.</p>
+            <p class="access-help"><a href="https://github.com/CHIMOOO/cpa-plugin-key-billing-manager/blob/main/deploy/README.state-collector.md" target="_blank" rel="noopener noreferrer" data-i18n="ui.state_server_install_link">Collector installation guide (systemd / Docker)</a></p>
             <div id="turn-state-probe-status" class="state-probe-status" role="status"></div>
             <div id="turn-state-metrics" class="state-metrics"></div>
             <div class="state-observation-grid"><div><h4 data-i18n="ui.state_probe_totals">Probe results</h4><div id="turn-state-probe-counters" class="state-counter-list"></div></div><div><h4 data-i18n="ui.state_decisions">Request decisions</h4><div id="turn-state-decision-counters" class="state-counter-list"></div></div></div>
@@ -3876,9 +3878,18 @@
           $("group-dialog").close();
           $("turn-state-probe-log").replaceChildren();
           $("plugin-persistence-notice").className = "notice hidden";
-          turnStateResumeAttempted = false;
-          turnStateLogLoaded = "";
           turnStateLogRows = [];
+          turnStateProbe = { running: false, inFlight: false };
+          turnStateRunner = {
+            value: null,
+            error: "",
+            timer: 0,
+            generation: turnStateRunner.generation + 1,
+            loading: false,
+            command: false,
+            epoch: "",
+            sequence: 0
+          };
           adminUIState = { ...emptyAuthQuotaState(), keySubmissions: new Set(), groupSubmissions: new Set(), selectedKeys: new Set() };
           expandedPluginLogIDs.clear();
           resourceGroups.admin.configuration.syncErrors = [];
@@ -4253,10 +4264,6 @@
         for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
         for (const controller of activeRequests) controller.abort();
         if (currentRole) {
-          if (currentRole === "admin") {
-            pauseTurnStateSession(preserveProbeIntent);
-            if (!preserveProbeIntent) saveTurnStateSession(null);
-          }
           clearCredentialScope(currentRole === "account");
           resetRoleData(currentRole);
         }
@@ -8594,85 +8601,140 @@
         "save"
       ];
       const TURN_STATE_POOLS = { static: "proxies", rotating: "rotating" };
-      let turnStateProbe = { running: false, timer: 0, progressTimer: 0, generation: 0, inFlight: false, failures: 0 };
+      // Only manual diagnostics run in this page. Continuous collection belongs
+      // to the server collector; observing or leaving this page never controls it.
+      let turnStateProbe = { running: false, inFlight: false };
       let turnStateClockTimer = 0;
-      const turnStateOwner = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
-      let turnStateSessionTimer = 0, turnStateResumeAttempted = false, turnStateLogLoaded = "";
       let turnStateLogRows = [];
-      function turnStateSessionKey() {
-        return credentialScope.admin ? "cpa.team-manager.turn-state.runner.v1." + location.pathname + "." + credentialScope.admin : "";
-      }
-      function readTurnStateSession() {
+      let turnStateRunner = { value: null, error: "", timer: 0, generation: 0, loading: false, command: false, epoch: "", sequence: 0 };
+
+      function removeLegacyTurnStateIntent() {
+        if (!credentialScope.admin) return;
+        const key = "cpa.team-manager.turn-state.runner.v1." + location.pathname + "." + credentialScope.admin;
         try {
-          const record = JSON.parse(localStorage.getItem(turnStateSessionKey()) || "null");
-          return record?.intent === true && typeof record.owner === "string" && Number.isFinite(record.expires) ? record : null;
-        } catch (_) { return null; }
+          localStorage.removeItem(key);
+          sessionStorage.removeItem(key + ".rows");
+        } catch (_) {}
       }
-      function saveTurnStateSession(record) {
-        const key = turnStateSessionKey();
-        if (!key) return false;
-        try {
-          if (record) localStorage.setItem(key, JSON.stringify(record)); else localStorage.removeItem(key);
-          return true;
-        } catch (_) { return false; }
-      }
-      function ownsTurnStateSession() {
-        const record = readTurnStateSession();
-        return !turnStateSessionKey() || (record?.owner === turnStateOwner && record.expires > Date.now());
-      }
-      function pauseTurnStateSession(preserve) {
-        clearTimeout(turnStateSessionTimer);
-        const record = readTurnStateSession();
-        if (!record || record.owner !== turnStateOwner) return;
-        if (preserve) saveTurnStateSession({ ...record, owner: "", expires: 0, updated: Date.now() }); else saveTurnStateSession(null);
-      }
-      function renderTurnStateSession() {
-        clearTimeout(turnStateSessionTimer);
-        const record = readTurnStateSession(), other = record?.owner && record.owner !== turnStateOwner && record.expires > Date.now();
-        const notice = $("turn-state-session-status"), key = turnStateSessionKey();
-        if (key && turnStateLogLoaded !== key) {
-          turnStateLogLoaded = key;
-          try {
-            const saved = JSON.parse(sessionStorage.getItem(key + ".rows") || "[]");
-            if (Array.isArray(saved)) {
-              $("turn-state-probe-log").replaceChildren();
-              turnStateLogRows = [];
-              for (const row of saved.slice(-50)) if (row && typeof row === "object") appendTurnStateProbeLog(row, false);
-            }
-          } catch (_) {}
-          const last = resources.admin.turnState.value?.last_probe;
-          if (!$("turn-state-probe-log").textContent && last?.action) appendTurnStateProbeLog(last);
-        }
-        const message = other
-          ? m("ui.state_other_tab")
-          : turnStateProbe.running ? m("ui.state_runner_active") : record?.intent ? m("ui.state_runner_paused") : m("ui.state_runner_idle");
-        notice.className = "notice show";
-        setText(notice, message);
-        if (other) $("turn-state-probe-start").disabled = true;
-        if (turnStateProbe.running && ownsTurnStateSession()) {
-          saveTurnStateSession({ ...record, intent: true, owner: turnStateOwner, expires: Date.now() + 120000, updated: Date.now() });
-        }
-        if (currentRole !== "admin" || activeTab(false) !== "turn-state") return;
+
+      function applyTurnStateRunner(value) {
         if (
-          record?.intent && !other && !turnStateProbe.running && !turnStateProbe.inFlight && !turnStateResumeAttempted &&
-          turnStatePoolState().loaded &&
-          resources.admin.turnState.value?.probe_supported
-        ) {
-          turnStateResumeAttempted = true;
-          queueMicrotask(async () => {
-            try { await startTurnStateProbe(true); } catch (error) {
-              if (error instanceof AuthError) await fail(error);
-            } finally { if (!turnStateProbe.running && readTurnStateSession()?.intent) turnStateResumeAttempted = false; }
-          });
+          !value || typeof value.enabled !== "boolean" || typeof value.online !== "boolean" ||
+          !["stopped", "waiting", "running", "draining", "offline"].includes(value.phase) ||
+          !Array.isArray(value.events)
+        )
+          throw new UIError(m("ui.invalid_server_response"));
+        turnStateRunner.value = value;
+        turnStateRunner.error = "";
+        turnStateProbe.running = value.enabled || value.in_flight === true;
+        const epoch = String(value.epoch || value.instance_id || "initial");
+        if (turnStateRunner.epoch !== epoch) {
+          turnStateRunner.epoch = epoch;
+          turnStateRunner.sequence = 0;
+          turnStateLogRows = [];
+          $("turn-state-probe-log").replaceChildren();
         }
-        if (record?.intent || turnStateProbe.running)
-          turnStateSessionTimer = setTimeout(() => {
-            if (turnStateProbe.running && !ownsTurnStateSession()) {
-              stopTurnStateProbe(true);
-              turnStateResumeAttempted = false;
+        for (const event of [...value.events].sort((a, b) => Number(a.sequence) - Number(b.sequence))) {
+          if (!Number.isSafeInteger(event.sequence) || event.sequence <= turnStateRunner.sequence || !event.result?.action) continue;
+          appendTurnStateProbeLog({ ...event.result, at: event.at });
+          turnStateRunner.sequence = event.sequence;
+        }
+      }
+
+      function renderTurnStateSession() {
+        removeLegacyTurnStateIntent();
+        if (!turnStateRunner.value && resources.admin.turnState.value?.runner) applyTurnStateRunner(resources.admin.turnState.value.runner);
+        const runner = turnStateRunner.value, notice = $("turn-state-session-status");
+        const offline = runner && !runner.online;
+        let key = !runner
+          ? "ui.state_server_loading"
+          : runner.phase === "draining"
+            ? "ui.state_server_draining"
+            : offline
+              ? runner.enabled ? "ui.state_server_pending" : "ui.state_server_offline"
+              : runner.phase === "running"
+                ? "ui.state_server_running"
+                : runner.enabled ? "ui.state_server_waiting" : "ui.state_server_stopped";
+        notice.className = "notice show" + (offline || turnStateRunner.error ? " err" : "");
+        setText(notice, turnStateRunner.error ? m("ui.state_server_read_failed", { reason: turnStateRunner.error }) : m(key));
+        setText(
+          $("turn-state-probe-status"),
+          runner?.last_error
+            ? m("ui.state_server_last_error", { reason: window.billingI18n.serverMessage(runner.last_error_message, runner.last_error) })
+            : runner?.enabled && runner.online && runner.next_check_at && Date.parse(runner.next_check_at) > Date.now()
+              ? m("ui.probe_next_bucket", { seconds: Math.max(0, Math.ceil((Date.parse(runner.next_check_at) - Date.now()) / 1000)) })
+              : ""
+        );
+        const progress = resources.admin.turnState.value?.probe_progress;
+        if (runner?.in_flight && progress?.active && progress.result) {
+          const result = progress.result;
+          setText(
+            $("turn-state-probe-status"),
+            m("ui.turn_state_live_probe", {
+              account:
+                resources.admin.turnState.value.probe_accounts.find((account) => account.account === result.account)?.label ||
+                result.account ||
+                "",
+              model: result.model || "",
+              index: result.proxy_index || 1,
+              total: result.proxy_total || 1,
+              proxy: turnStateProxyDisplay(result.exit),
+              attempt: result.proxy_pool === "rotating" ? m("ui.turn_state_probe_attempt", { attempt: result.proxy_attempt || 1 }) : ""
+            })
+          );
+        }
+        $("turn-state-probe-stop").disabled = !runner?.enabled || turnStateRunner.command;
+        if (!runner || turnStateRunner.command || runner.enabled || runner.in_flight) $("turn-state-probe-start").disabled = true;
+        if (
+          currentRole === "admin" && activeTab(false) === "turn-state" && !adminUIState.turnStateSaving && !turnStateRunner.timer &&
+          !turnStateRunner.loading &&
+          !turnStateRunner.command
+        )
+          turnStateRunner.timer = setTimeout(pollTurnStateRunner, 1000);
+      }
+
+      async function pollTurnStateRunner() {
+        clearTimeout(turnStateRunner.timer);
+        turnStateRunner.timer = 0;
+        if (
+          currentRole !== "admin" || activeTab(false) !== "turn-state" || adminUIState.turnStateSaving || turnStateRunner.loading ||
+          turnStateRunner.command
+        )
+          return;
+        const owner = adminUIState, generation = turnStateRunner.generation;
+        const current = () => {
+          if (
+            owner !== adminUIState || generation !== turnStateRunner.generation || currentRole !== "admin" ||
+            activeTab(false) !== "turn-state"
+          )
+            throw new StaleRequestError();
+        };
+        turnStateRunner.loading = true;
+        try {
+          const value = await plugin("GET", "/turn-state/runner", null, { timeoutMS: 5000 });
+          current();
+          applyTurnStateRunner(value);
+          const state = validateTurnState(await plugin("GET", "/turn-state", null, { timeoutMS: 10000 }));
+          current();
+          Object.assign(resources.admin.turnState, { value: state, error: "" });
+          await reconcileTurnStateProxies(state);
+          current();
+        } catch (error) {
+          if (owner !== adminUIState || generation !== turnStateRunner.generation || error instanceof StaleRequestError) return;
+          if (error instanceof AuthError) {
+            await fail(error);
+            return;
+          }
+          turnStateRunner.error = String(turnStateLogReason(error));
+        } finally {
+          if (owner === adminUIState && generation === turnStateRunner.generation) {
+            turnStateRunner.loading = false;
+            if (currentRole === "admin" && activeTab(false) === "turn-state") {
+              turnStateRunner.timer = setTimeout(pollTurnStateRunner, 2000);
+              renderTurnState();
             }
-            renderTurnStateSession();
-          }, 10000);
+          }
+        }
       }
       async function loadPersistenceNotice() {
         const owner = adminUIState;
@@ -9158,7 +9220,8 @@
       }
       function turnStateBusy() {
         return (
-          !!adminUIState.turnStateSaving || turnStateProbe.running || turnStateProbe.inFlight || turnStateDiagnostics.running ||
+          !!adminUIState.turnStateSaving || turnStateRunner.command || turnStateProbe.running || turnStateProbe.inFlight ||
+          turnStateDiagnostics.running ||
           turnStateDiagnostics.inFlight
         );
       }
@@ -9225,30 +9288,38 @@
       }
       async function probeTurnStateBucket(account, model) {
         if (turnStateBusy()) return;
+        const owner = adminUIState;
         if (!(await openActionDialog(m("ui.state_bucket_probe"), m("ui.state_bucket_probe_warning", { model })))) return;
+        if (owner !== adminUIState || currentRole !== "admin" || turnStateBusy()) return;
         turnStateProbe.inFlight = true;
         renderTurnState();
         try {
           const result = await queueAdminData("configuration", () =>
             plugin("POST", "/turn-state/probe", { account, model }, { command: true, timeoutMS: 45000 })
           );
+          if (owner !== adminUIState || currentRole !== "admin") return;
           appendTurnStateProbeLog(result);
           await reconcileTurnStateProxies(result);
           await refreshTurnState();
         } finally {
-          turnStateProbe.inFlight = false;
-          renderTurnState();
+          if (owner === adminUIState) {
+            turnStateProbe.inFlight = false;
+            renderTurnState();
+          }
         }
       }
       async function selfTestTurnStateBucket(account, model) {
         if (turnStateBusy()) return;
+        const owner = adminUIState;
         if (!(await openActionDialog(m("ui.state_bucket_test"), m("ui.state_self_test_warning")))) return;
+        if (owner !== adminUIState || currentRole !== "admin" || turnStateBusy()) return;
         turnStateProbe.inFlight = true;
         renderTurnState();
         try {
           const result = await queueAdminData("configuration", () =>
             plugin("POST", "/turn-state/self-test", { account, model, confirm: true }, { command: true, timeoutMS: 45000 })
           );
+          if (owner !== adminUIState || currentRole !== "admin") return;
           appendTurnStateProbeLog({
             ...result,
             action: "self-test",
@@ -9258,8 +9329,10 @@
           });
           await refreshTurnState();
         } finally {
-          turnStateProbe.inFlight = false;
-          renderTurnState();
+          if (owner === adminUIState) {
+            turnStateProbe.inFlight = false;
+            renderTurnState();
+          }
         }
       }
       function renderTurnStateDashboard(state) {
@@ -9325,7 +9398,7 @@
         const saving = !!adminUIState.turnStateSaving;
         const pools = turnStatePoolState();
         const testing = turnStateDiagnostics.running || turnStateDiagnostics.inFlight;
-        const busy = saving || testing || turnStateProbe.inFlight;
+        const busy = saving || testing || turnStateProbe.inFlight || turnStateRunner.command;
         for (const field of TURN_STATE_FIELDS) $("turn-state-" + field).disabled = !state || busy;
         for (const field of Object.values(TURN_STATE_POOLS))
           $("turn-state-" + field).disabled = !state || busy || !pools.loaded || pools.loading;
@@ -9589,8 +9662,10 @@
             payload.expected_revision = pools.revision;
           }
         }
-        const resumeProbe = turnStateProbe.running || !!readTurnStateSession()?.intent;
-        stopTurnStateProbe(resumeProbe);
+        clearTimeout(turnStateRunner.timer);
+        turnStateRunner.timer = 0;
+        turnStateRunner.loading = false;
+        turnStateRunner.generation++;
         owner.turnStateSaving = true;
         renderTurnState();
         try { await writeTurnState("PUT", "/turn-state", payload, m("ui.fork_turn_state_settings_saved"), true); } catch (error) {
@@ -9600,7 +9675,6 @@
         } finally {
           owner.turnStateSaving = false;
           if (owner === adminUIState) {
-            if (resumeProbe) turnStateResumeAttempted = false;
             if (pools.reloadAfterSave) {
               pools.reloadAfterSave = false;
               await loadTurnStateProxies();
@@ -9610,24 +9684,7 @@
         }
       }
 
-      function stopTurnStateProbe(preserve = false) {
-        pauseTurnStateSession(preserve === true);
-        if (preserve !== true) turnStateResumeAttempted = true;
-        turnStateProbe.running = false;
-        turnStateProbe.generation++;
-        clearTimeout(turnStateProbe.timer);
-        clearTimeout(turnStateProbe.progressTimer);
-        turnStateProbe.timer = 0;
-        turnStateProbe.progressTimer = 0;
-        $("turn-state-probe-stop").disabled = true;
-        setText(
-          $("turn-state-probe-status"),
-          turnStateProbe.inFlight
-            ? m("ui.fork_no_further_probes_will_be_scheduled_waiting_for_the_current_request")
-            : m("ui.fork_probing_stopped")
-        );
-        if (currentRole === "admin") renderTurnState();
-      }
+      async function stopTurnStateProbe() { await changeTurnStateRunner(false); }
 
       // UIError.message can be a live Message; JSON reloads it as {key,params}.
       // Recover that metadata and never render arbitrary objects as diagnostics.
@@ -9651,7 +9708,7 @@
         return fallback;
       }
 
-      function appendTurnStateProbeLog(result, persist = true) {
+      function appendTurnStateProbeLog(result) {
         result = Object.fromEntries(
           [
             "at",
@@ -9736,164 +9793,69 @@
         log.append(window.billingI18n.textNode(line), document.createTextNode("\n"));
         while (log.childNodes.length > 100) log.firstChild.remove();
         log.scrollTop = log.scrollHeight;
-        try {
-          const key = turnStateSessionKey();
-          if (key && persist) sessionStorage.setItem(key + ".rows", JSON.stringify(turnStateLogRows));
-        } catch (_) {}
-      }
-
-      async function pollTurnStateProbeProgress(generation) {
-        if (
-          !turnStateProbe.running || !turnStateProbe.inFlight || generation !== turnStateProbe.generation || currentRole !== "admin" ||
-          activeTab(false) !== "turn-state"
-        )
-          return;
-        try {
-          // This read must bypass the serialized configuration queue: the probe
-          // itself holds that queue while its upstream request is in flight.
-          const progress = await plugin("GET", "/turn-state/probe-progress", null, { timeoutMS: 5000 });
-          if (
-            !turnStateProbe.running || !turnStateProbe.inFlight || generation !== turnStateProbe.generation || currentRole !== "admin" ||
-            activeTab(false) !== "turn-state"
-          )
-            return;
-          if (progress?.active && progress.result) {
-            const result = progress.result;
-            setText(
-              $("turn-state-probe-status"),
-              m("ui.turn_state_live_probe", {
-                account:
-                  resources.admin.turnState.value?.probe_accounts.find((account) => account.account === result.account)?.label ||
-                  result.account ||
-                  "",
-                model: result.model || "",
-                index: result.proxy_index || 1,
-                total: result.proxy_total || 1,
-                proxy: turnStateProxyDisplay(result.exit),
-                attempt: result.proxy_pool === "rotating" ? m("ui.turn_state_probe_attempt", { attempt: result.proxy_attempt || 1 }) : ""
-              })
-            );
-          }
-        } catch (error) {
-          if (error instanceof AuthError) {
-            stopTurnStateProbe(true);
-            await fail(error);
-            return;
-          }
-        }
-        if (turnStateProbe.running && turnStateProbe.inFlight && generation === turnStateProbe.generation) {
-          turnStateProbe.progressTimer = setTimeout(() => pollTurnStateProbeProgress(generation), 1000);
-        }
       }
 
       function stopTurnStateWork() {
-        stopTurnStateProbe(true);
+        // Cancel only local reads/tests. Never send PUT enabled=false here.
+        clearTimeout(turnStateRunner.timer);
+        turnStateRunner.timer = 0;
+        turnStateRunner.loading = false;
+        turnStateRunner.generation++;
         stopTurnStateDiagnostics();
         clearTimeout(turnStateClockTimer);
       }
 
       function wakeTurnStateSession() {
-        if (currentRole !== "admin" || activeTab(false) !== "turn-state" || !readTurnStateSession()?.intent) return;
-        if (turnStateProbe.running && !ownsTurnStateSession()) stopTurnStateProbe(true);
-        if (!turnStateProbe.running) turnStateResumeAttempted = false;
-        renderTurnStateSession();
+        if (currentRole !== "admin" || activeTab(false) !== "turn-state") return;
+        if (!turnStateRunner.loading && !turnStateRunner.command) void pollTurnStateRunner();
       }
 
-      async function runTurnStateProbe(generation) {
+      async function changeTurnStateRunner(enabled) {
+        if (turnStateRunner.command || (enabled && adminUIState.turnStateSaving)) return;
         if (
-          !turnStateProbe.running || generation !== turnStateProbe.generation || currentRole !== "admin" ||
-          activeTab(false) !== "turn-state"
+          enabled &&
+          (turnStateProbe.running || turnStateProbe.inFlight || turnStateDiagnostics.running || turnStateDiagnostics.inFlight ||
+            turnStatePoolState().loading)
         )
           return;
-        if (!ownsTurnStateSession()) {
-          stopTurnStateProbe(true);
-          turnStateResumeAttempted = false;
-          return;
-        }
-        const owner = adminUIState;
-        turnStateProbe.inFlight = true;
-        setText($("turn-state-probe-status"), m("ui.fork_probing"));
-        renderTurnState();
-        let delay = 1500;
-        try {
-          const result = await queueAdminData("configuration", async (current) => {
-            if (!turnStateProbe.running || generation !== turnStateProbe.generation || !ownsTurnStateSession())
-              throw new StaleRequestError();
-            turnStateProbe.progressTimer = setTimeout(() => pollTurnStateProbeProgress(generation), 250);
-            const response = await plugin("POST", "/turn-state/probe", {}, { command: true, timeoutMS: 45000 });
-            current();
-            return response;
-          });
-          if (currentRole !== "admin" || owner !== adminUIState) return;
-          if (!result || typeof result.action !== "string") throw new UIError(m("ui.invalid_server_response"));
-          appendTurnStateProbeLog(result);
-          turnStateProbe.failures = 0;
-          if (result.next_check_at) delay = Math.max(1500, Math.min(60000, new Date(result.next_check_at).getTime() - Date.now()) || 1500);
-          await reconcileTurnStateProxies(result);
-          await refreshTurnState();
-        } catch (error) {
-          if (currentRole !== "admin" || owner !== adminUIState || generation !== turnStateProbe.generation) return;
-          if (error instanceof AuthError) {
-            stopTurnStateProbe(true);
-            await fail(error);
-            return;
-          }
-          if (error instanceof StaleRequestError) {
-            stopTurnStateProbe(true);
-            turnStateResumeAttempted = false;
-            return;
-          }
-          turnStateProbe.failures++;
-          delay = Math.min(60000, 3000 * 2 ** Math.min(turnStateProbe.failures - 1, 5));
-          appendTurnStateProbeLog({ action: "error", reason: turnStateLogReason(error) });
-        } finally {
-          turnStateProbe.inFlight = false;
-          clearTimeout(turnStateProbe.progressTimer);
-          if (currentRole === "admin" && owner === adminUIState) {
-            if (!turnStateProbe.running || generation !== turnStateProbe.generation)
-              setText($("turn-state-probe-status"), m("ui.fork_probing_stopped"));
-            renderTurnState();
-          }
-        }
-        if (!turnStateProbe.running || generation !== turnStateProbe.generation) {
-          setText($("turn-state-probe-status"), m("ui.fork_probing_stopped"));
-          return;
-        }
-        setText(
-          $("turn-state-probe-status"),
-          m(turnStateProbe.failures ? "ui.state_probe_retry" : "ui.probe_next_bucket", { seconds: Math.ceil(delay / 1000) })
-        );
-        turnStateProbe.timer = setTimeout(() => runTurnStateProbe(generation), delay);
-      }
-
-      async function startTurnStateProbe(resume = false) {
-        if (
-          turnStateProbe.running || turnStateProbe.inFlight || turnStateDiagnostics.running || turnStateDiagnostics.inFlight ||
-          adminUIState.turnStateSaving ||
-          turnStatePoolState().loading
-        )
-          return;
-        const config = resources.admin.turnState.value?.config;
-        if (!config?.probe_accounts?.length || !config?.models?.length)
+        const owner = adminUIState, config = resources.admin.turnState.value?.config;
+        if (enabled && (!config?.probe_accounts?.length || !config?.models?.length))
           throw new UIError(m("ui.fork_select_probe_accounts_enter_models_and_save_first"));
-        if (adminUIState.turnStateDirty && resume !== true) throw new UIError(m("ui.state_unsaved"));
-        const existing = readTurnStateSession();
-        if (existing?.owner && existing.owner !== turnStateOwner && existing.expires > Date.now()) {
-          renderTurnStateSession();
-          return;
+        if (enabled && owner.turnStateDirty) throw new UIError(m("ui.state_unsaved"));
+        clearTimeout(turnStateRunner.timer);
+        turnStateRunner.timer = 0;
+        turnStateRunner.loading = false;
+        turnStateRunner.generation++;
+        const commandGeneration = turnStateRunner.generation;
+        turnStateRunner.command = true;
+        renderTurnState();
+        try {
+          const change = async (sessionCurrent) => {
+            const current = () => {
+              sessionCurrent();
+              if (owner !== adminUIState || (enabled && commandGeneration !== turnStateRunner.generation)) throw new StaleRequestError();
+            };
+            current();
+            if (enabled) await ensureTurnStateHTTP(config.probe_accounts, current);
+            current();
+            const result = await plugin("PUT", "/turn-state/runner", { enabled }, { command: true, timeoutMS: 15000 });
+            current();
+            applyTurnStateRunner(result);
+          };
+          if (enabled) await queueAdminData("configuration", change);
+          else
+            await change(() => { if (owner !== adminUIState || currentRole !== "admin") throw new StaleRequestError(); });
+        } finally {
+          if (owner === adminUIState) {
+            turnStateRunner.command = false;
+            renderTurnState();
+            // A lost response does not prove the desired state was unchanged.
+            if (currentRole === "admin" && activeTab(false) === "turn-state") void pollTurnStateRunner();
+          }
         }
-        if (turnStateSessionKey()) {
-          if (!saveTurnStateSession({ intent: true, owner: turnStateOwner, expires: Date.now() + 120000, updated: Date.now() }))
-            throw new UIError(m("ui.state_storage_required"));
-          await new Promise((resolve) => setTimeout(resolve, 150));
-          if (!ownsTurnStateSession() || currentRole !== "admin" || activeTab(false) !== "turn-state") return;
-        }
-        turnStateResumeAttempted = true;
-        turnStateProbe.running = true;
-        turnStateProbe.failures = 0;
-        const generation = ++turnStateProbe.generation;
-        runTurnStateProbe(generation);
       }
+
+      async function startTurnStateProbe() { await changeTurnStateRunner(true); }
 
       function keyMatchesGroup(key, id) {
         return !id || (id === "__ungrouped" ? !(key.group_ids || []).length : (key.group_ids || []).includes(id));
@@ -12807,7 +12769,7 @@
       function setAdminTab(name) {
         if (editors.get($("route-picker"))?.saving) return;
         const selected = ADMIN_TAB_IDS.includes(name) ? name : "keys";
-        if (selected !== "turn-state") stopTurnStateWork(); else turnStateResumeAttempted = false;
+        if (selected !== "turn-state") stopTurnStateWork();
         if (selected !== "keys") $("route-picker").close();
         writePageRoute("admin", selected);
         for (const tab of TABS) {
@@ -12917,7 +12879,7 @@
         });
       $("turn-state-refresh").onclick = () => guard(refreshTurnState);
       $("turn-state-probe-start").onclick = () => guard(startTurnStateProbe);
-      $("turn-state-probe-stop").onclick = () => stopTurnStateProbe();
+      $("turn-state-probe-stop").onclick = () => guard(stopTurnStateProbe);
       $("turn-state-proxy-reload").onclick = () => guard(() => loadTurnStateProxies({ discard: true }));
       for (const pool of Object.keys(TURN_STATE_POOLS)) {
         $("turn-state-" + pool + "-test").onclick = () => guard(() => testTurnStateProxies(pool));
@@ -12954,14 +12916,6 @@
       addEventListener("focus", wakeTurnStateSession);
       addEventListener("online", wakeTurnStateSession);
       document.addEventListener("visibilitychange", () => { if (!document.hidden) wakeTurnStateSession(); });
-      addEventListener("storage", (event) => {
-        if (event.key !== turnStateSessionKey() || currentRole !== "admin" || activeTab(false) !== "turn-state") return;
-        if (turnStateProbe.running && !ownsTurnStateSession()) {
-          stopTurnStateProbe(true);
-          turnStateResumeAttempted = false;
-        }
-        renderTurnStateSession();
-      });
       $("group-new").onclick = () => editGroup();
       $("group-rule-search").addEventListener("input", renderGroupRuleList);
       $("group-rule-all").onclick = () => setVisibleRouteChoices("group-dialog", groupSelection, "allow", renderGroupRuleList);

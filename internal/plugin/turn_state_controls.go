@@ -76,6 +76,11 @@ func (a *App) selfTestTurnState(req ManagementRequest) (response ManagementRespo
 	if !input.Confirm {
 		return JSONError(http.StatusBadRequest, "confirmation_required", "Confirm the self-test; it sends one upstream request and may consume quota")
 	}
+	finish, allowed := a.beginManualTurnStateProbe()
+	if !allowed {
+		return JSONError(http.StatusConflict, "runner_active", "Stop server collection before starting a manual probe")
+	}
+	defer finish()
 	if a.hostCaller == nil {
 		return JSONError(http.StatusBadGateway, "probe_unavailable", "Failed to read the authentication file list")
 	}

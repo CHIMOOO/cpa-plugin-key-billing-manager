@@ -626,9 +626,11 @@ TURN_STATE_LAST = {}
 TURN_STATE_UPLOADS = {}
 TURN_STATE_PROGRESS = {}
 TURN_STATE_PROBE_STATS = {"attempts": 0, "harvested": 0, "degraded": 0, "failed": 0, "unchanged": 0}
-
-
 TURN_STATE_WEBSOCKETS = {}
+TURN_STATE_RUNNER = {"enabled": False, "revision": 1, "phase": "stopped", "online": True,
+                     "instance_id": "dummy-collector", "epoch": "dummy-runner-epoch", "version": "development",
+                     "last_seen_at": iso(datetime.now(timezone.utc)), "lease_expires_at": iso(datetime.now(timezone.utc) + timedelta(minutes=1)),
+                     "next_check_at": "", "in_flight": False, "events": []}
 
 
 def ui_message(key):
@@ -647,7 +649,7 @@ def turn_state_view():
             "server_time": iso(now),
             "proxy_config_revision": turn_state_revision(),
             "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
-            "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS,
+            "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS, "runner": dict(TURN_STATE_RUNNER),
             "probe_progress": {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)},
             "probe_supported": True, "probe_unavailable_reason": "",
             "upstream_websocket_management_supported": True,
@@ -1606,6 +1608,8 @@ def payload_for(path, query):
                           {"kind": "plugin_library", "path": "/app/plugins/key-billing.so", "state": "mounted"}]}
     if path == f"{API_BASE}/turn-state":
         return turn_state_view()
+    if path == f"{API_BASE}/turn-state/runner":
+        return dict(TURN_STATE_RUNNER)
     if path == f"{API_BASE}/turn-state/probe-progress":
         return {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)}
     if path == f"{API_BASE}/access-control":
@@ -2035,7 +2039,25 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self.send_json(200, {"account": body["account"], "model": body["model"], "status": 200,
                                  "length": 312, "reached": True, "harvested": False})
+        elif route == ("PUT", f"{API_BASE}/turn-state/runner"):
+            body = json.loads(request_body or b"{}")
+            if type(body.get("enabled")) is not bool:
+                self.send_json(400, {"error": "enabled must be a boolean"})
+                return
+            if body["enabled"] and (not TURN_STATE_CONFIG["probe_accounts"] or not TURN_STATE_CONFIG["models"]):
+                self.send_json(400, {"error": "save collection scope first"})
+                return
+            TURN_STATE_RUNNER["enabled"] = body["enabled"]
+            TURN_STATE_RUNNER["revision"] += 1
+            TURN_STATE_RUNNER["phase"] = ("draining" if TURN_STATE_RUNNER["in_flight"] and not body["enabled"] else
+                                          "running" if TURN_STATE_RUNNER["in_flight"] else
+                                          "offline" if not TURN_STATE_RUNNER["online"] else
+                                          "waiting" if body["enabled"] else "stopped")
+            self.send_json(200, dict(TURN_STATE_RUNNER))
         elif route == ("POST", f"{API_BASE}/turn-state/probe"):
+            if TURN_STATE_RUNNER["enabled"] or TURN_STATE_RUNNER["in_flight"]:
+                self.send_json(409, {"error": {"code": "runner_active", "message": "Stop the server collector before a manual probe"}})
+                return
             body = json.loads(request_body or b"{}")
             accounts = [body["account"]] if body.get("account") else TURN_STATE_CONFIG["probe_accounts"]
             models = [body["model"]] if body.get("model") else TURN_STATE_CONFIG["models"]

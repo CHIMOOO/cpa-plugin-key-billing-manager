@@ -249,6 +249,27 @@ jobs:
           path: ~/AppData/Local/go-build
           key: windows-go-build-${{ matrix.arch }}-${{ matrix.cache_salt }}-${{ hashFiles('go.mod', 'go.sum', '**/*.go', 'internal/plugin/ui.html') }}
 
+      - name: Build standalone State collector
+        shell: bash
+        env:
+          TARGET_OS: ${{ matrix.os }}
+          TARGET_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p collector-dist
+          suffix=""
+          if [ "$TARGET_OS" = "windows" ]; then suffix=".exe"; fi
+          version="${RELEASE_TAG#v}"
+          CGO_ENABLED=0 GOOS="$TARGET_OS" GOARCH="$TARGET_ARCH" \
+            go build -buildvcs=false -trimpath \
+            -ldflags="-s -w -X main.version=${version}" \
+            -o "collector-dist/cpa-state-collector${suffix}" ./cmd/cpa-state-collector
+          cp LICENSE collector-dist/
+          cp deploy/cpa-state-collector.service deploy/collector.env.example collector-dist/
+          cp deploy/README.state-collector.md collector-dist/README.md
+          archive="cpa-state-collector_${version}_${TARGET_OS}_${TARGET_ARCH}.tar.gz"
+          tar -czf "$archive" -C collector-dist .
+          test -s "$archive"
+
       - name: Verify and package Unix plugin
         if: matrix.os != 'windows'
         env:
@@ -314,6 +335,7 @@ jobs:
           path: |
             cpa-team-manager_*_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
             cpa-team-manager_*_${{ matrix.os }}_${{ matrix.arch }}.zip
+            cpa-state-collector_*_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -343,7 +365,7 @@ jobs:
       - name: Generate checksums
         working-directory: release-assets
         run: |
-          sha256sum cpa-team-manager_*.tar.gz cpa-team-manager_*.zip | sort > checksums.txt
+          sha256sum cpa-team-manager_*.tar.gz cpa-team-manager_*.zip cpa-state-collector_*.tar.gz | sort > checksums.txt
 
       - name: Extract release notes
         run: |

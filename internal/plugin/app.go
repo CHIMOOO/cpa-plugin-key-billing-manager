@@ -17,6 +17,7 @@ import (
 type App struct {
 	store                 *billing.Store
 	turnState             *turnstate.Manager
+	turnStateRunner       *turnStateRunner
 	accountRuntime        *accountRuntime
 	risk                  *riskControl
 	hostSchema            atomic.Uint32
@@ -50,6 +51,7 @@ func newApp(store *billing.Store) *App {
 	return &App{
 		store:                 store,
 		turnState:             turnstate.New(),
+		turnStateRunner:       newTurnStateRunner(),
 		accountRuntime:        newAccountRuntime(),
 		risk:                  newRiskControl(),
 		admissions:            make(map[string]*requestAdmission),
@@ -139,19 +141,36 @@ func (a *App) configure(raw []byte) error {
 	if errRisk != nil {
 		return errRisk
 	}
-	if errConfigure := a.turnState.ConfigureWith(cfg.StateFile, func() error {
-		a.routingMu.Lock()
-		defer a.routingMu.Unlock()
-		previous := a.store.ConfigCredentials()
-		if err := a.store.Configure(cfg); err != nil {
-			return err
+	runner := a.turnStateRunner
+	errInstall := func() error {
+		runner.gate.Lock()
+		defer runner.gate.Unlock()
+		runner.controlMu.Lock()
+		defer runner.controlMu.Unlock()
+		runnerPath := cfg.StateFile + ".turn-state-runner.json"
+		runnerControl, runnerChanged, runnerErr := runner.loadConfiguration(runnerPath)
+		if runnerErr != nil {
+			return runnerErr
 		}
-		if loaded := a.store.ConfigCredentials(); !maps.Equal(previous, loaded) {
-			a.replaceSyncedCredentials(previous, loaded)
+		if errConfigure := a.turnState.ConfigureWith(cfg.StateFile, func() error {
+			a.routingMu.Lock()
+			defer a.routingMu.Unlock()
+			previous := a.store.ConfigCredentials()
+			if err := a.store.Configure(cfg); err != nil {
+				return err
+			}
+			if loaded := a.store.ConfigCredentials(); !maps.Equal(previous, loaded) {
+				a.replaceSyncedCredentials(previous, loaded)
+			}
+			return nil
+		}); errConfigure != nil {
+			return errConfigure
 		}
+		runner.installConfiguration(runnerPath, runnerControl, runnerChanged)
 		return nil
-	}); errConfigure != nil {
-		return errConfigure
+	}()
+	if errInstall != nil {
+		return errInstall
 	}
 	a.accountRuntime.mu.Lock()
 	a.accountRuntime.path, a.accountRuntime.settings = runtimePath, runtimeSettings

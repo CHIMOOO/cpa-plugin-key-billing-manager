@@ -34,6 +34,8 @@ const (
 	routeTurnState              = "/turn-state"
 	routeTurnStateTemplates     = "/turn-state/templates"
 	routeTurnStateProbe         = "/turn-state/probe"
+	routeTurnStateRunner        = "/turn-state/runner"
+	routeTurnStateRunnerTick    = "/turn-state/runner/tick"
 	routeTurnStateUpload        = "/turn-state/config-upload"
 	routeTurnStateUploadCommit  = "/turn-state/config-upload/commit"
 	routeTurnStateProxiesRead   = "/turn-state/proxies/read"
@@ -101,6 +103,9 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodPost, routeTurnStateUploadCommit, "Apply complete staged Codex turn-state settings", (*App).commitTurnStateUpload},
 	{http.MethodDelete, routeTurnStateTemplates, "Clear Codex turn-state templates", (*App).clearTurnState},
 	{http.MethodPost, routeTurnStateProbe, "Run one Codex turn-state probe", (*App).probeTurnState},
+	{http.MethodGet, routeTurnStateRunner, "View server collection status and recent probe events", (*App).getTurnStateRunner},
+	{http.MethodPut, routeTurnStateRunner, "Start or stop server collection durably", (*App).setTurnStateRunner},
+	{http.MethodPost, routeTurnStateRunnerTick, "Run one due server collection step under the collector lease", (*App).tickTurnStateRunner},
 	{http.MethodPost, routeTurnStateProxiesRead, "Read a page of saved proxy URLs for editing", (*App).readTurnStateProxies},
 	{http.MethodPost, routeTurnStateProxiesTest, "Test one proxy connection without using an account", (*App).testTurnStateProxy},
 	{http.MethodGet, routeTurnStateProbeProgress, "View the active Codex turn-state probe exit", (*App).getTurnStateProbeProgress},
