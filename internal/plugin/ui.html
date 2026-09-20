@@ -2603,7 +2603,7 @@
           <div id="turn-state-status" class="notice hidden" role="status"></div>
           <div class="card state-guide" aria-labelledby="turn-state-guide-title">
             <h3 id="turn-state-guide-title" data-i18n="ui.state_guide_title">Set up and verify Turn State</h3>
-            <p class="small muted" data-i18n="ui.state_guide_host">Use HTTP / SSE with CLIProxyAPI 7.3.4 or a compatible host that forwards State headers.</p>
+            <p class="small muted" data-i18n="ui.state_guide_host">Use CLIProxyAPI 7.3.4 or a compatible host. Selected accounts use upstream HTTP/SSE; downstream WebSocket clients can use CPA's bridge.</p>
             <ol class="state-guide-steps">
               <li><strong data-i18n="ui.state_guide_account_title">Choose accounts and models</strong><p data-i18n="ui.state_guide_account">Select valid Codex accounts with available quota and enter the exact upstream model IDs used by your requests. A template belongs to one account and model.</p></li>
               <li><strong data-i18n="ui.state_guide_proxy_title">Set up and test proxies</strong><p data-i18n="ui.state_guide_proxy">Put fixed exits in the static pool and URLs that change exit on each connection in the rotating pool. Test connectivity; reachable does not mean a valid State was collected.</p></li>
@@ -2636,6 +2636,8 @@
           </div>
           <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button data-state-save="scope" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
             <p class="access-help" data-i18n="ui.fork_select_accounts_for_active_probing_including_disabled_codex_accounts_probi">Select accounts for active probing, including disabled Codex accounts. Probing does not change account enablement. No selection means no active probes; learning from normal responses follows the switch above.</p>
+            <p class="access-help" data-i18n="ui.state_upstream_http_help">Saving or starting collection turns off upstream WebSocket for the selected accounts and verifies HTTP/SSE routing. Clients may still connect to CPA through WebSocket. Existing sessions may need one reconnect; removing an account from collection does not turn its upstream WebSocket back on.</p>
+            <div id="turn-state-transport-status" class="small muted" role="status"></div>
             <div class="state-account-toolbar"><input id="turn-state-account-search" type="search" placeholder="Search account name or ID" data-i18n-placeholder="ui.state_account_search" /><span class="native-select"><select id="turn-state-account-filter" aria-label="Account display" data-i18n-aria-label="ui.state_account_filter"><option value="all" data-i18n="ui.chooser_every_status">All, including disabled</option><option value="enabled" data-i18n="ui.enabled_only">Enabled only</option><option value="selected" data-i18n="ui.chooser_selected">Selected only</option></select></span><button id="turn-state-account-all" type="button" data-i18n="ui.state_select_matching">Select matching</button><button id="turn-state-account-none" type="button" data-i18n="ui.state_clear_matching">Deselect matching</button></div>
             <div id="turn-state-accounts" class="selection-list turn-state-accounts"></div>
             <div class="turn-state-fields">              <label class="field turn-state-wide"><span data-i18n="ui.fork_probe_models_one_per_line">Probe models (one per line)</span><textarea id="turn-state-models" rows="2" placeholder="For example: gpt-6-astra, gpt-5.6-sol" data-i18n-placeholder="ui.probe_models_example" disabled></textarea></label></div>
@@ -9443,6 +9445,39 @@
 
       function refreshTurnState() { return queueAdminData("configuration", (current) => readTurnStateNow(current)); }
 
+      async function ensureTurnStateHTTP(accounts, current) {
+        if (!accounts?.length) return;
+        const status = $("turn-state-transport-status");
+        setText(status, m("ui.state_transport_checking"));
+        try {
+          const state = validateTurnState(await plugin("GET", "/turn-state"));
+          current?.();
+          if (!state.upstream_websocket_management_supported) throw new UIError(m("ui.state_transport_unsupported"));
+          for (const account of accounts) {
+            current?.();
+            const row = state.probe_accounts.find((item) => item.account === account);
+            if (!row) throw new UIError(m("ui.state_transport_account_missing", { account }));
+            if (row.upstream_transport_known && row.upstream_websockets === false) continue;
+            const patch = row.disable_websockets_patch;
+            if (patch?.name !== account || patch.websockets !== false)
+              throw new UIError(m("ui.state_transport_account_missing", { account }));
+            await api("PATCH", "/v0/management/auth-files/fields", { name: account, websockets: false }, { command: true });
+          }
+          const verified = validateTurnState(await plugin("GET", "/turn-state"));
+          current?.();
+          for (const account of accounts) {
+            const row = verified.probe_accounts.find((item) => item.account === account);
+            if (!row?.upstream_transport_known || row.upstream_websockets !== false)
+              throw new UIError(m("ui.state_transport_verify_failed", { account }));
+          }
+          Object.assign(resources.admin.turnState, { value: verified, error: "" });
+          setText(status, m("ui.state_transport_ready", { count: accounts.length }));
+        } catch (error) {
+          setText(status, m("ui.state_transport_failed"));
+          throw error;
+        }
+      }
+
       async function uploadTurnState(payload, current) {
         const bytes = new TextEncoder().encode(JSON.stringify(payload));
         if (bytes.length > 16 * 1024 * 1024) throw new UIError(m("backend.turn_state_config_too_large"));
@@ -9477,6 +9512,7 @@
 
       function writeTurnState(method, path, payload, message, resetDraft = false) {
         return queueAdminData("configuration", async (current) => {
+          if (method === "PUT" && path === "/turn-state") await ensureTurnStateHTTP(payload.probe_accounts, current);
           const result =
             method === "PUT" && path === "/turn-state"
               ? await uploadTurnState(payload, current)

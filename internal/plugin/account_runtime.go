@@ -491,7 +491,9 @@ func (a *App) enforceAccountRuntime(req RequestInterceptRequest) RequestIntercep
 		return priceRefusal(req.SourceFormat, "turn_state_host_unsupported", "Protected Turn State accounts require a verified CLIProxyAPI v7.3.4-compatible host with plugin schema 6 or newer")
 	}
 	if a.accountRuntime.requiresTurnState() && a.turnState.AccountProtected(id) && (strings.EqualFold(strings.TrimSpace(req.Headers.Get("Upgrade")), "websocket") || metadataString(req.Metadata, "execution_session_id") != "") {
-		return priceRefusal(req.SourceFormat, "turn_state_websocket_unsupported", "Protected Turn State accounts require HTTP/SSE; reused WebSocket sessions cannot guarantee per-request injection")
+		if !a.turnStateUpstreamHTTP(req, id) {
+			return priceRefusal(req.SourceFormat, "turn_state_websocket_unsupported", "This protected account must disable upstream WebSocket mode before serving WebSocket clients. Save its State account selection to apply HTTP/SSE mode, then reconnect existing sessions")
+		}
 	}
 	if !a.accountRuntime.acquire(ref, req.RequestID) {
 		return RequestInterceptResponse{Terminate: true, StatusCode: http.StatusTooManyRequests, ResponseHeaders: http.Header{"Content-Type": {"application/json"}, "Retry-After": {"1"}}, ResponseBody: refusalBody(req.SourceFormat, quotaExhaustedError, fmt.Sprintf("Upstream account concurrency limit reached for %s", ref[:15]))}

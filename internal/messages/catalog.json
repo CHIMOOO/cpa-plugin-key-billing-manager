@@ -889,10 +889,6 @@
     "key": "backend.groups.the_upstream_credential_selected_by_cpa_is_not_allowed_access_is_denied",
     "formats": []
   },
-  "HTTP/SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards X-Codex-Turn-State; v7.2.143 drops this header in the Codex HTTP executor. WebSocket injection only applies to new connection handshakes; reused connections cannot update it per turn.": {
-    "key": "backend.turn_state_host_requirement",
-    "formats": []
-  },
   "This host cannot read the authentication file list": {
     "key": "backend.turn_state_host_inventory_unavailable",
     "formats": []
@@ -1266,6 +1262,10 @@
   },
   "A valid response template was cached; management synchronization will persist it": {
     "key": "backend.turn_state_response_cached",
+    "formats": []
+  },
+  "Turn State requires CLIProxyAPI v7.3.4-compatible HTTP/SSE forwarding. Protected Codex accounts must disable upstream WebSocket mode. Downstream WebSocket clients can then use the host's HTTP/SSE bridge, with State injected on every turn. Existing upstream WebSocket continuations may need one reconnect after this change.": {
+    "key": "backend.turn_state_host_requirement",
     "formats": []
   }
 }

@@ -87,7 +87,7 @@ func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 			a.store.AddPluginLog(billing.PluginLogError, "Failed to apply plugin configuration: %v", errConfigure)
 			return nil, errConfigure
 		}
-		return OKEnvelope(registration())
+		return OKEnvelope(registrationForHost(a.hostSchema.Load()))
 	case MethodRequestInterceptBefore:
 		return a.interceptBeforeAuth(request)
 	case MethodRequestInterceptAfter:
@@ -199,4 +199,14 @@ func registration() Registration {
 			Scheduler:              true,
 		},
 	}
+}
+
+// Schema 5 only removes per-payload history that this plugin never reads.
+// Keep the original schema for older hosts, which reject a newer declaration.
+func registrationForHost(hostSchema uint32) Registration {
+	result := registration()
+	if hostSchema >= 5 {
+		result.SchemaVersion = 5
+	}
+	return result
 }

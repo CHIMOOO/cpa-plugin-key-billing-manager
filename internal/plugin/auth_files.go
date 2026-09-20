@@ -40,6 +40,7 @@ type hostAuthFile struct {
 	ProjectID   string    `json:"project_id"`
 	AccountType string    `json:"account_type"`
 	RuntimeOnly bool      `json:"runtime_only"`
+	Websockets  bool      `json:"websockets"`
 	BaseURL     string    `json:"base_url"`
 	ModTime     time.Time `json:"modtime"`
 }

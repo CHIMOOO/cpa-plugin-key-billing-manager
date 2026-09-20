@@ -628,6 +628,9 @@ TURN_STATE_PROGRESS = {}
 TURN_STATE_PROBE_STATS = {"attempts": 0, "harvested": 0, "degraded": 0, "failed": 0, "unchanged": 0}
 
 
+TURN_STATE_WEBSOCKETS = {}
+
+
 def ui_message(key):
     english = json.loads((UI_PATH.parent / "locales/en.json").read_text(encoding="utf-8"))
     return {"message": english[key], "message_key": key}
@@ -647,9 +650,14 @@ def turn_state_view():
             "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS,
             "probe_progress": {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)},
             "probe_supported": True, "probe_unavailable_reason": "",
+            "upstream_websocket_management_supported": True,
+            "upstream_websocket_patch_path": "/v0/management/auth-files/fields",
             "host_requirement": ui_message("backend.turn_state_host_requirement")["message"],
             "host_requirement_message": {"message_key": "backend.turn_state_host_requirement"},
             "probe_accounts": [{"account": item["ref"], "label": item["display_name"],
+                                "auth_index": item["ref"], "upstream_transport_known": True,
+                                "upstream_websockets": TURN_STATE_WEBSOCKETS.get(item["ref"], False),
+                                "disable_websockets_patch": {"name": item["ref"], "websockets": False},
                                 "disabled": bool(item.get("disabled")) or item.get("status", "").lower() == "disabled"}
                                for item in CREDENTIALS if item["provider"] == "codex" and item["source"] == "auth-files"],
             "proxy_counts": {"static": len(TURN_STATE_CONFIG["probe_proxies"]),
@@ -1914,6 +1922,13 @@ class Handler(BaseHTTPRequestHandler):
                 if file["credential_ref"] == target["ref"]:
                     file["disabled"] = body["disabled"]
             self.send_json(200, {"status": "ok", "disabled": body["disabled"]})
+        elif route == ("PATCH", "/v0/management/auth-files/fields"):
+            body = json.loads(request_body or b"{}")
+            if not isinstance(body.get("name"), str) or not isinstance(body.get("websockets"), bool):
+                self.send_json(400, {"error": {"message": "Invalid transport patch"}})
+                return
+            TURN_STATE_WEBSOCKETS[body["name"]] = body["websockets"]
+            self.send_json(200, {"status": "ok"})
         elif route == ("POST", f"{API_BASE}/turn-state/proxies/read"):
             body = json.loads(request_body or b"{}")
             pool, offset = body.get("pool"), body.get("offset", 0)

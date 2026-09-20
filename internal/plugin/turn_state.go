@@ -11,22 +11,28 @@ import (
 	"cpa-key-billing/internal/turnstate"
 )
 
-const turnStateHostRequirement = "HTTP/SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards X-Codex-Turn-State; v7.2.143 drops this header in the Codex HTTP executor. WebSocket injection only applies to new connection handshakes; reused connections cannot update it per turn."
+const turnStateHostRequirement = "Turn State requires CLIProxyAPI v7.3.4-compatible HTTP/SSE forwarding. Protected Codex accounts must disable upstream WebSocket mode. Downstream WebSocket clients can then use the host's HTTP/SSE bridge, with State injected on every turn. Existing upstream WebSocket continuations may need one reconnect after this change."
 
 type turnStateAccount struct {
-	Account  string `json:"account"`
-	Label    string `json:"label"`
-	Disabled bool   `json:"disabled"`
+	Account                string                   `json:"account"`
+	Label                  string                   `json:"label"`
+	Disabled               bool                     `json:"disabled"`
+	AuthIndex              string                   `json:"auth_index"`
+	UpstreamWebsockets     bool                     `json:"upstream_websockets"`
+	UpstreamTransportKnown bool                     `json:"upstream_transport_known"`
+	DisableWebsocketsPatch *turnStateWebsocketPatch `json:"disable_websockets_patch,omitempty"`
 }
 
 type turnStateStatus struct {
 	turnstate.Status
-	ProbeAccounts           []turnStateAccount `json:"probe_accounts"`
-	ProbeSupported          bool               `json:"probe_supported"`
-	ProbeUnavailableReason  string             `json:"probe_unavailable_reason,omitempty"`
-	ProbeUnavailableMessage messages.Message   `json:"probe_unavailable_message,omitzero"`
-	HostRequirement         string             `json:"host_requirement"`
-	HostRequirementMessage  messages.Message   `json:"host_requirement_message,omitzero"`
+	ProbeAccounts                        []turnStateAccount `json:"probe_accounts"`
+	ProbeSupported                       bool               `json:"probe_supported"`
+	ProbeUnavailableReason               string             `json:"probe_unavailable_reason,omitempty"`
+	ProbeUnavailableMessage              messages.Message   `json:"probe_unavailable_message,omitzero"`
+	HostRequirement                      string             `json:"host_requirement"`
+	HostRequirementMessage               messages.Message   `json:"host_requirement_message,omitzero"`
+	UpstreamWebsocketPatchPath           string             `json:"upstream_websocket_patch_path"`
+	UpstreamWebsocketManagementSupported bool               `json:"upstream_websocket_management_supported"`
 }
 
 func codexAuthFile(file hostAuthFile) bool {
@@ -46,7 +52,9 @@ func (a *App) getTurnState(_ ManagementRequest) ManagementResponse {
 	// error remains visible in Status without flooding the plugin log.
 	_ = a.turnState.PersistLearned()
 	status := turnStateStatus{Status: a.turnState.Status(), ProbeAccounts: []turnStateAccount{},
-		ProbeSupported: true, HostRequirement: turnStateHostRequirement}
+		ProbeSupported: true, HostRequirement: turnStateHostRequirement,
+		UpstreamWebsocketPatchPath:           "/v0/management/auth-files/fields",
+		UpstreamWebsocketManagementSupported: a.hostSchema.Load() >= 6}
 	files, err := a.listHostAuthFiles()
 	if err != nil {
 		status.ProbeSupported = false
@@ -57,10 +65,16 @@ func (a *App) getTurnState(_ ManagementRequest) ManagementResponse {
 				continue
 			}
 			label := safeCredentialName(file.Name, file.Account, "codex", billing.CredentialFingerprint(file.ID))
-			status.ProbeAccounts = append(status.ProbeAccounts, turnStateAccount{
+			row := turnStateAccount{
 				Account: file.ID, Label: label,
-				Disabled: file.Disabled || strings.EqualFold(strings.TrimSpace(file.Status), "disabled"),
-			})
+				Disabled:  file.Disabled || strings.EqualFold(strings.TrimSpace(file.Status), "disabled"),
+				AuthIndex: file.AuthIndex, UpstreamWebsockets: file.Websockets,
+				UpstreamTransportKnown: a.hostSchema.Load() >= 6,
+			}
+			if row.UpstreamTransportKnown && !file.RuntimeOnly && (file.Path != "" || file.Source == "file") {
+				row.DisableWebsocketsPatch = &turnStateWebsocketPatch{Name: file.ID}
+			}
+			status.ProbeAccounts = append(status.ProbeAccounts, row)
 		}
 	}
 	status.HostRequirementMessage = messages.Literal(status.HostRequirement)
