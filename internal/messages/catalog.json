@@ -1,4 +1,244 @@
 {
+  "Unknown model test preset": {
+    "key": "backend.model_test_unknown_preset",
+    "formats": []
+  },
+  "The model test prompt must contain 1–8192 UTF-8 bytes": {
+    "key": "backend.model_test_invalid_prompt",
+    "formats": []
+  },
+  "The host token placeholder cannot be used inside a test prompt": {
+    "key": "backend.model_test_token_placeholder",
+    "formats": []
+  },
+  "The expected output is too large or invalid": {
+    "key": "backend.model_test_invalid_expected",
+    "formats": []
+  },
+  "Use the custom preset after editing a test prompt": {
+    "key": "backend.model_test_edited_preset",
+    "formats": []
+  },
+  "The model test response is too large": {
+    "key": "backend.model_test_response_too_large",
+    "formats": []
+  },
+  "Invalid model test completion": {
+    "key": "backend.model_test_invalid_completion",
+    "formats": []
+  },
+  "Invalid model test completion state": {
+    "key": "backend.model_test_invalid_completion_state",
+    "formats": []
+  },
+  "This model test expired or was already completed": {
+    "key": "backend.model_test_expired_or_completed",
+    "formats": []
+  },
+  "The management connection failed; its account slot remains reserved until the test lease expires": {
+    "key": "backend.model_test_transport_uncertain",
+    "formats": []
+  },
+  "The prepared test was cancelled before sending": {
+    "key": "backend.model_test_cancelled_before_send",
+    "formats": []
+  },
+  "The native model test did not return a successful response": {
+    "key": "backend.model_test_upstream_unsuccessful",
+    "formats": []
+  },
+  "The response contains no supported model text output": {
+    "key": "backend.model_test_no_supported_output",
+    "formats": []
+  },
+  "The model output did not finish; its assertions cannot pass": {
+    "key": "backend.model_test_incomplete_output",
+    "formats": []
+  },
+  "This account has no supported native model test protocol": {
+    "key": "backend.model_test_unsupported_account",
+    "formats": []
+  },
+  "Enable this account before testing it": {
+    "key": "backend.model_test_enable_account",
+    "formats": []
+  },
+  "Cannot read the host account inventory": {
+    "key": "backend.model_test_inventory_unavailable",
+    "formats": []
+  },
+  "The host cannot resolve account identity": {
+    "key": "backend.model_test_identity_unavailable",
+    "formats": []
+  },
+  "The host cannot verify this exact runtime account": {
+    "key": "backend.model_test_runtime_unverified",
+    "formats": []
+  },
+  "The host returned an invalid runtime account identity": {
+    "key": "backend.model_test_invalid_runtime_identity",
+    "formats": []
+  },
+  "Integration storage records cannot execute model tests": {
+    "key": "backend.model_test_integration_record",
+    "formats": []
+  },
+  "Refresh the current enabled native account configuration and its exact auth index": {
+    "key": "backend.model_test_refresh_native_identity",
+    "formats": []
+  },
+  "The native account identifier does not match its provider": {
+    "key": "backend.model_test_provider_identity_mismatch",
+    "formats": []
+  },
+  "This native account conflicts with the current synchronized credential inventory": {
+    "key": "backend.model_test_inventory_conflict",
+    "formats": []
+  },
+  "This native account index conflicts with an observed host identity": {
+    "key": "backend.model_test_observed_identity_conflict",
+    "formats": []
+  },
+  "The model test request is too large": {
+    "key": "backend.model_test_request_too_large",
+    "formats": []
+  },
+  "Invalid model test request": {
+    "key": "backend.model_test_invalid_request",
+    "formats": []
+  },
+  "A configured proxy must be a string; null cannot mean direct": {
+    "key": "backend.model_test_null_proxy",
+    "formats": []
+  },
+  "Choose an exact account and model": {
+    "key": "backend.model_test_select_account_model",
+    "formats": []
+  },
+  "Model tests require a CLIProxyAPI v7.3.4-compatible host with explicit API-call proxy support": {
+    "key": "backend.model_test_host_unsupported",
+    "formats": []
+  },
+  "The submitted native configuration does not match the selected enabled account": {
+    "key": "backend.model_test_configuration_mismatch",
+    "formats": []
+  },
+  "Cannot allocate a model test": {
+    "key": "backend.model_test_allocation_failed",
+    "formats": []
+  },
+  "The configured content risk policy blocked this model test": {
+    "key": "backend.model_test_risk_blocked",
+    "formats": []
+  },
+  "The Turn State template expires too soon to start this test": {
+    "key": "backend.model_test_state_expiring",
+    "formats": []
+  },
+  "At most four model tests may be active": {
+    "key": "backend.model_test_global_concurrency_limit",
+    "formats": []
+  },
+  "This account has reached its concurrency limit": {
+    "key": "backend.model_test_account_concurrency_limit",
+    "formats": []
+  },
+  "A configured proxy cannot contain only whitespace": {
+    "key": "backend.model_test_blank_proxy",
+    "formats": []
+  },
+  "The configured proxy is invalid; the test will not fall back to a direct connection": {
+    "key": "backend.model_test_invalid_proxy",
+    "formats": []
+  },
+  "The configured proxy scheme is not supported": {
+    "key": "backend.model_test_unsupported_proxy_scheme",
+    "formats": []
+  },
+  "The configured proxy port is invalid": {
+    "key": "backend.model_test_invalid_proxy_port",
+    "formats": []
+  },
+  "The configured proxy username is too long": {
+    "key": "backend.model_test_proxy_username_too_long",
+    "formats": []
+  },
+  "The configured upstream base URL is invalid": {
+    "key": "backend.model_test_invalid_base_url",
+    "formats": []
+  },
+  "Too many custom model test headers": {
+    "key": "backend.model_test_too_many_headers",
+    "formats": []
+  },
+  "This account uses unsupported custom headers; secret or routing headers cannot be submitted to model tests": {
+    "key": "backend.model_test_unsupported_headers",
+    "formats": []
+  },
+  "Invalid custom model test header": {
+    "key": "backend.model_test_invalid_header",
+    "formats": []
+  },
+  "File account settings are read from the host, not a submitted descriptor": {
+    "key": "backend.model_test_file_descriptor_forbidden",
+    "formats": []
+  },
+  "Cannot read this account's native test configuration": {
+    "key": "backend.model_test_native_configuration_unavailable",
+    "formats": []
+  },
+  "This file does not contain a Codex OAuth access token": {
+    "key": "backend.model_test_missing_codex_token",
+    "formats": []
+  },
+  "The account proxy configuration is invalid": {
+    "key": "backend.model_test_invalid_account_proxy",
+    "formats": []
+  },
+  "Invalid Codex account identifier": {
+    "key": "backend.model_test_invalid_codex_account",
+    "formats": []
+  },
+  "Read this account's current native provider configuration before testing": {
+    "key": "backend.model_test_read_provider_configuration",
+    "formats": []
+  },
+  "The provider descriptor does not match this exact runtime account": {
+    "key": "backend.model_test_provider_descriptor_mismatch",
+    "formats": []
+  },
+  "The provider base URL changed; reload its configuration": {
+    "key": "backend.model_test_base_url_changed",
+    "formats": []
+  },
+  "The native protocol does not match this account provider": {
+    "key": "backend.model_test_protocol_provider_mismatch",
+    "formats": []
+  },
+  "Too many configured model mappings": {
+    "key": "backend.model_test_too_many_models",
+    "formats": []
+  },
+  "The selected model alias is ambiguous": {
+    "key": "backend.model_test_ambiguous_alias",
+    "formats": []
+  },
+  "The selected model is outside this account's configured model list": {
+    "key": "backend.model_test_model_not_configured",
+    "formats": []
+  },
+  "Invalid upstream model identifier": {
+    "key": "backend.model_test_invalid_model",
+    "formats": []
+  },
+  "Invalid Gemini model identifier": {
+    "key": "backend.model_test_invalid_gemini_model",
+    "formats": []
+  },
+  "This native provider protocol is not supported by model tests": {
+    "key": "backend.model_test_unsupported_protocol",
+    "formats": []
+  },
   "The analysis range is outside the retained request history": {
     "key": "backend.the_analysis_range_is_outside_the_retained_request_history",
     "formats": []

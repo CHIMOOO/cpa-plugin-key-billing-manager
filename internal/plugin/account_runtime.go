@@ -357,6 +357,7 @@ func (a *App) getAccountRuntimeSettings(_ ManagementRequest) ManagementResponse 
 	return JSONResponse(200, a.accountRuntime.snapshot())
 }
 func (a *App) getAccountRuntime(_ ManagementRequest) ManagementResponse {
+	a.pruneModelTests()
 	files, err := a.listHostAuthFiles()
 	if err != nil {
 		return JSONError(502, "host_unavailable", "Failed to read the authentication file list")
@@ -435,6 +436,9 @@ func (a *App) getAccountRuntime(_ ManagementRequest) ManagementResponse {
 }
 
 func (a *App) enforceAccountRuntime(req RequestInterceptRequest) RequestInterceptResponse {
+	if a != nil {
+		a.pruneModelTests()
+	}
 	if a == nil || a.accountRuntime == nil || a.store == nil || !a.store.Enabled() || metadataString(req.Metadata, MetadataSource) == SourcePluginHostModelCallback {
 		return RequestInterceptResponse{}
 	}

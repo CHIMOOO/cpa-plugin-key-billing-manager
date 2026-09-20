@@ -73,6 +73,9 @@ type managementEndpoint struct {
 }
 
 var managementEndpoints = []managementEndpoint{
+	{http.MethodGet, "/model-tests", "View model test accounts and original test presets", (*App).getModelTests},
+	{http.MethodPost, "/model-tests/prepare", "Prepare one explicitly proxied account model test", (*App).prepareModelTest},
+	{http.MethodPost, "/model-tests/complete", "Release a model test and evaluate its displayed output", (*App).completeModelTest},
 	{http.MethodGet, "/account-runtime", "View upstream account usage and concurrency", (*App).getAccountRuntime},
 	{http.MethodGet, "/account-runtime/settings", "View account runtime settings", (*App).getAccountRuntimeSettings},
 	{http.MethodPut, "/account-runtime/settings", "Save account runtime settings", (*App).setAccountRuntimeSettings},

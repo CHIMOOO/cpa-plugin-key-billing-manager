@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"cpa-key-billing/internal/billing"
 	"cpa-key-billing/internal/sqlite"
@@ -23,6 +24,9 @@ type App struct {
 	integrationsMu        sync.Mutex
 	integrationLogins     map[string]*integrationLogin
 	integrationUnsaved    map[string]integrationAccount
+	modelTestsMu          sync.Mutex
+	modelTests            map[string]modelTestLease
+	modelTestNow          func() time.Time
 	admissionsMu          sync.Mutex
 	admissions            map[string]*requestAdmission
 	routingMu             sync.Mutex
