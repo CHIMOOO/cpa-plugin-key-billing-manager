@@ -24,29 +24,35 @@ import (
 const Header = "X-Codex-Turn-State"
 
 type Config struct {
-	Enabled                  bool     `json:"enabled"`
-	InjectMode               string   `json:"inject_mode"`
-	DryRun                   bool     `json:"dry_run"`
-	LearnResponses           bool     `json:"learn_responses"`
-	TemplateLength           int      `json:"template_length"`
-	ReplaceLength            int      `json:"replace_length"`
-	TTLSeconds               int      `json:"ttl_seconds"`
-	RenewBeforeMinutes       int      `json:"renew_before_minutes"`
-	Models                   []string `json:"models"`
-	ProbeAccounts            []string `json:"probe_accounts"`
-	ProbeProxies             []string `json:"probe_proxies"`
-	ProbeProxiesRotating     []string `json:"probe_proxies_rotating"`
-	ProbeDropFailedProxies   bool     `json:"probe_drop_failed_proxies"`
-	ProbeDropDegradedProxies bool     `json:"probe_drop_degraded_proxies"`
-	ProbeMinProxies          int      `json:"probe_min_proxies"`
-	ProbeHourlyLimit         int      `json:"probe_hourly_limit"`
-	ProbeVerifyCompletion    bool     `json:"probe_verify_completion"`
+	Enabled                      bool     `json:"enabled"`
+	InjectMode                   string   `json:"inject_mode"`
+	DryRun                       bool     `json:"dry_run"`
+	LearnResponses               bool     `json:"learn_responses"`
+	TemplateLength               int      `json:"template_length"`
+	ReplaceLength                int      `json:"replace_length"`
+	TTLSeconds                   int      `json:"ttl_seconds"`
+	RenewBeforeMinutes           int      `json:"renew_before_minutes"`
+	Models                       []string `json:"models"`
+	ProbeAccounts                []string `json:"probe_accounts"`
+	ProbeProxies                 []string `json:"probe_proxies"`
+	ProbeProxiesRotating         []string `json:"probe_proxies_rotating"`
+	ProbeDropFailedProxies       bool     `json:"probe_drop_failed_proxies"`
+	ProbeDropDegradedProxies     bool     `json:"probe_drop_degraded_proxies"`
+	ProbeMinProxies              int      `json:"probe_min_proxies"`
+	ProbeHourlyLimit             int      `json:"probe_hourly_limit"`
+	ProbeVerifyCompletion        bool     `json:"probe_verify_completion"`
+	ProbeStaticCooldownMinutes   int      `json:"probe_static_cooldown_minutes"`
+	ProbeRotatingCooldownMinutes int      `json:"probe_rotating_cooldown_minutes"`
+	ProbeAccountCooldownMinutes  int      `json:"probe_account_cooldown_minutes"`
+	ProbeRotatingMaxAttempts     int      `json:"probe_rotating_max_attempts"`
 }
 
 func DefaultConfig() Config {
 	return Config{InjectMode: "replace-only", LearnResponses: true, TemplateLength: 292,
 		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
-		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10}
+		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10,
+		ProbeStaticCooldownMinutes: 55, ProbeRotatingCooldownMinutes: 10,
+		ProbeAccountCooldownMinutes: 10, ProbeRotatingMaxAttempts: 10}
 }
 
 type Template struct {
@@ -117,7 +123,10 @@ type pending struct {
 }
 
 type cooldown struct {
-	Until         time.Time `json:"until"`
+	Until time.Time `json:"until"`
+	// PacingUntil keeps the short per-account request interval independent
+	// of optional failure pauses. Legacy cooldowns have no known interval.
+	PacingUntil   time.Time `json:"pacing_until,omitzero"`
 	Attempts      int       `json:"attempts,omitempty"`
 	RenewalBucket string    `json:"renewal_bucket,omitempty"`
 }
@@ -296,6 +305,14 @@ func validateConfig(cfg *Config) error {
 	if cfg.ProbeHourlyLimit < 0 || cfg.ProbeHourlyLimit > 10000 {
 		return messages.Errorf("The hourly probe limit must be 0 (unlimited) or between 1 and 10000")
 	}
+	for _, minutes := range []int{cfg.ProbeStaticCooldownMinutes, cfg.ProbeRotatingCooldownMinutes, cfg.ProbeAccountCooldownMinutes} {
+		if minutes < 0 || minutes > 1440 {
+			return messages.Errorf("Probe cooldowns must be 0 (disabled) or between 1 and 1440 minutes")
+		}
+	}
+	if cfg.ProbeRotatingMaxAttempts < 0 || cfg.ProbeRotatingMaxAttempts > 100 {
+		return messages.Errorf("The rotating proxy attempt limit must be 0 (unlimited) or between 1 and 100")
+	}
 	var err error
 	if cfg.Models, err = cleanList(cfg.Models, 100); err != nil {
 		return err
@@ -425,6 +442,10 @@ func (m *Manager) updateLocked(raw []byte) error {
 	// A larger TTL must not resurrect a template that had already expired
 	// under the previously active policy, even between lazy cleanup passes.
 	pruneState(&next, m.now())
+	// Cooldown policy edits apply to future reservations. Preserve existing
+	// deadlines and attempt counts; shortening a setting must not silently
+	// clear a refusal or reset either rotating or hourly probe budgets.
+	// A zero setting bypasses its failure gate without deleting saved records.
 	next.Config = cfg
 	pruneState(&next, m.now())
 	if currentConfig.TTLSeconds != cfg.TTLSeconds || currentConfig.RenewBeforeMinutes != cfg.RenewBeforeMinutes {

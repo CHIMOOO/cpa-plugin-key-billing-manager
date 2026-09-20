@@ -46,6 +46,7 @@ type ProbeResult struct {
 	ProxyTotal          int              `json:"proxy_total,omitempty"`
 	ProxyPool           string           `json:"proxy_pool,omitempty"`
 	ProxyAttempt        int              `json:"proxy_attempt,omitempty"`
+	ProxyAttemptLimit   int              `json:"proxy_attempt_limit"`
 	ProxyDisposition    string           `json:"proxy_disposition,omitempty"`
 	ProxyRemaining      int              `json:"proxy_remaining,omitempty"`
 	ProxyConfigRevision string           `json:"proxy_config_revision,omitempty"`
@@ -79,15 +80,10 @@ func (m *Manager) ProbeProgress() ProbeProgress {
 }
 
 type probeCandidate struct {
-	account, model, proxy, cooldownKey string
-	rotating                           bool
-	index, total, attempt              int
+	account, model, proxy, cooldownKey  string
+	rotating                            bool
+	index, total, attempt, attemptLimit int
 }
-
-// Match the reference collector's account-wide backoff. A rejected request
-// does not prove that every exit is unusable; keep this independent of the
-// 55-minute per-bucket static-exit cooldown. Never retry a 429 by changing IP.
-const probeAccountBackoff = 10 * time.Minute
 
 // probeProxyCursor is shared by all account/model buckets. Only a digest and
 // an index are persisted, never another copy of the proxy URL or credentials.
@@ -178,7 +174,7 @@ func (c probeCandidate) progress() ProbeResult {
 		exit = "direct"
 	}
 	return ProbeResult{Account: c.account, Model: c.model, Exit: exit,
-		ProxyIndex: c.index, ProxyTotal: c.total, ProxyPool: pool, ProxyAttempt: c.attempt}
+		ProxyIndex: c.index, ProxyTotal: c.total, ProxyPool: pool, ProxyAttempt: c.attempt, ProxyAttemptLimit: c.attemptLimit}
 }
 
 func proxyKey(account, model, proxy string, rotating bool) string {
@@ -267,17 +263,22 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 	// cooldown. Failures and process interruption keep this conservative charge;
 	// a failed atomic save sends no upstream request and consumes no budget.
 	next.ProbeUsage = reserveProbeUsage(next.ProbeUsage, now)
-	reserved := cooldown{Until: now.Add(55 * time.Minute)}
 	if candidate.rotating {
 		budget := rotatingBudget(next, candidate.account, candidate.model, now)
-		if !budget.Until.After(now) {
-			budget = cooldown{Until: now.Add(10 * time.Minute)}
+		if !budget.Until.After(now) && next.Config.ProbeRotatingCooldownMinutes > 0 {
+			budget = cooldown{Until: now.Add(time.Duration(next.Config.ProbeRotatingCooldownMinutes) * time.Minute)}
 		}
-		budget.Attempts++
-		next.Cooldowns[rotatingBudgetKey(candidate.account, candidate.model)] = budget
-		reserved = cooldown{Until: budget.Until, Attempts: 1}
+		// A disabled window creates no artificial future wait. Preserve and
+		// charge a still-active old window, so toggling the setting does not
+		// reset known attempts if the operator later re-enables its limit.
+		if budget.Until.After(now) {
+			budget.Attempts = addProbeUsageCount(max(0, budget.Attempts), 1)
+			next.Cooldowns[rotatingBudgetKey(candidate.account, candidate.model)] = budget
+			next.Cooldowns[candidate.cooldownKey] = cooldown{Until: budget.Until, Attempts: 1}
+		}
+	} else if next.Config.ProbeStaticCooldownMinutes > 0 {
+		next.Cooldowns[candidate.cooldownKey] = cooldown{Until: now.Add(time.Duration(next.Config.ProbeStaticCooldownMinutes) * time.Minute)}
 	}
-	next.Cooldowns[candidate.cooldownKey] = reserved
 	// Persist the next exit with the reservation. Another bucket and a process
 	// restart both continue after this attempt; a crash must not keep returning
 	// to the first URL. Eligibility and retry budgets remain bucket-specific.
@@ -308,7 +309,15 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 	}()
 	credential, err := fetch(candidate.account)
 	if err != nil {
-		return m.finishProbe(candidate, ProbeResponse{}, "Cannot read a valid Codex OAuth credential; sign in again or check the account", 10*time.Minute)
+		reason := messages.New("Cannot read a valid Codex OAuth credential; this account is paused for %d minutes. Sign in again or check the account", next.Config.ProbeAccountCooldownMinutes)
+		if next.Config.ProbeAccountCooldownMinutes == 0 {
+			reason = messages.Literal("Cannot read a valid Codex OAuth credential; account cooldown is disabled. Sign in again or check the account")
+		}
+		result, err := m.finishProbe(candidate, ProbeResponse{}, reason.Text, time.Duration(next.Config.ProbeAccountCooldownMinutes)*time.Minute)
+		if err == nil {
+			result.ReasonMessage = reason
+		}
+		return result, err
 	}
 	credential.ProbeVerifyCompletion = next.Config.ProbeVerifyCompletion
 	response, err := m.runProbe(credential, candidate.model, candidate.proxy)
@@ -322,6 +331,13 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 func rotatingBudgetKey(account, model string) string {
 	hash := sha256.Sum256([]byte(key(account, model)))
 	return "rotating:" + fmt.Sprintf("%x", hash)
+}
+
+func rotatingAttemptLimit(cfg Config) int {
+	if cfg.ProbeRotatingCooldownMinutes == 0 {
+		return 0
+	}
+	return cfg.ProbeRotatingMaxAttempts
 }
 
 // A bucket has one retry budget across the entire rotating pool. Existing
@@ -340,12 +356,11 @@ func rotatingBudget(state diskState, account, model string, now time.Time) coold
 		if previous.RenewalBucket != "" || !previous.Until.After(now) {
 			continue
 		}
-		budget.Attempts += previous.Attempts
+		budget.Attempts = addProbeUsageCount(budget.Attempts, max(0, previous.Attempts))
 		if previous.Until.After(budget.Until) {
 			budget.Until = previous.Until
 		}
 	}
-	budget.Attempts = min(10, budget.Attempts)
 	return budget
 }
 
@@ -393,7 +408,11 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 				}
 			}
 			pending++
-			if rest := m.state.Cooldowns[accountKey(selectedAccount)]; rest.Until.After(now) {
+			rest := m.state.Cooldowns[accountKey(selectedAccount)]
+			if cfg.ProbeAccountCooldownMinutes == 0 {
+				rest.Until = rest.PacingUntil
+			}
+			if rest.Until.After(now) {
 				paused++
 				earlier(rest.Until)
 				continue
@@ -409,21 +428,25 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 					budget = rotatingBudget(m.state, selectedAccount, selectedModel, now)
 					budgetLoaded = true
 				}
-				if rotating && budget.Until.After(now) && budget.Attempts >= 10 {
+				limit := rotatingAttemptLimit(cfg)
+				if rotating && limit > 0 && budget.Until.After(now) && budget.Attempts >= limit {
 					earlier(budget.Until)
 					continue
 				}
 				id := proxyKey(selectedAccount, selectedModel, proxy, rotating)
 				rest := m.state.Cooldowns[id]
-				if rest.Until.After(now) && (!rotating || rest.RenewalBucket != "") {
+				if rest.Until.After(now) && (rest.RenewalBucket != "" || !rotating && cfg.ProbeStaticCooldownMinutes > 0) {
 					earlier(rest.Until)
 					continue
 				}
 				attempt := 1
 				if rotating {
-					attempt = budget.Attempts + 1
+					attempt = addProbeUsageCount(max(0, budget.Attempts), 1)
 				}
 				candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: rotating, index: index + 1, total: total, attempt: attempt}
+				if rotating {
+					candidate.attemptLimit = limit
+				}
 				found = true
 				break
 			}
@@ -498,12 +521,20 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	case failure != "":
 		result.Action, result.Reason = "error", failure
 	case response.Status == 401 || response.Status == 403:
-		result.ReasonMessage = messages.New("The upstream returned HTTP %d; this account is paused for 10 minutes. Check sign-in, permissions, and the exit before retrying", response.Status)
+		// Enabled refusal pauses apply to every model and exit for the account.
+		result.ReasonMessage = messages.New("The upstream returned HTTP %d; this account is paused for %d minutes. Check sign-in, permissions, and the exit before retrying", response.Status, next.Config.ProbeAccountCooldownMinutes)
+		if next.Config.ProbeAccountCooldownMinutes == 0 {
+			result.ReasonMessage = messages.New("The upstream returned HTTP %d; account cooldown is disabled. Check sign-in, permissions, and the exit before retrying", response.Status)
+		}
 		result.Action, result.Reason = "error", result.ReasonMessage.Text
-		rest = probeAccountBackoff
+		rest = time.Duration(next.Config.ProbeAccountCooldownMinutes) * time.Minute
 	case response.Status == 429:
-		result.Action, result.Reason = "error", "The upstream rate-limited this account; probes are paused for 10 minutes"
-		rest = probeAccountBackoff
+		result.ReasonMessage = messages.New("The upstream rate-limited this account; probes are paused for %d minutes", next.Config.ProbeAccountCooldownMinutes)
+		if next.Config.ProbeAccountCooldownMinutes == 0 {
+			result.ReasonMessage = messages.Literal("The upstream rate-limited this account; account cooldown is disabled")
+		}
+		result.Action, result.Reason = "error", result.ReasonMessage.Text
+		rest = time.Duration(next.Config.ProbeAccountCooldownMinutes) * time.Minute
 	case response.Status != 200:
 		result.ReasonMessage = messages.New("The upstream returned HTTP %d; no template was harvested", response.Status)
 		result.Action, result.Reason = "error", result.ReasonMessage.Text
@@ -528,7 +559,9 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	default:
 		result.Action, result.Reason = "error", "The response did not contain a turn-state of the configured template length"
 	}
-	next.Cooldowns[accountKey(c.account)] = cooldown{Until: now.Add(rest)}
+	// Zero disables the long failure pause, never the ordinary request interval.
+	rest = max(rest, 2*time.Second)
+	next.Cooldowns[accountKey(c.account)] = cooldown{Until: now.Add(rest), PacingUntil: now.Add(2 * time.Second)}
 	if result.Action == "harvested" {
 		bucket := key(c.account, c.model)
 		next.Cooldowns[c.cooldownKey] = cooldown{Until: templateRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
@@ -546,9 +579,9 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 			// edit. Keep the account pause in memory even on a disk failure,
 			// and retry its persistence through management synchronization.
 			id := accountKey(c.account)
-			pause := cooldown{Until: now.Add(rest)}
+			pause := next.Cooldowns[id]
 			if previous := m.state.Cooldowns[id]; previous.Until.After(pause.Until) {
-				pause = previous
+				pause.Until = previous.Until
 			}
 			m.state.Cooldowns[id] = pause
 			m.runtimeDirty = true

@@ -1354,6 +1354,38 @@
     "key": "backend.turn_state_account_wait",
     "formats": []
   },
+  "Probe cooldowns must be 0 (disabled) or between 1 and 1440 minutes": {
+    "key": "backend.turn_state_cooldown_invalid",
+    "formats": []
+  },
+  "The rotating proxy attempt limit must be 0 (unlimited) or between 1 and 100": {
+    "key": "backend.turn_state_rotating_attempts_invalid",
+    "formats": []
+  },
+  "The upstream returned HTTP %d; this account is paused for %d minutes. Check sign-in, permissions, and the exit before retrying": {
+    "key": "backend.turn_state_account_paused_configured",
+    "formats": ["%d", "%d"]
+  },
+  "The upstream rate-limited this account; probes are paused for %d minutes": {
+    "key": "backend.turn_state_rate_limited_configured",
+    "formats": ["%d"]
+  },
+  "Cannot read a valid Codex OAuth credential; this account is paused for %d minutes. Sign in again or check the account": {
+    "key": "backend.turn_state_credential_invalid_configured",
+    "formats": ["%d"]
+  },
+  "Cannot read a valid Codex OAuth credential; account cooldown is disabled. Sign in again or check the account": {
+    "key": "backend.turn_state_credential_invalid_no_cooldown",
+    "formats": []
+  },
+  "The upstream returned HTTP %d; account cooldown is disabled. Check sign-in, permissions, and the exit before retrying": {
+    "key": "backend.turn_state_account_refused_no_cooldown",
+    "formats": ["%d"]
+  },
+  "The upstream rate-limited this account; account cooldown is disabled": {
+    "key": "backend.turn_state_rate_limited_no_cooldown",
+    "formats": []
+  },
   "Pending buckets are waiting for account pauses or exit cooldowns; collection will resume automatically": {
     "key": "backend.turn_state_waiting",
     "formats": []

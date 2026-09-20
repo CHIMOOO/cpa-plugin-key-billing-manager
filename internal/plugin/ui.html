@@ -2653,7 +2653,7 @@
             </ol>
             <details><summary data-i18n="ui.state_guide_more">Results, page refresh and automatic proxy removal</summary>
               <p data-i18n="ui.state_guide_results">Length 312 (or your configured degraded length) is not a successful collection. Waiting for renewal, an account pause, an exit cooldown or the hourly budget does not stop an enabled collector. State does not restore exhausted account quota or guarantee response quality.</p>
-              <p data-i18n="ui.state_guide_cooldowns">HTTP 401, 403 or 429 pauses that account across models for 10 minutes, even if other proxies remain. A 403 can also come from an exit restriction; check the account and exit before retrying. Failed static exits wait 55 minutes per bucket; a rotating pool shares 10 attempts per bucket in each 10-minute window. The next check shown in logs is a scheduler check, not a promise that a request will be sent then.</p>
+              <p data-i18n="ui.state_guide_cooldowns">HTTP 401, 403 or 429, or unreadable OAuth credentials, can pause an account across models and exits. Defaults: a 10-minute account pause, 55 minutes for a failed static exit per bucket, and 10 rotating attempts per bucket in a 10-minute window. Under Cooldowns and retries, 0 removes each limit; a zero rotating window also disables its attempt cap. Remove cooldown and attempt limits prepares a draft with all four settings and the hourly limit at 0; save to apply it. Fresh templates still wait for renewal and collection remains serial. The next check in logs is a scheduler check, not a promise to send a request then.</p>
               <p data-i18n="ui.state_guide_session">The server keeps collection intent and recent logs. Refreshing, leaving this tab, closing the browser or signing out does not stop collection. Stop saves a server-side stop command. If the collector or CPA restarts, the service reconnects and resumes enabled collection.</p>
               <p data-i18n="ui.state_guide_pruning">Automatic proxy removal is off by default. If enabled and saved, it immediately saves each removal while keeping at least the configured total across both pools (default 10). The separate Remove failed proxies action after a connectivity test edits the text boxes and needs Save all settings.</p>
             </details>
@@ -2692,7 +2692,7 @@
               </div>
               <div id="turn-state-proxy-load-status" class="small muted" role="status"></div><button id="turn-state-proxy-reload" type="button" class="hidden" data-i18n="ui.turn_state_reload_proxies">Reload saved proxies (replace proxy drafts)</button>
               <p class="access-help" data-i18n="ui.turn_state_pool_limits">Each pool supports up to 20,000 proxies; total settings size is limited to 16 MiB. Failed uploads keep the previous settings.</p>
-              <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes. Each account/model rotating pool shares 10 attempts per 10-minute window across all URLs. Buckets take turns so failed accounts do not prevent renewal. Connectivity checks and manual removal use the editor and require saving. Reachability does not guarantee collection; rotating exits may change. A successful collection restarts the budget at its next scheduled renewal. Probes advance through both pools across accounts and models, continuing after success and wrapping at the end; cooling entries are skipped. Collection logs show complete configured proxy URLs, including usernames and passwords. A gateway URL is not the actual exit IP.</p>
+              <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. By default, failed static exits cool down for 55 minutes; each account/model rotating pool shares 10 attempts per 10-minute window across all URLs. Change or remove these limits under Cooldowns and retries. Buckets take turns so failed accounts do not prevent renewal. Connectivity checks and manual removal use the editor and require saving. Reachability does not guarantee collection; rotating exits may change. A successful collection restarts the budget at its next scheduled renewal. Probes advance through both pools across accounts and models, continuing after success and wrapping at the end; cooling entries are skipped. Collection logs show complete configured proxy URLs, including usernames and passwords. A gateway URL is not the actual exit IP.</p>
               <h4 data-i18n="ui.state_proxy_pruning">Automatic proxy removal during collection</h4>
               <div class="access-controls">
                 <label class="toggle-filter"><input id="turn-state-drop-failed" type="checkbox" disabled /><span data-i18n="ui.state_drop_failed">Discard failed proxies</span></label>
@@ -2701,6 +2701,18 @@
               <div id="turn-state-min-proxies-field" class="turn-state-fields hidden"><label class="field"><span data-i18n="ui.state_min_proxies">Minimum entries to keep (both pools combined)</span><input id="turn-state-min-proxies" type="number" min="1" max="40000" step="1" value="10" required disabled /></label></div>
               <p class="access-help" data-i18n="ui.state_proxy_pruning_help">Both options are off by default and take effect after saving. Failed means a proxy connection or authentication failure; degraded means a returned state has the degraded length. Account HTTP 401, 403 and 429 responses do not remove proxies. Removal deletes the exact configured URL from its pool, including rotating entries; a gateway URL is not one permanent exit IP. Automatic removal stops at the combined minimum.</p>
 </div>
+          <div class="card" id="turn-state-cooldown-settings">
+            <div class="row spread settings-section-header"><h3 data-i18n="ui.state_cooldowns">Cooldowns and retries</h3><div class="row"><button id="turn-state-remove-limits" type="button" disabled data-i18n="ui.state_remove_limits">Remove cooldown and attempt limits</button><button data-state-save="cooldowns" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
+            <div class="turn-state-fields">
+              <label class="field"><span data-i18n="ui.state_static_cooldown">Static exit cooldown (minutes; 0 = off)</span><input id="turn-state-static-cooldown" type="number" min="0" max="1440" step="1" required disabled /><span class="small muted" data-i18n="ui.state_static_cooldown_help">Default: 55. After failure, the same account, model and exit wait before retrying. Direct connections follow this rule too. With 0, failures do not cool down and existing waits for these exits are ignored.</span></label>
+              <label class="field"><span data-i18n="ui.state_rotating_cooldown">Rotating pool window (minutes; 0 = off)</span><input id="turn-state-rotating-cooldown" type="number" min="0" max="1440" step="1" required disabled /><span class="small muted" data-i18n="ui.state_rotating_cooldown_help">Default: 10. Rotating URLs share a window per account and model. With 0, the window is disabled and its attempt limit is not enforced, even when the attempt limit below is positive.</span></label>
+              <label class="field"><span data-i18n="ui.state_rotating_max_attempts">Rotating attempts per window (0 = unlimited)</span><input id="turn-state-rotating-max-attempts" type="number" min="0" max="100" step="1" required disabled /><span class="small muted" data-i18n="ui.state_rotating_max_attempts_help">Default: 10. Shared across rotating URLs for the same account and model. With 0, attempts are unlimited. A positive limit keeps attempts already used in the current window.</span></label>
+              <label class="field"><span data-i18n="ui.state_account_cooldown">Account pause (minutes; 0 = off)</span><input id="turn-state-account-cooldown" type="number" min="0" max="1440" step="1" required disabled /><span class="small muted" data-i18n="ui.state_account_cooldown_help">Default: 10. HTTP 401, 403 or 429, or unreadable OAuth credentials, pause all models and exits for that account. With 0, these failures and existing account waits do not cause a long pause.</span></label>
+            </div>
+            <p class="access-help" data-i18n="ui.state_cooldown_bounds_help">Use whole minutes from 0 to 1440 and 0 to 100 attempts. Collection still runs serially with its normal 2-second scheduling interval and request timeout. Valid templates wait until renewal; a positive hourly limit still applies. Automatic proxy removal remains independent.</p>
+            <p class="access-help" data-i18n="ui.state_remove_limits_help">Remove cooldown and attempt limits fills these four settings and the hourly limit with 0 in your draft. Save all settings to apply it; this does not start collection or change proxy lists and automatic removal options.</p>
+            <p class="access-help" data-i18n="ui.state_cooldown_save_help">After saving, zero settings bypass the corresponding existing failure waits on the next collector heartbeat. Positive durations preserve existing deadlines; positive attempt limits preserve the count already used. Clear cooldowns can reset those waits explicitly. A stopped collector stays stopped.</p>
+          </div>
           <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_strategy">Injection and renewal</h3><button data-state-save="strategy" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>            <div class="access-controls">
               <label class="toggle-filter"><input id="turn-state-enabled" type="checkbox" role="switch" disabled /><span data-i18n="ui.group_enabled_state">enabled</span></label>
               <label class="toggle-filter"><input id="turn-state-dry-run" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_observe_only_do_not_modify_requests">Observe only; do not modify requests</span></label>
@@ -8925,6 +8937,10 @@
         "renew-before",
         "verify-completion",
         "hourly-limit",
+        "static-cooldown",
+        "rotating-cooldown",
+        "rotating-max-attempts",
+        "account-cooldown",
         "template-length",
         "replace-length",
         "models",
@@ -9014,7 +9030,7 @@
               index: result.proxy_index || 1,
               total: result.proxy_total || 1,
               proxy: turnStateProxyDisplay(result.exit),
-              attempt: result.proxy_pool === "rotating" ? m("ui.turn_state_probe_attempt", { attempt: result.proxy_attempt || 1 }) : ""
+              attempt: result.proxy_pool === "rotating" ? turnStateProbeAttempt(result) : ""
             })
           );
         }
@@ -9142,6 +9158,13 @@
           JSON.stringify(turnStateProxyLines($("turn-state-" + TURN_STATE_POOLS[pool]).value)) !==
             JSON.stringify(turnStateProxyLines(turnStatePoolState().baseline[pool]))
         );
+      }
+      function turnStateProbeAttempt(result) {
+        const limit = result.proxy_attempt_limit ?? 10;
+        return m(limit === 0 ? "ui.turn_state_probe_attempt_unlimited" : "ui.turn_state_probe_attempt", {
+          attempt: result.proxy_attempt || 1,
+          limit
+        });
       }
       function turnStateProxyDisplay(value) {
         if (!value || value === "(direct)" || value === "direct") return m("ui.turn_state_direct");
@@ -9753,6 +9776,7 @@
         const testing = turnStateDiagnostics.running || turnStateDiagnostics.inFlight;
         const busy = saving || testing || turnStateProbe.inFlight || turnStateRunner.command;
         for (const field of TURN_STATE_FIELDS) $("turn-state-" + field).disabled = !state || busy;
+        $("turn-state-remove-limits").disabled = !state || busy;
         for (const field of Object.values(TURN_STATE_POOLS))
           $("turn-state-" + field).disabled = !state || busy || !pools.loaded || pools.loading;
         $("turn-state-save").disabled = !state || busy || pools.loading || !adminUIState.turnStateDirty;
@@ -9792,6 +9816,10 @@
             ["ttl", config.ttl_seconds],
             ["renew-before", config.renew_before_minutes || 0],
             ["hourly-limit", config.probe_hourly_limit || 0],
+            ["static-cooldown", config.probe_static_cooldown_minutes ?? 55],
+            ["rotating-cooldown", config.probe_rotating_cooldown_minutes ?? 10],
+            ["rotating-max-attempts", config.probe_rotating_max_attempts ?? 10],
+            ["account-cooldown", config.probe_account_cooldown_minutes ?? 10],
             ["template-length", config.template_length],
             ["replace-length", config.replace_length],
             ["min-proxies", config.probe_min_proxies ?? 10]
@@ -9995,6 +10023,10 @@
           ["ttl", "ttl_seconds"],
           ["renew-before", "renew_before_minutes"],
           ["hourly-limit", "probe_hourly_limit"],
+          ["static-cooldown", "probe_static_cooldown_minutes"],
+          ["rotating-cooldown", "probe_rotating_cooldown_minutes"],
+          ["rotating-max-attempts", "probe_rotating_max_attempts"],
+          ["account-cooldown", "probe_account_cooldown_minutes"],
           ["template-length", "template_length"],
           ["replace-length", "replace_length"]
         ]) {
@@ -10077,6 +10109,7 @@
             "proxy_total",
             "proxy_pool",
             "proxy_attempt",
+            "proxy_attempt_limit",
             "length",
             "status",
             "next_check_at",
@@ -10139,7 +10172,7 @@
                   index: result.proxy_index || 1,
                   total: result.proxy_total || 1,
                   proxy: turnStateProxyDisplay(result.exit),
-                  attempt: result.proxy_pool === "rotating" ? m("ui.turn_state_probe_attempt", { attempt: result.proxy_attempt || 1 }) : ""
+                  attempt: result.proxy_pool === "rotating" ? turnStateProbeAttempt(result) : ""
                 })
               : "",
           length: result.length ? m("ui.turn_state_probe_length", { length: result.length }) : "",
@@ -13257,6 +13290,12 @@
           renderTurnState();
         };
       $("turn-state-clear-cooldowns").onclick = () => guard(() => clearTurnStateCooldowns());
+      $("turn-state-remove-limits").onclick = () => {
+        if ($("turn-state-remove-limits").disabled) return;
+        for (const field of ["static-cooldown", "rotating-cooldown", "rotating-max-attempts", "account-cooldown", "hourly-limit"])
+          $("turn-state-" + field).value = "0";
+        $("turn-state-hourly-limit").dispatchEvent(new Event("input", { bubbles: true }));
+      };
       for (const button of document.querySelectorAll("[data-state-save], #turn-state-save")) button.onclick = () => guard(saveTurnState);
       $("turn-state-discard").onclick = () =>
         guard(async () => {

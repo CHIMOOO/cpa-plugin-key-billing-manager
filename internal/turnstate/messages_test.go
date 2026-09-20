@@ -12,8 +12,8 @@ func TestProbeReasonsPreserveTranslationMetadata(t *testing.T) {
 		key    string
 	}{
 		{200, "backend.turn_state_harvested"},
-		{401, "backend.turn_state_account_paused"},
-		{429, "backend.turn_state_rate_limited"},
+		{401, "backend.turn_state_account_paused_configured"},
+		{429, "backend.turn_state_rate_limited_configured"},
 		{503, "backend.turn_state_upstream_status"},
 	} {
 		m, now := newTestManager(t)
@@ -26,6 +26,10 @@ func TestProbeReasonsPreserveTranslationMetadata(t *testing.T) {
 		}
 		if tc.status == 503 && result.ReasonMessage.Params["v0"] != "503" {
 			t.Fatalf("HTTP status was not preserved as a translation parameter: %+v", result.ReasonMessage)
+		}
+		if tc.status == 401 && (result.ReasonMessage.Params["v0"] != "401" || result.ReasonMessage.Params["v1"] != "10") ||
+			tc.status == 429 && result.ReasonMessage.Params["v0"] != "10" {
+			t.Fatalf("account cooldown lost its translation parameters: %+v", result.ReasonMessage)
 		}
 	}
 }

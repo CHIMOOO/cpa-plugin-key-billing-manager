@@ -620,6 +620,8 @@ TURN_STATE_CONFIG = {
     "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
     "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
     "probe_verify_completion": False, "probe_hourly_limit": 0,
+    "probe_static_cooldown_minutes": 55, "probe_rotating_cooldown_minutes": 10,
+    "probe_account_cooldown_minutes": 10, "probe_rotating_max_attempts": 10,
     "models": ["gpt-6-astra", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
@@ -691,6 +693,13 @@ def valid_turn_state_pruning(config):
     limit = config.get("probe_hourly_limit", TURN_STATE_CONFIG["probe_hourly_limit"])
     if type(limit) is not int or not 0 <= limit <= 10000:
         return False
+    for field, maximum in (("probe_static_cooldown_minutes", 1440),
+                           ("probe_rotating_cooldown_minutes", 1440),
+                           ("probe_account_cooldown_minutes", 1440),
+                           ("probe_rotating_max_attempts", 100)):
+        value = config.get(field, TURN_STATE_CONFIG[field])
+        if type(value) is not int or not 0 <= value <= maximum:
+            return False
     minimum = config.get("probe_min_proxies", TURN_STATE_CONFIG["probe_min_proxies"])
     return type(minimum) is int and 1 <= minimum <= 40000
 
