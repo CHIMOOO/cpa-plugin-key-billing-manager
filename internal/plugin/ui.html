@@ -1522,8 +1522,8 @@
         border-radius: 8px;
       }
       .chooser-identity { min-width: 0; flex: 1; display: grid; gap: 4px; overflow-wrap: anywhere; }
-      .chooser-decision { flex: 0 0 140px; }
-      .chooser-decision select { width: 100%; }
+      .chooser-decision { flex: none; margin-left: auto; }
+      .chooser-choice[data-state="allow"] { border-color: var(--primary-color); }
       .chooser-dynamic { margin-top: 16px; padding: 12px; border: 1px dashed var(--border-color); border-radius: 8px; }
       .chooser-dynamic summary { cursor: pointer; font-size: 13px; }
       .chooser-dynamic .chooser-choice { margin-top: 8px; }
@@ -1542,8 +1542,7 @@
       .route-form-toolbar .compact-actions { flex-wrap: wrap; }
       @media (max-width: 640px) {
         .chooser-choice { flex-wrap: wrap; gap: 8px; }
-        .chooser-identity { flex-basis: calc(100% - 34px); }
-        .chooser-decision { margin-left: auto; flex-basis: 140px; }
+        .chooser-identity { flex-basis: calc(100% - 62px); }
         .chooser-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .chooser-tabs button { flex: 1; padding-inline: 8px; font-size: 12px; }
         .group-dialog .routing-list, .route-dialog .route-rule-list { max-height: 52dvh; }
@@ -1577,7 +1576,36 @@
       }
       .integration-client-models { width: 100%; margin-top: 8px; overflow-wrap: anywhere; }
       #integration-device-status { overflow-wrap: anywhere; }
-      .project-link { display: inline-flex; margin-top: 4px; font-size: 12px; text-decoration: none; }
+      .model-test-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
+      .model-test-fields .field { min-width: 0; margin: 0; }
+      .model-test-fields input, .model-test-fields select, .model-test-fields textarea { width: 100%; min-width: 0; }
+      .model-test-wide { grid-column: 1 / -1; }
+      .model-test-route {
+        padding: 10px 12px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow-wrap: anywhere;
+      }
+      .model-test-route strong { display: block; margin-bottom: 4px; }
+      .model-test-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; }
+      .model-test-result { min-width: 0; padding: 16px; border: 1px solid var(--border-color); border-radius: 10px; }
+      .model-test-result h3 { margin: 0 0 8px; font-size: 14px; overflow-wrap: anywhere; }
+      .model-test-result pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 440px;
+        overflow: auto;
+        padding: 12px;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+      }
+      .model-test-checks { padding-left: 20px; font-size: 12px; line-height: 1.7; }
+      @media (max-width: 640px) {
+        .model-test-fields { grid-template-columns: minmax(0, 1fr); }
+      }
+      .project-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; text-decoration: none; }
+      .project-link svg { flex: none; width: 16px; height: 16px; fill: currentColor; }
       #app > .app-header .app-title { flex-direction: column; align-items: flex-start; gap: 0; }
       .state-save-bar {
         position: sticky;
@@ -1596,10 +1624,26 @@
       }
       .state-save-bar.has-changes { border-color: var(--primary-color); }
       .state-save-bar p { margin: 4px 0 0; }
+      .state-guide h3 { margin: 0 0 6px; }
+      .state-guide > p { margin: 0; }
+      .state-guide-steps {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px 28px;
+        padding-left: 22px;
+        margin: 14px 0;
+      }
+      .state-guide-steps li { min-width: 0; padding-left: 2px; font-size: 12px; line-height: 1.65; }
+      .state-guide-steps strong { display: block; color: var(--text-primary); }
+      .state-guide-steps p { margin: 2px 0 0; color: var(--text-secondary); }
+      .state-guide details { border-top: 1px solid var(--border-color); padding-top: 10px; }
+      .state-guide summary { cursor: pointer; font-size: 12px; color: var(--text-secondary); }
+      .state-guide details p { margin: 10px 0 0; font-size: 12px; line-height: 1.65; color: var(--text-secondary); }
       .state-bucket-exit { min-width: 150px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin-top: 5px; }
       @media (max-width: 640px) {
         .state-save-bar { position: static; flex-direction: column; align-items: stretch; gap: 10px; }
         .state-save-bar > .row { justify-content: flex-end; }
+        .state-guide-steps { grid-template-columns: minmax(0, 1fr); gap: 10px; }
       }
       .turn-state-page-head { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
       .turn-state-page-head h2, .turn-state-page-head p { margin: 0 0 4px; }
@@ -1662,7 +1706,10 @@
       .chooser-identity-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; }
       .settings-dialog .chooser-identity-fields .field { margin: 8px 0; }
       .settings-dialog.route-dialog[open] { display: block; }
-      .settings-dialog .chooser-key-assignment { flex: none; margin-top: 16px; padding: 10px 0; }
+      .settings-dialog .chooser-key-assignment { display: block; flex: none; min-width: 0; margin-top: 16px; padding: 10px 0; }
+      .chooser-key-assignment > * { min-width: 0; }
+      .chooser-key-assignment > input { width: 100%; }
+      .chooser-key-assignment > .selection-list { margin-top: 8px; }
       .chooser-key-assignment > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
       .chooser-key-assignment[open] > summary { margin-bottom: 12px; }
       .settings-dialog .dialog-actions { position: sticky; bottom: -22px; background: var(--bg-primary); z-index: 2; padding: 14px 0; }
@@ -1717,6 +1764,14 @@
         .route-dialog .route-form-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .route-form-toolbar > .row { grid-column: 1 / -1; justify-content: flex-start; padding-bottom: 0; }
         .route-picker { width: calc(100vw - 32px); }
+        .chooser-key-assignment .group-toolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .chooser-key-assignment .group-toolbar > input, .chooser-key-assignment .group-toolbar > .native-select {
+          grid-column: 1 / -1;
+          width: 100%;
+          min-width: 0;
+        }
+        .chooser-key-assignment .group-toolbar select { width: 100%; }
+        .chooser-key-assignment .group-toolbar > button { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
       }
       .wide-search { width: 360px; max-width: 100%; }
       .section-toolbar, .settings-section-header { margin-bottom: 12px; }
@@ -2391,7 +2446,7 @@
 
       <main id="app" class="hidden">
         <header class="head app-header">
-          <div class="app-title"><h1 data-i18n="ui.fork_api_key_manager">API Key Team Manager</h1><a class="project-link" href="https://github.com/CHIMOOO/cpa-plugin-key-billing-manager" target="_blank" rel="noopener noreferrer" data-i18n="ui.team_project_link">GitHub · project and updates</a></div>
+          <div class="app-title"><h1 data-i18n="ui.fork_api_key_manager">API Key Team Manager</h1><a class="project-link" href="https://github.com/CHIMOOO/cpa-plugin-key-billing-manager" target="_blank" rel="noopener noreferrer"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 .5a12 12 0 0 0-3.793 23.385c.6.11.82-.26.82-.577v-2.234c-3.338.726-4.043-1.416-4.043-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.73.083-.73 1.205.085 1.838 1.237 1.838 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.775.419-1.305.763-1.605-2.665-.303-5.466-1.334-5.466-5.931 0-1.31.469-2.381 1.236-3.221-.124-.303-.536-1.524.117-3.176 0 0 1.008-.323 3.301 1.23a11.51 11.51 0 0 1 6.006 0c2.291-1.553 3.297-1.23 3.297-1.23.655 1.652.243 2.873.119 3.176.769.84 1.235 1.911 1.235 3.221 0 4.609-2.805 5.625-5.479 5.922.431.372.815 1.103.815 2.222v3.294c0 .32.216.694.825.576A12 12 0 0 0 12 .5Z"/></svg><span data-i18n="ui.team_project_link">GitHub · project and updates</span></a></div>
           <div class="standalone-actions" aria-label="Page actions" data-i18n-aria-label="ui.page_actions">
             <button type="button" class="icon-action" data-page-action="refresh" aria-label="Refresh" data-i18n-aria-label="ui.refresh"></button>
             <button type="button" class="icon-action" data-page-action="theme" aria-label="Switch theme" data-i18n-aria-label="ui.switch_theme"></button>
@@ -2409,6 +2464,7 @@
               <button data-tab="request-events" data-i18n="ui.request_events">Request events</button>
               <button data-tab="errors" data-i18n="ui.error_events">Error events</button>
               <button data-tab="auth-files" data-i18n="ui.team_accounts">Accounts</button>
+              <button data-tab="model-tests" data-i18n="ui.model_tests">Model tests</button>
               <button data-tab="integrations" data-i18n="ui.team_integrations">Integrations</button>
               <button data-tab="risk" data-i18n="ui.team_risk_center">Risk center</button>
               <button data-tab="turn-state">Codex Turn State</button>
@@ -2502,7 +2558,7 @@
               </div>
               <div id="group-rule-list" class="routing-list"></div>
             </div>
-            <details class="selection-section chooser-key-assignment">
+            <details class="selection-section chooser-key-assignment" open>
               <summary data-i18n="ui.fork_assign_api_keys_multiple_selection">Assign API keys (multiple selection)</summary>
               <div class="group-toolbar">
                 <input id="group-key-search" type="search" placeholder="Search API keys or labels" data-i18n-placeholder="ui.fork_search_api_keys_or_labels" aria-label="Search API keys in the group" data-i18n-aria-label="ui.fork_search_api_keys_in_the_group" />
@@ -2521,6 +2577,21 @@
           <div class="turn-state-page-head"><div><h2>Codex Turn State</h2><p class="muted small" data-i18n="ui.state_intro">Collect, inspect and renew account-specific model templates.</p></div><span id="turn-state-mode-badge" class="tag plain"></span></div>
           <div class="state-save-bar"><div><strong data-i18n="ui.state_apply_heading">Apply collection settings</strong><p id="turn-state-draft-status" class="small muted" role="status"></p></div><div class="row"><button id="turn-state-discard" type="button" data-i18n="ui.state_discard">Discard changes</button><button id="turn-state-save" class="primary" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
           <div id="turn-state-status" class="notice hidden" role="status"></div>
+          <div class="card state-guide" aria-labelledby="turn-state-guide-title">
+            <h3 id="turn-state-guide-title" data-i18n="ui.state_guide_title">Set up and verify Turn State</h3>
+            <p class="small muted" data-i18n="ui.state_guide_host">Use HTTP / SSE with CLIProxyAPI 7.3.4 or a compatible host that forwards State headers.</p>
+            <ol class="state-guide-steps">
+              <li><strong data-i18n="ui.state_guide_account_title">Choose accounts and models</strong><p data-i18n="ui.state_guide_account">Select valid Codex accounts with available quota and enter the exact upstream model IDs used by your requests. A template belongs to one account and model.</p></li>
+              <li><strong data-i18n="ui.state_guide_proxy_title">Set up and test proxies</strong><p data-i18n="ui.state_guide_proxy">Put fixed exits in the static pool and URLs that change exit on each connection in the rotating pool. Test connectivity; reachable does not mean a valid State was collected.</p></li>
+              <li><strong data-i18n="ui.state_guide_injection_title">Enable actual injection</strong><p data-i18n="ui.state_guide_injection">Enable injection and turn off Observe only. Use always when your client sends no State header. Default protection blocks business traffic on selected accounts until a usable bucket is ready.</p></li>
+              <li><strong data-i18n="ui.state_guide_verify_title">Save, collect and verify</strong><p data-i18n="ui.state_guide_verify">Save all settings, start probing and keep this page open. Look for a collection success log and remaining validity above 0 minutes for the right account and model. Then make a business request and check that the injection counter increases.</p></li>
+            </ol>
+            <details><summary data-i18n="ui.state_guide_more">Results, page refresh and automatic proxy removal</summary>
+              <p data-i18n="ui.state_guide_results">Length 312 (or your configured degraded length) is not a successful collection. Waiting for renewal or proxy cooldown means the task is still running; it resumes when due. State does not restore exhausted account quota or guarantee response quality.</p>
+              <p data-i18n="ui.state_guide_session">Refreshing this page resumes a saved task and transient connection errors retry automatically. Closing the page pauses browser-driven probing; reopen it to continue. Stop clears the saved task intent, not existing templates. Login expiry or invalid settings require attention before collection can continue.</p>
+              <p data-i18n="ui.state_guide_pruning">Automatic proxy removal is off by default. If enabled and saved, it immediately saves each removal while keeping at least the configured total across both pools (default 10). The separate Remove failed proxies action after a connectivity test edits the text boxes and needs Save all settings.</p>
+            </details>
+          </div>
           <div class="card team-gate-card"><label class="toggle-filter"><input id="team-require-state" type="checkbox" role="switch" disabled /><span data-i18n="ui.team_require_state">Require valid Turn State for selected accounts</span></label><p class="access-help" data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected collection account needs a usable template for its requested model. Disabled injection, observation mode or a replace-only skip blocks that attempt. This switch is saved immediately.</p><div id="team-require-state-status" class="small muted" role="status"></div></div>
           <div class="card turn-state-console" id="turn-state-card">
             <div class="row spread settings-section-header"><h3 data-i18n="ui.state_probe_console">Probe console</h3><div class="row"><button id="turn-state-probe-start" class="primary" type="button" disabled data-i18n="ui.fork_start_probing">Start probing</button><button id="turn-state-probe-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-refresh" type="button" disabled data-i18n="ui.fork_refresh_status">Refresh status</button></div></div>
@@ -2550,6 +2621,13 @@
               <div id="turn-state-proxy-load-status" class="small muted" role="status"></div><button id="turn-state-proxy-reload" type="button" class="hidden" data-i18n="ui.turn_state_reload_proxies">Reload saved proxies (replace proxy drafts)</button>
               <p class="access-help" data-i18n="ui.turn_state_pool_limits">Each pool supports up to 20,000 proxies; total settings size is limited to 16 MiB. Failed uploads keep the previous settings.</p>
               <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. Failed static exits cool down for 55 minutes; rotating exits retry up to 10 times and cool down for 10 minutes. Connectivity testing checks the current editor; removal takes effect after saving. IP is the address observed during the connectivity test; rotating proxies may use another IP for collection. Upstream 403/429 or degraded states do not count as invalid proxies.</p>
+              <h4 data-i18n="ui.state_proxy_pruning">Automatic proxy removal during collection</h4>
+              <div class="access-controls">
+                <label class="toggle-filter"><input id="turn-state-drop-failed" type="checkbox" disabled /><span data-i18n="ui.state_drop_failed">Discard failed proxies</span></label>
+                <label class="toggle-filter"><input id="turn-state-drop-degraded" type="checkbox" disabled /><span data-i18n="ui.state_drop_degraded">Discard proxies returning degraded states</span></label>
+              </div>
+              <div id="turn-state-min-proxies-field" class="turn-state-fields hidden"><label class="field"><span data-i18n="ui.state_min_proxies">Minimum entries to keep (both pools combined)</span><input id="turn-state-min-proxies" type="number" min="1" max="40000" step="1" value="10" required disabled /></label></div>
+              <p class="access-help" data-i18n="ui.state_proxy_pruning_help">Both options are off by default and take effect after saving. Failed means a proxy connection or authentication failure; degraded means a returned state has the degraded length. Account HTTP 401, 403 and 429 responses do not remove proxies. Removal deletes the exact configured URL from its pool, including rotating entries; a gateway URL is not one permanent exit IP. Automatic removal stops at the combined minimum.</p>
 </div>
           <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_strategy">Injection and renewal</h3><button data-state-save="strategy" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>            <div class="access-controls">
               <label class="toggle-filter"><input id="turn-state-enabled" type="checkbox" role="switch" disabled /><span data-i18n="ui.group_enabled_state">enabled</span></label>
@@ -2624,7 +2702,7 @@
               </div>
             </div>
             <div id="route-rule-list" class="routing-list route-rule-list"></div>
-            <details class="selection-section chooser-key-assignment">
+            <details class="selection-section chooser-key-assignment" open>
               <summary data-i18n="ui.bind_api_keys">Assign API keys</summary>
               <input id="route-key-search" type="search" placeholder="Search API keys or labels" data-i18n-placeholder="ui.fork_search_api_keys_or_labels" aria-label="Search API keys assigned to the routing rule" data-i18n-aria-label="ui.fork_search_api_keys_assigned_to_the_routing_rule" />
               <div id="route-key-list" class="selection-list"></div>
@@ -2724,6 +2802,25 @@
           <div class="card"><h2 data-i18n="ui.team_subscription_quotas">Upstream subscription quotas</h2>
             <div id="auth-files-body"></div>
           </div>
+        </section>
+
+        <section id="tab-model-tests" class="hidden">
+          <div class="card">
+            <div class="row spread settings-section-header"><h2 data-i18n="ui.model_tests">Model tests</h2><span class="tag plain" data-i18n="ui.model_test_single_request">One request at a time</span></div>
+            <p class="access-help" data-i18n="ui.model_test_intro">Compare responses to the same prompt across accounts or models. Tests consume upstream quota. Checks assess this task only, not overall intelligence or the model’s true identity.</p>
+            <p class="small muted" data-i18n="ui.model_test_billing">This is a diagnostic request through CPA’s management API. It consumes upstream quota but does not create downstream billing or usage records.</p>
+            <div id="model-test-status" class="notice hidden" role="status"></div>
+            <div class="model-test-fields">
+              <label class="field"><span data-i18n="ui.model_test_account">Account</span><span class="native-select"><select id="model-test-account" disabled></select></span></label>
+              <label class="field"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" autocomplete="off" disabled /><datalist id="model-test-models"></datalist></label>
+              <div id="model-test-proxy" class="model-test-route model-test-wide" role="status"></div>
+              <label class="field"><span data-i18n="ui.model_test_preset">Prompt preset</span><span class="native-select"><select id="model-test-preset"><option value="json" data-i18n="ui.model_test_preset_json">Instruction following · exact JSON</option><option value="logic" data-i18n="ui.model_test_preset_logic">Reasoning · constraint puzzle</option><option value="code" data-i18n="ui.model_test_preset_code">Coding · review the response</option><option value="free" data-i18n="ui.model_test_preset_free">Open question · custom prompt</option></select></span></label>
+              <div class="field"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p></div>
+              <label class="field model-test-wide"><span data-i18n="ui.model_test_prompt">Prompt (editable)</span><textarea id="model-test-prompt" rows="7" maxlength="16000" spellcheck="false"></textarea><span id="model-test-custom-note" class="small muted hidden" data-i18n="ui.model_test_custom_note">This prompt was edited. Preset assertions are disabled; review the response against your own criteria.</span></label>
+            </div>
+            <div class="row"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Run once</button><span id="model-test-running" class="small muted" role="status"></span></div>
+          </div>
+          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.model_test_comparison">Response comparison</h2><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div><p class="access-help" data-i18n="ui.model_test_memory">The latest 6 results stay in this page’s memory only. Code in responses is displayed and never executed.</p><div id="model-test-results" class="model-test-results"></div></div>
         </section>
 
         <section id="tab-risk" class="hidden">
@@ -3037,6 +3134,7 @@
         "request-events",
         "errors",
         "auth-files",
+        "model-tests",
         "turn-state",
         "plans",
         "integrations",
@@ -3242,7 +3340,8 @@
           authFiles: m("ui.auth_files"),
           accountRuntime: m("ui.team_account_runtime"),
           riskCenter: m("ui.team_risk_center"),
-          integrations: m("ui.team_integrations")
+          integrations: m("ui.team_integrations"),
+          modelTests: m("ui.model_tests")
         }),
         account: dataEntries({
           profile: m("ui.account_profile"),
@@ -3298,7 +3397,8 @@
           authFiles: { names: ["authFiles"] },
           accountRuntime: { names: ["accountRuntime"] },
           riskCenter: { names: ["riskCenter"] },
-          integrations: { names: ["integrations"] }
+          integrations: { names: ["integrations"] },
+          modelTests: { names: ["modelTests"] }
         },
         account: {
           ...Object.fromEntries(Object.keys(resources.account).map((name) => [name, { names: [name] }])),
@@ -3734,6 +3834,10 @@
           };
           $("turn-state-proxies").value = "";
           $("turn-state-rotating").value = "";
+          $("model-test-prompt").value = "";
+          $("model-test-results").replaceChildren();
+          $("model-test-proxy").replaceChildren();
+          $("model-test-status").className = "notice hidden";
         }
         const account = role === "account";
         destroyAnalysisCharts(account);
@@ -3981,7 +4085,7 @@
           const role = currentRole || loginMode;
           const generation = sessionGeneration;
           await deleteCredential(role);
-          if (generation === sessionGeneration) showGate(role, err.message);
+          if (generation === sessionGeneration) showGate(role, err.message, true);
           return;
         }
         notify(err.message || String(err), "err");
@@ -4112,7 +4216,7 @@
         $("gate-remember").checked = !!saved;
       }
 
-      function showGate(mode, error) {
+      function showGate(mode, error, preserveProbeIntent = false) {
         stopIntegrationDevice();
         sessionGeneration++;
         hideNotice();
@@ -4122,8 +4226,8 @@
         for (const controller of activeRequests) controller.abort();
         if (currentRole) {
           if (currentRole === "admin") {
-            pauseTurnStateSession(false);
-            saveTurnStateSession(null);
+            pauseTurnStateSession(preserveProbeIntent);
+            if (!preserveProbeIntent) saveTurnStateSession(null);
           }
           clearCredentialScope(currentRole === "account");
           resetRoleData(currentRole);
@@ -4234,7 +4338,7 @@
         return Array.from(hash, (word) => word.toString(16).padStart(8, "0")).join("");
       }
 
-      async function configuredCredentialRef(kind, parts, counters) {
+      async function configuredCredentialIdentity(kind, parts, counters) {
         // These hashes must stay byte-identical to CPA's StableIDGenerator and
         // the plugin's CredentialFingerprint so exact bindings match candidates.
         const digest = await sha256Hex(kind + parts.map((part) => "\0" + String(part || "").trim()).join(""));
@@ -4242,7 +4346,11 @@
         const collision = counters.get(base) || 0;
         counters.set(base, collision + 1);
         const id = collision ? base + "-" + collision : base;
-        return "sha256:" + (await sha256Hex("cpa-key-billing:credential:v1\0" + id));
+        return { id, ref: "sha256:" + (await sha256Hex("cpa-key-billing:credential:v1\0" + id)) };
+      }
+
+      async function configuredCredentialRef(kind, parts, counters) {
+        return (await configuredCredentialIdentity(kind, parts, counters)).ref;
       }
 
       function parseConfiguredAPIKeys(config) {
@@ -4713,9 +4821,9 @@
             await read("accountRuntime", () => plugin("GET", "/account-runtime"));
           } else if (name === "riskCenter") {
             await read("riskCenter", () => plugin("GET", "/risk-center"));
-          } else if (name === "integrations") { await read("integrations", () => plugin("GET", "/integrations")); } else {
-            await read("authFiles", () => fetchAuthFiles(false));
-          }
+          } else if (name === "modelTests") { await read("modelTests", fetchModelTestCatalog); } else if (name === "integrations") {
+            await read("integrations", () => plugin("GET", "/integrations"));
+          } else { await read("authFiles", () => fetchAuthFiles(false)); }
           if (generation !== sessionGeneration) throw new StaleRequestError();
           if (account && name !== "profile" && !resources.account.profile.value?.tracked) return;
           if (values.keys) values.keys = keyDirectory.receive(values.keys, identityRevision);
@@ -4822,6 +4930,7 @@
           result["turn-state"] = { sections: [section(["turnState", "accountRuntime"], renderTurnState)] };
           result["auth-files"] = { sections: [section(["authFiles", "accountRuntime"], () => renderAuthFiles(false))] };
           result.risk = { sections: [section(["riskCenter"], renderRiskCenter)] };
+          result["model-tests"] = { sections: [section(["modelTests"], renderModelTests)] };
           result.integrations = { sections: [section(["integrations"], renderIntegrations)] };
           result.plans = { editors: ["plan"], sections: [keyedSection(["plans", "keys"], renderPlans)] };
           result.settings = {
@@ -6807,6 +6916,400 @@
         "block-status",
         "block-message"
       ];
+      const MODEL_TEST_PRESETS = {
+        json: { prompt: "ui.model_test_json_prompt", criteria: "ui.model_test_json_criteria", label: "ui.model_test_preset_json" },
+        logic: { prompt: "ui.model_test_logic_prompt", criteria: "ui.model_test_logic_criteria", label: "ui.model_test_preset_logic" },
+        code: { prompt: "ui.model_test_code_prompt", criteria: "ui.model_test_code_criteria", label: "ui.model_test_preset_code" },
+        free: { prompt: "ui.model_test_free_prompt", criteria: "ui.model_test_free_criteria", label: "ui.model_test_preset_free" }
+      };
+
+      const MODEL_TEST_NATIVE_RESOURCES = ["openai-compatibility", "codex-api-key", "claude-api-key", "gemini-api-key"];
+
+      async function readNativeModelTestEntries(resource, key) {
+        const response = await api("GET", "/v0/management/" + resource, null, { key, raw: true });
+        const entries = configuredCredentialEntries(response, resource), counters = new Map(), rows = [];
+        const native = {
+          "codex-api-key": ["codex", "openai-responses"],
+          "claude-api-key": ["claude", "claude"],
+          "gemini-api-key": ["gemini", "gemini"]
+        }[resource];
+        for (const entry of entries) {
+          const compatName = (entry.name || "").trim().toLowerCase() || "openai-compatibility";
+          const provider = native
+            ? native[0]
+            : compatName === "openai-compatibility" || compatName.startsWith("openai-compatible-")
+              ? compatName
+              : "openai-compatible-" + compatName;
+          const protocol = native ? native[1] : "openai";
+          const credentials = native || !(entry["api-key-entries"] || []).length ? [entry] : entry["api-key-entries"];
+          for (const credential of credentials) {
+            const apiKey = (credential["api-key"] || "").trim(), base = (entry["base-url"] || "").trim();
+            if (native && !apiKey && !base) continue;
+            const parts = native
+              ? [apiKey, base, entry["proxy-url"], entry.prefix, sortedConfiguredHeaders(entry.headers)]
+              : credential === entry ? [base] : [apiKey, base, credential["proxy-url"]];
+            const identity = await configuredCredentialIdentity(
+              native ? native[0] + ":apikey" : "openai-compatibility:" + compatName,
+              parts,
+              counters
+            );
+            const index = typeof credential["auth-index"] === "string" ? credential["auth-index"] : "";
+            const disabled = !configuredEntryEnabled(entry) || !configuredEntryEnabled(credential);
+            const models = (entry.models || []).map((model) => ({ name: model.name, ...(model.alias ? { alias: model.alias } : {}) }));
+            const account = {
+              credential_ref: identity.ref,
+              auth_id: identity.id,
+              auth_index: index,
+              name:
+                (entry.name || entry.prefix || (native ? native[0] : compatName)) + " · " +
+                (index ? index.slice(-8) : identity.id.slice(-8)),
+              provider,
+              source: "ai-providers",
+              disabled,
+              base_url: base,
+              config_resource: resource,
+              models,
+              supported: !!index,
+              reason: index ? "" : String(m("ui.model_test_identity_missing"))
+            };
+            const config = {
+              auth_id: identity.id,
+              credential_ref: identity.ref,
+              auth_index: index,
+              disabled,
+              provider,
+              base_url: base,
+              protocol,
+              models
+            };
+            if (Object.hasOwn(credential, "proxy-url")) {
+              if (typeof credential["proxy-url"] !== "string") throw new UIError(m("ui.model_test_route_unverified"));
+              if (credential["proxy-url"] !== "") config.proxy_url = credential["proxy-url"];
+            }
+            if (entry.headers && typeof entry.headers === "object") config.headers = { ...entry.headers };
+            rows.push({ account, config });
+          }
+        }
+        return rows;
+      }
+
+      async function fetchModelTestCatalog() {
+        const key = authKey;
+        const results = await Promise.allSettled([
+          plugin("GET", "/model-tests"),
+          ...MODEL_TEST_NATIVE_RESOURCES.map((resource) => readNativeModelTestEntries(resource, key))
+        ]);
+        for (const result of results)
+          if (result.status === "rejected" && (result.reason instanceof AuthError || result.reason instanceof StaleRequestError))
+            throw result.reason;
+        if (results[0].status !== "fulfilled") throw results[0].reason;
+        const catalog = requireObject(results[0].value, m("ui.model_tests"));
+        const accounts = requireArray(catalog.accounts, m("ui.model_test_account")).slice(), warnings = [];
+        const natives = [];
+        for (let index = 1; index < results.length; index++) {
+          const result = results[index];
+          if (result.status === "fulfilled") natives.push(...result.value.map((row) => row.account));
+          else warnings.push(m("ui.model_test_native_load_failed", { resource: MODEL_TEST_NATIVE_RESOURCES[index - 1] }));
+        }
+        const counts = new Map();
+        for (const account of natives) if (account.auth_index) counts.set(account.auth_index, (counts.get(account.auth_index) || 0) + 1);
+        for (let index = 0; index < accounts.length; index++) {
+          if ((counts.get(accounts[index].auth_index) || 0) > 1) {
+            accounts[index] = { ...accounts[index], supported: false, reason: String(m("ui.model_test_identity_ambiguous")) };
+          }
+        }
+        for (const account of natives) {
+          if (account.auth_index && counts.get(account.auth_index) > 1) {
+            account.supported = false;
+            account.reason = String(m("ui.model_test_identity_ambiguous"));
+          }
+          const existing = accounts.findIndex((entry) => entry.auth_index && entry.auth_index === account.auth_index);
+          if (
+            existing >= 0 && counts.get(account.auth_index) === 1 && accounts[existing].source === "ai-providers" &&
+            accounts[existing].credential_ref === account.credential_ref
+          )
+            accounts[existing] = account;
+          else if (existing >= 0 && counts.get(account.auth_index) === 1 && accounts[existing].source === "ai-providers") {
+            accounts[existing] = { ...accounts[existing], supported: false, reason: String(m("ui.model_test_identity_ambiguous")) };
+          } else if (existing >= 0 && accounts[existing].source !== "ai-providers") {
+            accounts[existing] = { ...accounts[existing], supported: false, reason: String(m("ui.model_test_identity_ambiguous")) };
+            account.supported = false;
+            account.reason = String(m("ui.model_test_identity_ambiguous"));
+            accounts.push(account);
+          } else accounts.push(account);
+        }
+        return { ...catalog, accounts, warnings };
+      }
+
+      function modelTestState() {
+        return (adminUIState.modelTest ||= { running: false, results: [], baselinePrompt: "", preset: "json", error: "" });
+      }
+
+      function selectedModelTestAccount() {
+        return (resources.admin.modelTests.value?.accounts || []).find((account) => account.auth_index === $("model-test-account").value);
+      }
+
+      function selectModelTestPreset() {
+        const state = modelTestState(), id = $("model-test-preset").value;
+        const preset = MODEL_TEST_PRESETS[id] || MODEL_TEST_PRESETS.free;
+        state.preset = id;
+        const canonical = resources.admin.modelTests.value?.presets?.find((entry) => entry.id === id)?.prompt;
+        state.baselinePrompt = typeof canonical === "string" ? canonical : String(m(preset.prompt));
+        $("model-test-prompt").value = state.baselinePrompt;
+        setText($("model-test-criteria"), m(preset.criteria));
+        $("model-test-custom-note").classList.add("hidden");
+      }
+
+      function renderModelTestProxy(proxy) {
+        $("model-test-proxy").replaceChildren(
+          el("strong", { text: m("ui.model_test_route") }),
+          el("span", {
+            text: proxy
+              ? m(
+                  proxy.source === "account"
+                    ? "ui.model_test_proxy_account"
+                    : proxy.source === "global" ? "ui.model_test_proxy_global" : "ui.model_test_proxy_direct",
+                  { endpoint: proxy.endpoint || "" }
+                )
+              : m("ui.model_test_proxy_pending")
+          })
+        );
+      }
+
+      function modelTestAssertionLabel(name) {
+        if (name === "Exact JSON object") return m("ui.model_test_exact_json");
+        if (name === "Exact output") return m("ui.model_test_exact_output");
+        return name;
+      }
+
+      function renderModelTests() {
+        const resource = resources.admin.modelTests, state = modelTestState(), catalog = resource.value;
+        const accounts = Array.isArray(catalog?.accounts) ? catalog.accounts : [];
+        const previous = $("model-test-account").value;
+        const selected =
+          (previous ? accounts.find((account) => account.auth_index && account.auth_index === previous) : null) ||
+          accounts.find((account) => account.auth_index && account.supported && !account.disabled) ||
+          accounts[0];
+        $("model-test-account").replaceChildren(
+          ...accounts.map((account) =>
+            el("option", {
+              value: account.auth_index || "missing:" + account.credential_ref,
+              text:
+                (account.name || account.auth_index) + " · " + account.provider +
+                (!account.supported ? " · " + m("ui.model_test_unsupported") : account.disabled ? " · " + m("backend.disabled") : ""),
+              selected: account === selected,
+              disabled: !account.auth_index
+            })
+          )
+        );
+        for (const id of ["account", "model", "preset", "prompt"]) $("model-test-" + id).disabled = state.running || !catalog;
+        $("model-test-run").disabled = state.running || !selected || !selected.supported || selected.disabled || !catalog;
+        $("model-test-clear").disabled = state.running || !state.results.length;
+        const error =
+          state.error || resource.error ||
+          (!selected && catalog
+            ? m("ui.model_test_no_accounts")
+            : selected && !selected.supported
+              ? window.billingI18n.serverMessage(selected.reason_message, selected.reason) || m("ui.model_test_unsupported")
+              : "") ||
+          (catalog?.warnings || []).map(String).join(" ");
+        $("model-test-status").className = error ? "notice err show" : "notice hidden";
+        setText($("model-test-status"), error);
+        setText($("model-test-running"), state.running ? m("ui.model_test_running") : "");
+        if (!state.baselinePrompt && catalog) selectModelTestPreset();
+        if (!state.running && state.routeAccount !== selected?.auth_index) {
+          state.routeAccount = selected?.auth_index;
+          renderModelTestProxy(null);
+          $("model-test-models").replaceChildren();
+          if (selected?.supported && !selected.disabled) void loadModelTestHints(selected);
+        }
+        const preset = MODEL_TEST_PRESETS[$("model-test-preset").value] || MODEL_TEST_PRESETS.free;
+        setText($("model-test-criteria"), m(preset.criteria));
+        $("model-test-custom-note").classList.toggle("hidden", $("model-test-prompt").value === state.baselinePrompt);
+        $("model-test-results").replaceChildren(
+          ...(state.results.length
+            ? state.results.map((record) => {
+                const assertions = Array.isArray(record.result?.assertions) ? record.result.assertions : [];
+                const passed = assertions.length && assertions.every((check) => check.passed === true);
+                const incomplete = record.result?.outcome === "incomplete";
+                return el(
+                  "article",
+                  { class: "model-test-result" },
+                  el("h3", { text: record.account + " · " + record.model }),
+                  el(
+                    "div",
+                    { class: "row" },
+                    el("span", {
+                      class:
+                        "tag " +
+                        (record.error || record.result?.outcome === "failed" || incomplete
+                          ? "warn"
+                          : assertions.length ? passed ? "ok" : "warn" : "plain"),
+                      text:
+                        record.error || record.result?.outcome === "failed"
+                          ? m("ui.model_test_failed")
+                          : incomplete
+                            ? m("ui.model_test_incomplete")
+                            : assertions.length
+                              ? passed ? m("ui.model_test_passed") : m("ui.model_test_assertion_failed")
+                              : m("ui.model_test_manual")
+                    }),
+                    el("span", { class: "small muted", text: m((MODEL_TEST_PRESETS[record.preset] || MODEL_TEST_PRESETS.free).label) })
+                  ),
+                  record.proxy
+                    ? el("p", {
+                        class: "small muted",
+                        text: m(
+                          record.proxy.source === "account"
+                            ? "ui.model_test_proxy_account"
+                            : record.proxy.source === "global" ? "ui.model_test_proxy_global" : "ui.model_test_proxy_direct",
+                          { endpoint: record.proxy.endpoint || "" }
+                        )
+                      })
+                    : null,
+                  record.error ? el("p", { class: "small", text: record.error }) : null,
+                  record.result?.reason
+                    ? el("p", {
+                        class: "small",
+                        text: window.billingI18n.serverMessage(record.result.reason_message, record.result.reason)
+                      })
+                    : null,
+                  record.result?.lease_retained ? el("p", { class: "small muted", text: m("ui.model_test_lease_retained") }) : null,
+                  assertions.length
+                    ? el(
+                        "ul",
+                        { class: "model-test-checks" },
+                        assertions.map((check) =>
+                          el("li", {
+                            text: m(check.passed ? "ui.model_test_check_pass" : "ui.model_test_check_fail", {
+                              name: modelTestAssertionLabel(check.name)
+                            })
+                          })
+                        )
+                      )
+                    : null,
+                  record.result?.output_truncated ? el("p", { class: "small muted", text: m("ui.model_test_truncated") }) : null,
+                  el("pre", { text: record.result?.output || m("ui.model_test_no_output") }),
+                  el(
+                    "details",
+                    {},
+                    el("summary", { class: "small", text: m("ui.model_test_sent_prompt") }),
+                    el("pre", { text: record.prompt })
+                  )
+                );
+              })
+            : [el("p", { class: "small muted", text: m("ui.model_test_empty") })])
+        );
+      }
+
+      async function readModelTestRoute(account, key) {
+        const global = requireObject(await api("GET", "/v0/management/proxy-url", null, { key, raw: true }), m("ui.model_test_route"));
+        if (!Object.hasOwn(global, "proxy-url") || typeof global["proxy-url"] !== "string")
+          throw new UIError(m("ui.model_test_route_unverified"));
+        const descriptor = {};
+        if (global["proxy-url"] !== "") descriptor.global_proxy_url = global["proxy-url"];
+        if (account.source === "auth-files") return descriptor;
+        if (account.source !== "ai-providers") throw new UIError(m("ui.model_test_route_unverified"));
+        if (!MODEL_TEST_NATIVE_RESOURCES.includes(account.config_resource)) throw new UIError(m("ui.model_test_route_unverified"));
+        const rows = await readNativeModelTestEntries(account.config_resource, key);
+        const matches = rows.filter((row) => row.account.auth_index === account.auth_index);
+        if (matches.length !== 1) throw new UIError(m("ui.model_test_route_unverified"));
+        if (matches[0].account.credential_ref !== account.credential_ref || matches[0].account.auth_id !== account.auth_id)
+          throw new UIError(m("ui.model_test_route_unverified"));
+        if (matches[0].account.disabled) throw new UIError(m("ui.model_test_account_disabled"));
+        descriptor.config = matches[0].config;
+        return descriptor;
+      }
+
+      async function loadModelTestHints(account) {
+        const owner = adminUIState, state = modelTestState();
+        try {
+          const route = await readModelTestRoute(account, authKey);
+          if (owner !== adminUIState || state.routeAccount !== account.auth_index) return;
+          const models = route.config?.models || [];
+          const choices = new Map();
+          for (const model of models) {
+            if (typeof model.name !== "string" || !model.name) continue;
+            choices.set(model.name, model.name);
+            if (model.alias) choices.set(model.alias, model.alias + " → " + model.name);
+          }
+          $("model-test-models").replaceChildren(...[...choices].map(([value, label]) => el("option", { value, label })));
+        } catch (error) {
+          if (owner !== adminUIState || state.routeAccount !== account.auth_index || error instanceof StaleRequestError) return;
+          state.error = error.message || m("ui.model_test_route_unverified");
+          renderModelTests();
+        }
+      }
+
+      async function runModelTest() {
+        const owner = adminUIState, state = modelTestState(), account = selectedModelTestAccount();
+        if (state.running || !account || !account.supported || account.disabled) return;
+        const prompt = $("model-test-prompt").value, model = $("model-test-model").value.trim();
+        const limit = resources.admin.modelTests.value?.limits?.max_prompt_bytes || 8192;
+        if (!model || !prompt.trim()) throw new UIError(m("ui.model_test_required"));
+        if (new TextEncoder().encode(prompt).length > limit) throw new UIError(m("ui.model_test_prompt_limit", { limit }));
+        const preset = prompt === state.baselinePrompt ? state.preset : "free";
+        const key = authKey, generation = sessionGeneration;
+        const record = { account: account.name || account.auth_index, model, prompt, preset, error: "", result: null, proxy: null };
+        let prepared = null, completion = null, started = false;
+        state.running = true;
+        state.error = "";
+        renderModelTests();
+        try {
+          const route = await readModelTestRoute(account, key);
+          prepared = await plugin(
+            "POST",
+            "/model-tests/prepare",
+            { auth_index: account.auth_index, model, preset, prompt, ...route },
+            { key, command: true }
+          );
+          if (
+            !prepared?.test_id || !prepared.api_call || prepared.api_call.auth_index !== account.auth_index ||
+            prepared.api_call.method !== "POST" ||
+            typeof prepared.api_call.proxy_url !== "string" ||
+            !prepared.api_call.proxy_url.trim() ||
+            !["account", "global", "direct"].includes(prepared.proxy?.source) ||
+            typeof prepared.proxy?.endpoint !== "string"
+          )
+            throw new UIError(m("ui.invalid_server_response"));
+          record.proxy = prepared.proxy;
+          if (typeof prepared.model === "string" && prepared.model) record.model = prepared.model;
+          if (owner === adminUIState && generation === sessionGeneration) renderModelTestProxy(record.proxy);
+          if (owner !== adminUIState || generation !== sessionGeneration) throw new StaleRequestError();
+          if (!Number.isFinite(Date.parse(prepared.start_before)) || Date.now() >= Date.parse(prepared.start_before))
+            throw new UIError(m("ui.model_test_prepare_expired"));
+          started = true;
+          const response = await api("POST", "/v0/management/api-call", prepared.api_call, {
+            key,
+            command: true,
+            raw: true,
+            timeoutMS: 65000
+          });
+          if (!Number.isInteger(response?.status_code) || typeof response?.body !== "string")
+            throw new UIError(m("ui.invalid_server_response"));
+          completion = { test_id: prepared.test_id, status_code: response.status_code, body: response.body };
+        } catch (error) { if (!(error instanceof StaleRequestError)) record.error = error.message || m("ui.model_test_failed"); } finally {
+          if (prepared?.test_id) {
+            try {
+              record.result = await plugin(
+                "POST",
+                "/model-tests/complete",
+                completion || { test_id: prepared.test_id, ...(started ? { transport_failed: true } : { not_started: true }) },
+                { key, command: true }
+              );
+            } catch (error) { if (!(error instanceof StaleRequestError)) record.error = m("ui.model_test_complete_failed"); }
+          }
+          prepared = null;
+          completion = null;
+          state.running = false;
+          if (owner === adminUIState && generation === sessionGeneration) {
+            state.results = [record, ...state.results].slice(0, 6);
+            state.error = record.error;
+            renderModelTests();
+          }
+        }
+      }
+
       function renderRiskCenter() {
         const resource = resources.admin.riskCenter, data = resource.value, busy = !!adminUIState.riskSaving;
         $("risk-save").disabled = !data || busy || !adminUIState.riskDirty;
@@ -7865,7 +8368,11 @@
           kind === "credentials" && providers.length
             ? el(
                 "details",
-                { class: "chooser-dynamic" },
+                {
+                  class: "chooser-dynamic",
+                  open: selection.dynamicExpanded !== false,
+                  ontoggle: (event) => { selection.dynamicExpanded = event.currentTarget.open; }
+                },
                 el("summary", {
                   text: m("ui.chooser_dynamic", {
                     count: providers.filter((item) => routeChoiceState(selection, "provider", item.value) !== "none").length
@@ -8046,10 +8553,13 @@
         "models",
         "proxies",
         "rotating",
+        "drop-failed",
+        "drop-degraded",
+        "min-proxies",
         "save"
       ];
       const TURN_STATE_POOLS = { static: "proxies", rotating: "rotating" };
-      let turnStateProbe = { running: false, timer: 0, progressTimer: 0, generation: 0, inFlight: false };
+      let turnStateProbe = { running: false, timer: 0, progressTimer: 0, generation: 0, inFlight: false, failures: 0 };
       let turnStateClockTimer = 0;
       const turnStateOwner = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
       let turnStateSessionTimer = 0, turnStateResumeAttempted = false, turnStateLogLoaded = "";
@@ -8060,7 +8570,7 @@
       function readTurnStateSession() {
         try {
           const record = JSON.parse(localStorage.getItem(turnStateSessionKey()) || "null");
-          return record?.intent && Date.now() - record.updated < 86400000 ? record : null;
+          return record?.intent === true && typeof record.owner === "string" && Number.isFinite(record.expires) ? record : null;
         } catch (_) { return null; }
       }
       function saveTurnStateSession(record) {
@@ -8114,11 +8624,18 @@
           resources.admin.turnState.value?.probe_supported
         ) {
           turnStateResumeAttempted = true;
-          queueMicrotask(() => guard(() => startTurnStateProbe(true)));
+          queueMicrotask(async () => {
+            try { await startTurnStateProbe(true); } catch (error) {
+              if (error instanceof AuthError) await fail(error);
+            } finally { if (!turnStateProbe.running && readTurnStateSession()?.intent) turnStateResumeAttempted = false; }
+          });
         }
         if (record?.intent || turnStateProbe.running)
           turnStateSessionTimer = setTimeout(() => {
-            if (turnStateProbe.running && !ownsTurnStateSession()) stopTurnStateProbe(true);
+            if (turnStateProbe.running && !ownsTurnStateSession()) {
+              stopTurnStateProbe(true);
+              turnStateResumeAttempted = false;
+            }
             renderTurnStateSession();
           }, 10000);
       }
@@ -8265,6 +8782,7 @@
           }
           pools.loaded = true;
           pools.revision = revision;
+          pools.pendingRevision = "";
           if (discard) turnStateDiagnostics.results = { static: [], rotating: [] };
         } catch (error) {
           if (error instanceof AuthError) await fail(error);
@@ -8273,6 +8791,20 @@
           pools.loading = false;
           if (owner === adminUIState) renderTurnState();
         }
+      }
+
+      async function reconcileTurnStateProxies(observation) {
+        const pools = turnStatePoolState();
+        if (!pools.loaded) return;
+        const revision = observation?.proxy_config_revision;
+        if (revision && revision !== pools.revision) pools.pendingRevision = revision;
+        if (observation?.proxy_disposition === "removed" && !revision) pools.pendingRevision = "changed";
+        if (!pools.pendingRevision) return;
+        if (Object.keys(TURN_STATE_POOLS).some(turnStateProxyDraftChanged)) {
+          pools.error = m("ui.state_pruned_draft_conflict");
+          return;
+        }
+        await loadTurnStateProxies();
       }
 
       function renderTurnStateTemplates() {
@@ -8386,10 +8918,10 @@
           if (diagnostic.pool === pool && (diagnostic.running || diagnostic.inFlight)) {
             setText(
               status,
-              m(diagnostic.running ? "ui.turn_state_testing_progress" : "ui.turn_state_test_stopping", {
-                index: diagnostic.index,
+              m(diagnostic.running ? "ui.state_test_parallel_progress" : "ui.state_test_parallel_stopping", {
+                completed: diagnostic.completed || 0,
                 total: diagnostic.total,
-                proxy: turnStateProxyDisplay(diagnostic.current)
+                active: diagnostic.active || 0
               })
             );
           } else
@@ -8454,24 +8986,55 @@
         if (proxies.length > 20000) throw new UIError(m("ui.turn_state_proxy_limit"));
         if (!proxies.length) return;
         diagnostic.results[pool] = [];
-        Object.assign(diagnostic, { running: true, pool, index: 0, total: proxies.length });
+        Object.assign(diagnostic, { running: true, pool, index: 0, total: proxies.length, completed: 0, active: 0, inFlight: true });
         const generation = ++diagnostic.generation;
-        try {
-          for (let index = 0; index < proxies.length; index++) {
-            if (
-              !diagnostic.running || generation !== diagnostic.generation || owner !== adminUIState || currentRole !== "admin" ||
-              activeTab(false) !== "turn-state"
-            )
-              break;
-            Object.assign(diagnostic, { index: index + 1, current: proxies[index], inFlight: true });
+        let next = 0, authError = null;
+        const canContinue = () =>
+          diagnostic.running && generation === diagnostic.generation && owner === adminUIState && currentRole === "admin" &&
+          activeTab(false) === "turn-state";
+        const worker = async () => {
+          while (canContinue() && next < proxies.length) {
+            const index = next++;
+            diagnostic.active++;
+            diagnostic.index = index + 1;
             renderTurnState();
-            const result = await plugin("POST", "/turn-state/proxies/test", { proxy: proxies[index] }, { command: true, timeoutMS: 45000 });
-            if (owner !== adminUIState) return;
-            if (!result || !["reachable", "failed", "inconclusive"].includes(result.status))
-              throw new UIError(m("ui.invalid_server_response"));
-            diagnostic.results[pool].push({ ...result, input: proxies[index], index: index + 1, total: proxies.length });
-            diagnostic.inFlight = false;
+            try {
+              const result = await plugin(
+                "POST",
+                "/turn-state/proxies/test",
+                { proxy: proxies[index] },
+                { command: true, timeoutMS: 45000 }
+              );
+              if (owner !== adminUIState) return;
+              if (!result || !["reachable", "failed", "inconclusive"].includes(result.status))
+                throw new UIError(m("ui.invalid_server_response"));
+              diagnostic.results[pool].push({ ...result, input: proxies[index], index: index + 1, total: proxies.length });
+            } catch (error) {
+              if (error instanceof AuthError) {
+                authError ||= error;
+                diagnostic.running = false;
+              } else if (!(error instanceof StaleRequestError) && owner === adminUIState) {
+                // Management transport failures say nothing about proxy health.
+                diagnostic.results[pool].push({
+                  status: "inconclusive",
+                  deletable: false,
+                  reason: String(turnStateLogReason(error)),
+                  input: proxies[index],
+                  index: index + 1,
+                  total: proxies.length
+                });
+              }
+            } finally {
+              diagnostic.active--;
+              diagnostic.completed++;
+              diagnostic.results[pool].sort((a, b) => a.index - b.index);
+              if (owner === adminUIState) renderTurnState();
+            }
           }
+        };
+        try {
+          await Promise.all(Array.from({ length: Math.min(10, proxies.length) }, worker));
+          if (authError && owner === adminUIState) await fail(authError);
         } finally {
           diagnostic.running = false;
           diagnostic.inFlight = false;
@@ -8621,6 +9184,7 @@
             plugin("POST", "/turn-state/probe", { account, model }, { command: true, timeoutMS: 45000 })
           );
           appendTurnStateProbeLog(result);
+          await reconcileTurnStateProxies(result);
           await refreshTurnState();
         } finally {
           turnStateProbe.inFlight = false;
@@ -8691,6 +9255,13 @@
         renderTurnStateSession();
       }
 
+      function renderTurnStateProxyPruning() {
+        $("turn-state-min-proxies-field").classList.toggle(
+          "hidden",
+          !$("turn-state-drop-failed").checked && !$("turn-state-drop-degraded").checked
+        );
+      }
+
       function renderTurnState() {
         const resource = resources.admin.turnState;
         const state = resource.value;
@@ -8727,7 +9298,9 @@
           for (const [field, value] of [
             ["enabled", config.enabled],
             ["dry-run", config.dry_run],
-            ["learn-responses", config.learn_responses]
+            ["learn-responses", config.learn_responses],
+            ["drop-failed", config.probe_drop_failed_proxies],
+            ["drop-degraded", config.probe_drop_degraded_proxies]
           ])
             $("turn-state-" + field).checked = !!value;
           for (const [field, value] of [
@@ -8735,13 +9308,15 @@
             ["ttl", config.ttl_seconds],
             ["renew-before", config.renew_before_minutes || 0],
             ["template-length", config.template_length],
-            ["replace-length", config.replace_length]
+            ["replace-length", config.replace_length],
+            ["min-proxies", config.probe_min_proxies ?? 10]
           ])
             $("turn-state-" + field).value = value;
           $("turn-state-models").value = (config.models || []).join("\n");
           adminUIState.turnStateShown = signature;
           adminUIState.turnStateAccounts = new Set(config.probe_accounts || []);
         }
+        renderTurnStateProxyPruning();
         renderTurnStateAccounts(busy);
         setText(
           $("turn-state-proxy-load-status"),
@@ -8785,6 +9360,13 @@
         renderTurnStateDiagnostics();
         if (!pools.loaded && !pools.loading && !pools.error && currentRole === "admin" && activeTab(false) === "turn-state")
           loadTurnStateProxies();
+        if (pools.loaded && state.proxy_config_revision && pools.observedRevision !== state.proxy_config_revision) {
+          pools.observedRevision = state.proxy_config_revision;
+          const owner = adminUIState;
+          queueMicrotask(() => {
+            if (owner === adminUIState && resources.admin.turnState.value === state) void reconcileTurnStateProxies(state);
+          });
+        }
       }
 
       async function readTurnStateNow(current) {
@@ -8792,6 +9374,7 @@
           const state = validateTurnState(await plugin("GET", "/turn-state"));
           current?.();
           Object.assign(resources.admin.turnState, { value: state, error: "" });
+          await reconcileTurnStateProxies(state);
           renderTurnState();
           return state;
         } catch (error) {
@@ -8882,6 +9465,8 @@
           enabled: $("turn-state-enabled").checked,
           dry_run: $("turn-state-dry-run").checked,
           learn_responses: $("turn-state-learn-responses").checked,
+          probe_drop_failed_proxies: $("turn-state-drop-failed").checked,
+          probe_drop_degraded_proxies: $("turn-state-drop-degraded").checked,
           inject_mode: $("turn-state-inject-mode").value,
           models: turnStateLines($("turn-state-models").value),
           probe_accounts: [...owner.turnStateAccounts]
@@ -8896,6 +9481,16 @@
           if (!input.value || !input.reportValidity()) return;
           payload[key] = Number(input.value);
         }
+        const minimum = $("turn-state-min-proxies");
+        if (payload.probe_drop_failed_proxies || payload.probe_drop_degraded_proxies) {
+          if (!minimum.reportValidity()) return;
+          payload.probe_min_proxies = Number(minimum.value);
+        } else {
+          payload.probe_min_proxies =
+            minimum.value && minimum.checkValidity()
+              ? Number(minimum.value)
+              : (resources.admin.turnState.value.config.probe_min_proxies ?? 10);
+        }
         if (payload.renew_before_minutes * 60 >= payload.ttl_seconds) throw new UIError(m("ui.turn_state_renew_invalid"));
         for (const [pool, key] of [["static", "probe_proxies"], ["rotating", "probe_proxies_rotating"]]) {
           if (turnStateProxyDraftChanged(pool)) {
@@ -8903,7 +9498,8 @@
             payload.expected_revision = pools.revision;
           }
         }
-        stopTurnStateProbe();
+        const resumeProbe = turnStateProbe.running || !!readTurnStateSession()?.intent;
+        stopTurnStateProbe(resumeProbe);
         owner.turnStateSaving = true;
         renderTurnState();
         try { await writeTurnState("PUT", "/turn-state", payload, m("ui.fork_turn_state_settings_saved"), true); } catch (error) {
@@ -8913,6 +9509,7 @@
         } finally {
           owner.turnStateSaving = false;
           if (owner === adminUIState) {
+            if (resumeProbe) turnStateResumeAttempted = false;
             if (pools.reloadAfterSave) {
               pools.reloadAfterSave = false;
               await loadTurnStateProxies();
@@ -8941,6 +9538,28 @@
         if (currentRole === "admin") renderTurnState();
       }
 
+      // UIError.message can be a live Message; JSON reloads it as {key,params}.
+      // Recover that metadata and never render arbitrary objects as diagnostics.
+      function turnStateLogReason(value, depth = 0) {
+        const fallback = m("ui.fork_probe_failed");
+        if (depth > 4 || value == null) return fallback;
+        if (typeof value === "string") return value === "[object Object]" ? fallback : value;
+        if (["number", "boolean"].includes(typeof value)) return String(value);
+        if (window.billingI18n.isMessage(value)) return value;
+        if (typeof value?.key === "string") {
+          const params = Object.fromEntries(
+            Object.entries(value.params || {}).map(([key, item]) => [
+              key,
+              ["string", "number", "boolean"].includes(typeof item) ? item : String(turnStateLogReason(item, depth + 1))
+            ])
+          );
+          return window.billingI18n.serverMessage({ message_key: value.key, message_params: params }, fallback);
+        }
+        if (value?.message_key) return window.billingI18n.serverMessage(value, fallback);
+        if (value?.message !== undefined) return turnStateLogReason(value.message, depth + 1);
+        return fallback;
+      }
+
       function appendTurnStateProbeLog(result, persist = true) {
         result = Object.fromEntries(
           [
@@ -8955,11 +9574,23 @@
             "proxy_attempt",
             "length",
             "reason",
-            "reason_message"
+            "reason_message",
+            "proxy_disposition",
+            "proxy_remaining"
           ]
             .filter((key) => result[key] !== undefined)
             .map((key) => [key, result[key]])
         );
+        if (result.reason != null) {
+          const reason = turnStateLogReason(result.reason);
+          if (window.billingI18n.isMessage(reason) && !result.reason_message) {
+            result.reason_message = {
+              message_key: reason.key,
+              message_params: Object.fromEntries(Object.entries(reason.params || {}).map(([key, value]) => [key, String(value)]))
+            };
+          }
+          result.reason = String(reason);
+        }
         if (result.exit && result.exit !== "direct" && result.exit !== "(direct)") result.exit = String(turnStateProxyDisplay(result.exit));
         result.at ||= new Date().toISOString();
         turnStateLogRows.push(result);
@@ -8974,6 +9605,13 @@
           error: m("ui.fork_probe_failed"),
           "self-test": m("ui.state_bucket_test")
         };
+        const dispositionKey = {
+          removed: "ui.state_proxy_removed",
+          retained_minimum: "ui.state_proxy_retained_minimum",
+          retained_persistence_error: "ui.state_proxy_removal_save_failed"
+        }[result.proxy_disposition];
+        const reason = window.billingI18n.serverMessage(result.reason_message, result.reason || "");
+        const disposition = dispositionKey ? m(dispositionKey, { remaining: result.proxy_remaining ?? "—" }) : "";
         const line = m("ui.turn_state_probe_line", {
           at: window.billingI18n.date(new Date(result.at), { timeStyle: "medium" }),
           action: labels[result.action] || result.action || m("ui.fork_probe"),
@@ -8995,9 +9633,13 @@
                 })
               : "",
           length: result.length ? m("ui.turn_state_probe_length", { length: result.length }) : "",
-          reason: result.reason
-            ? m("ui.turn_state_reason_suffix", { reason: window.billingI18n.serverMessage(result.reason_message, result.reason) })
-            : ""
+          reason:
+            reason || disposition
+              ? m("ui.turn_state_reason_suffix", {
+                  reason:
+                    reason && disposition ? m("ui.state_probe_reason_with_disposition", { reason, disposition }) : reason || disposition
+                })
+              : ""
         });
         const log = $("turn-state-probe-log");
         log.append(window.billingI18n.textNode(line), document.createTextNode("\n"));
@@ -9043,7 +9685,7 @@
           }
         } catch (error) {
           if (error instanceof AuthError) {
-            stopTurnStateProbe();
+            stopTurnStateProbe(true);
             await fail(error);
             return;
           }
@@ -9059,6 +9701,13 @@
         clearTimeout(turnStateClockTimer);
       }
 
+      function wakeTurnStateSession() {
+        if (currentRole !== "admin" || activeTab(false) !== "turn-state" || !readTurnStateSession()?.intent) return;
+        if (turnStateProbe.running && !ownsTurnStateSession()) stopTurnStateProbe(true);
+        if (!turnStateProbe.running) turnStateResumeAttempted = false;
+        renderTurnStateSession();
+      }
+
       async function runTurnStateProbe(generation) {
         if (
           !turnStateProbe.running || generation !== turnStateProbe.generation || currentRole !== "admin" ||
@@ -9067,6 +9716,7 @@
           return;
         if (!ownsTurnStateSession()) {
           stopTurnStateProbe(true);
+          turnStateResumeAttempted = false;
           return;
         }
         const owner = adminUIState;
@@ -9084,15 +9734,27 @@
             return response;
           });
           if (currentRole !== "admin" || owner !== adminUIState) return;
+          if (!result || typeof result.action !== "string") throw new UIError(m("ui.invalid_server_response"));
           appendTurnStateProbeLog(result);
+          turnStateProbe.failures = 0;
           if (result.next_check_at) delay = Math.max(1500, Math.min(60000, new Date(result.next_check_at).getTime() - Date.now()) || 1500);
+          await reconcileTurnStateProxies(result);
           await refreshTurnState();
         } catch (error) {
-          stopTurnStateProbe();
-          if (!(error instanceof StaleRequestError)) {
-            appendTurnStateProbeLog({ action: "error", reason: error.message || String(error) });
-            if (error instanceof AuthError) await fail(error);
+          if (currentRole !== "admin" || owner !== adminUIState || generation !== turnStateProbe.generation) return;
+          if (error instanceof AuthError) {
+            stopTurnStateProbe(true);
+            await fail(error);
+            return;
           }
+          if (error instanceof StaleRequestError) {
+            stopTurnStateProbe(true);
+            turnStateResumeAttempted = false;
+            return;
+          }
+          turnStateProbe.failures++;
+          delay = Math.min(60000, 3000 * 2 ** Math.min(turnStateProbe.failures - 1, 5));
+          appendTurnStateProbeLog({ action: "error", reason: turnStateLogReason(error) });
         } finally {
           turnStateProbe.inFlight = false;
           clearTimeout(turnStateProbe.progressTimer);
@@ -9106,7 +9768,10 @@
           setText($("turn-state-probe-status"), m("ui.fork_probing_stopped"));
           return;
         }
-        setText($("turn-state-probe-status"), m("ui.probe_next_bucket", { seconds: Math.ceil(delay / 1000) }));
+        setText(
+          $("turn-state-probe-status"),
+          m(turnStateProbe.failures ? "ui.state_probe_retry" : "ui.probe_next_bucket", { seconds: Math.ceil(delay / 1000) })
+        );
         turnStateProbe.timer = setTimeout(() => runTurnStateProbe(generation), delay);
       }
 
@@ -9120,7 +9785,7 @@
         const config = resources.admin.turnState.value?.config;
         if (!config?.probe_accounts?.length || !config?.models?.length)
           throw new UIError(m("ui.fork_select_probe_accounts_enter_models_and_save_first"));
-        if (adminUIState.turnStateDirty) throw new UIError(m("ui.state_unsaved"));
+        if (adminUIState.turnStateDirty && resume !== true) throw new UIError(m("ui.state_unsaved"));
         const existing = readTurnStateSession();
         if (existing?.owner && existing.owner !== turnStateOwner && existing.expires > Date.now()) {
           renderTurnStateSession();
@@ -9134,6 +9799,7 @@
         }
         turnStateResumeAttempted = true;
         turnStateProbe.running = true;
+        turnStateProbe.failures = 0;
         const generation = ++turnStateProbe.generation;
         runTurnStateProbe(generation);
       }
@@ -9462,6 +10128,7 @@
           $("group-id").value = current?.id || "";
           $("group-name").value = current?.name || "";
           $("group-enabled").checked = !current?.disabled;
+          $("group-dialog").querySelector(".chooser-key-assignment").open = true;
           setText($("group-dialog-title"), current ? m("ui.fork_edit_group") : m("ui.fork_create_group"));
           groupSelection = {
             routeIDs: new Set(current?.route_ids || []),
@@ -9692,37 +10359,32 @@
         const { kind, value, label, iconName, badge, note } = item;
         const state = routeChoiceState(selection, kind, value);
         const key = kind + ":" + (kind === "provider" ? value.source + ":" + value.provider : value);
+        const nextState = state === "none" ? "allow" : state === "allow" ? "deny" : "none";
+        const stateLabels = { none: m("ui.not_selected"), allow: m("ui.chooser_allowed"), deny: m("ui.chooser_denied") };
         return el(
-          "div",
-          { class: "routing-option route-choice chooser-choice", "data-state": state, "data-routing-choice": key },
+          "button",
+          {
+            type: "button",
+            class: "routing-option route-choice chooser-choice",
+            "data-state": state,
+            "data-routing-choice": key,
+            "data-routing-focus": key,
+            "aria-label": m("ui.chooser_cycle_access", { label, state: stateLabels[state], next: stateLabels[nextState] }),
+            onclick: () => {
+              setRouteChoice(selection, kind, value, nextState);
+              rerender();
+            }
+          },
+          checkboxControl({ state }),
           iconName ? actionIcon(iconName) : null,
           el(
-            "div",
+            "span",
             { class: "chooser-identity" },
             el("span", { class: "route-choice-name" + (kind === "model" ? " mono" : ""), text: label }),
             note ? el("span", { class: "route-choice-note", text: note }) : null
           ),
           badge ? el("span", { class: "tag plain", text: badge }) : null,
-          el(
-            "span",
-            { class: "native-select chooser-decision" },
-            el(
-              "select",
-              {
-                "aria-label": m("ui.chooser_access_for", { label }),
-                "data-routing-focus": key,
-                onchange: (event) => {
-                  setRouteChoice(selection, kind, value, event.target.value);
-                  rerender();
-                }
-              },
-              [
-                ["none", m("ui.not_selected")],
-                ["allow", m("ui.allowlist")],
-                ["deny", m("ui.denylist")]
-              ].map(([value, text]) => el("option", { value, text, selected: value === state }))
-            )
-          )
+          el("span", { class: "tag plain chooser-decision", text: stateLabels[state] })
         );
       }
 
@@ -9849,6 +10511,7 @@
           $("route-name").value = current?.name || "";
           $("route-rule-search").value = "";
           $("route-key-search").value = "";
+          $("route-dialog").querySelector(".chooser-key-assignment").open = true;
           routeKeyScopes = new Set(data.keys.filter((key) => id && key.route_bindings.route_ids.includes(id)).map((key) => key.scope));
           routeRuleSelection = routingEditorState(current?.rule, "route-credential-enabled-only");
           renderRouteRuleList();
@@ -12053,6 +12716,7 @@
           "request-events",
           "errors",
           "auth-files",
+          "model-tests",
           "integrations",
           "risk",
           "plugin-logs",
@@ -12085,6 +12749,20 @@
       };
       $("keys-edit-groups").onclick = () => editKeyGroups([...adminUIState.selectedKeys]);
       $("access-control-save").onclick = saveAccessControl;
+      $("model-test-account").onchange = () => {
+        modelTestState().error = "";
+        renderModelTests();
+      };
+      $("model-test-preset").onchange = selectModelTestPreset;
+      $("model-test-prompt").oninput = () => {
+        $("model-test-custom-note").classList.toggle("hidden", $("model-test-prompt").value === modelTestState().baselinePrompt);
+      };
+      $("model-test-run").onclick = () => guard(runModelTest);
+      $("model-test-clear").onclick = () => {
+        modelTestState().results = [];
+        modelTestState().error = "";
+        renderModelTests();
+      };
       $("integration-new").onclick = () => editIntegration();
       $("integration-kind").onchange = syncIntegrationForm;
       $("integration-save").onclick = () => submitEditor("integration-dialog", saveIntegration);
@@ -12149,6 +12827,7 @@
               turnStatePoolState().loading;
           $("turn-state-probe-start").disabled = true;
           if (["ttl", "renew-before"].includes(field)) renderTurnStateRenewHelp();
+          if (["drop-failed", "drop-degraded"].includes(field)) renderTurnStateProxyPruning();
           if (["proxies", "rotating"].includes(field)) renderTurnStateDiagnostics();
         });
       }
@@ -12160,9 +12839,16 @@
           async () => { await writeTurnState("DELETE", "/turn-state/templates", {}, m("ui.fork_turn_state_templates_cleared")); }
         );
       addEventListener("pagehide", stopTurnStateWork);
+      addEventListener("pageshow", wakeTurnStateSession);
+      addEventListener("focus", wakeTurnStateSession);
+      addEventListener("online", wakeTurnStateSession);
+      document.addEventListener("visibilitychange", () => { if (!document.hidden) wakeTurnStateSession(); });
       addEventListener("storage", (event) => {
         if (event.key !== turnStateSessionKey() || currentRole !== "admin" || activeTab(false) !== "turn-state") return;
-        if (turnStateProbe.running && !ownsTurnStateSession()) stopTurnStateProbe(true);
+        if (turnStateProbe.running && !ownsTurnStateSession()) {
+          stopTurnStateProbe(true);
+          turnStateResumeAttempted = false;
+        }
         renderTurnStateSession();
       });
       $("group-new").onclick = () => editGroup();

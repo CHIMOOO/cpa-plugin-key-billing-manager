@@ -5,6 +5,7 @@ import base64
 import hashlib
 import json
 import random
+import re
 import time
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
@@ -616,6 +617,7 @@ ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 TURN_STATE_CONFIG = {
     "enabled": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
     "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
+    "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
     "models": ["gpt-6-astra", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
@@ -640,6 +642,7 @@ def turn_state_view():
                  for item in TURN_STATE_TEMPLATES if datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) > now]
     return {"config": config, "templates": templates, "counters": TURN_STATE_COUNTERS,
             "server_time": iso(now),
+            "proxy_config_revision": turn_state_revision(),
             "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
             "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS,
             "probe_progress": {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)},
@@ -655,6 +658,14 @@ def turn_state_view():
 
 def turn_state_revision():
     return hashlib.sha256(json.dumps(TURN_STATE_CONFIG, sort_keys=True).encode()).hexdigest()
+
+
+def valid_turn_state_pruning(config):
+    for field in ("probe_drop_failed_proxies", "probe_drop_degraded_proxies"):
+        if field in config and type(config[field]) is not bool:
+            return False
+    minimum = config.get("probe_min_proxies", TURN_STATE_CONFIG["probe_min_proxies"])
+    return type(minimum) is int and 1 <= minimum <= 40000
 
 
 def masked_dummy_proxy(value):
@@ -1433,6 +1444,92 @@ TEAM_INTEGRATIONS = []
 TEAM_CHANNELS = [{"name": "DeepSeek", "disabled": False, "api-key-entries": [{"api-key": "sk-dummy-deepseek"}], "extra-preserve": {"value": 42}}]
 TEAM_DEVICE_LOGINS = {}
 TEAM_NATIVE_CHANNELS = {"codex-api-key": [{"prefix": "other-codex", "api-key": "sk-dummy-codex", "extra-preserve": 123}], "claude-api-key": [{"prefix": "other-claude", "api-key": "sk-dummy-claude", "extra-preserve": 456}]}
+TEAM_NATIVE_CHANNELS["codex-api-key"][0].update({"auth-index": "model-demo-native-codex", "models": [{"name": "gpt-6-astra", "alias": "demo-astra"}]})
+MODEL_TESTS = {}
+MODEL_TEST_PRESETS = [dict(zip(("id", "name", "prompt", "assertion"), row)) for row in re.findall(
+    r'\{"(json|logic|code|free)", "([^"]+)", `([^`]+)`, "([^"]+)"\}',
+    (UI_PATH.parent / "model_test_results.go").read_text(encoding="utf-8"))]
+
+
+def model_test_catalog(include_native=False):
+    accounts = [{"auth_index": file["auth_index"], "credential_ref": file["credential_ref"], "name": file["name"],
+                 "provider": file["category"], "source": "auth-files", "disabled": file["disabled"],
+                 "supported": file["category"] == "codex" and not file["disabled"],
+                 "reason": "Only Codex OAuth is supported for file-account tests" if file["category"] != "codex" else ""}
+                for file in AUTH_FILES]
+    if include_native:
+        accounts.append({"auth_index": "model-demo-native-codex", "credential_ref": "sha256:" + "c" * 64,
+                         "name": "Native Codex demo", "provider": "codex", "source": "ai-providers",
+                         "supported": True, "disabled": False})
+    accounts.append({"auth_index": "model-demo-disabled", "credential_ref": "sha256:" + "8" * 64,
+                     "name": "Disabled account demo", "provider": "codex", "source": "auth-files",
+                     "supported": False, "disabled": True, "reason": "Enable this account before testing it"})
+    return {"accounts": accounts, "presets": MODEL_TEST_PRESETS, "usage_available": False,
+            "limits": {"max_active": 4, "max_prompt_bytes": 8192, "lease_seconds": 90,
+                       "send_within_seconds": 10, "max_response_bytes": 1048576}}
+
+
+def prepare_dummy_model_test(body):
+    account = next((item for item in model_test_catalog(True)["accounts"] if item["auth_index"] == body.get("auth_index")), None)
+    preset = next((item for item in MODEL_TEST_PRESETS if item["id"] == body.get("preset")), None)
+    prompt = body.get("prompt", "")
+    if not account or not account["supported"] or not body.get("model") or not preset:
+        return 400, {"error": {"message": "Choose a supported account, exact model and preset"}}
+    if not prompt.strip() or len(prompt.encode()) > 8192 or "$TOKEN$" in prompt:
+        return 400, {"error": {"message": "Invalid model test prompt"}}
+    if preset["id"] != "free" and prompt != preset["prompt"]:
+        return 400, {"error": {"message": "Use the custom preset after editing a test prompt"}}
+    config = body.get("config") or {}
+    model = body["model"]
+    for mapping in config.get("models", []):
+        if model == mapping.get("alias"):
+            model = mapping["name"]
+            break
+    proxy = config.get("proxy_url") or body.get("global_proxy_url") or "direct"
+    source = "account" if config.get("proxy_url") else "global" if body.get("global_proxy_url") else "direct"
+    if proxy != "direct" and not proxy.startswith(("http://", "https://", "socks5://", "socks5h://")):
+        return 400, {"error": {"message": "Invalid proxy; no direct fallback is allowed"}}
+    test_id = f"{time.time_ns():048x}"
+    MODEL_TESTS[test_id] = {"preset": preset["id"], "account": account, "model": model}
+    now = datetime.now(timezone.utc)
+    return 200, {"test_id": test_id, "start_before": iso(now + timedelta(seconds=10)),
+                 "expires_at": iso(now + timedelta(seconds=90)), "lease_expires_at": iso(now + timedelta(seconds=90)),
+                 "account": account, "model": model, "preset": preset["id"], "usage_available": False,
+                 "proxy": {"source": source, "endpoint": "direct" if proxy == "direct" else masked_dummy_proxy(proxy)},
+                 "api_call": {"auth_index": account["auth_index"], "method": "POST", "proxy_url": proxy,
+                              "url": "https://model-test.dummy.invalid/responses", "header": {"Authorization": "Bearer $TOKEN$"},
+                              "data": json.dumps({"model": model, "input": prompt, "stream": False})}}
+
+
+def complete_dummy_model_test(body):
+    lease = MODEL_TESTS.get(body.get("test_id"))
+    if not lease:
+        return 409, {"error": {"message": "Test expired or already completed"}}
+    result = {"test_id": body["test_id"], "outcome": "failed", "output": "", "output_truncated": False,
+              "assertions": [], "usage_available": False}
+    if body.get("transport_failed"):
+        return 200, dict(result, lease_retained=True, reason="Management connection failed; the lease remains until timeout")
+    del MODEL_TESTS[body["test_id"]]
+    if body.get("not_started"):
+        return 200, dict(result, reason="The prepared test was cancelled before sending")
+    if not 200 <= body.get("status_code", 0) < 300:
+        return 200, dict(result, reason="The model did not return a successful response")
+    try:
+        output = json.loads(body.get("body", "")).get("output_text", "")
+    except (ValueError, AttributeError):
+        output = ""
+    if not isinstance(output, str) or not output:
+        return 200, dict(result, reason="No supported model text output")
+    result.update(outcome="completed", output=output[:16384], output_truncated=len(output) > 16384)
+    expected = {"json": {"name": "Ada", "total": 42, "tags": ["blue", "red"]},
+                "logic": {"A": 4, "B": 2, "C": 1, "D": 3}}.get(lease["preset"])
+    if expected is not None:
+        try:
+            passed = json.loads(output) == expected
+        except ValueError:
+            passed = False
+        result["assertions"] = [{"name": "Exact JSON object", "passed": passed, "expected": json.dumps(expected)}]
+    return 200, result
 
 def team_account_runtime():
     return {"accounts": [{"credential_ref": item["ref"], "auth_index": next((file["auth_index"] for file in AUTH_FILES if file["credential_ref"] == item["ref"]), ""), "name": item["display_name"], "provider": item["provider"], "disabled": item["disabled"], "concurrency_limit": TEAM_ACCOUNT_SETTINGS["accounts"].get(item["ref"], {}).get("concurrency_limit", 0), "current_concurrency": index % 3, "usage": {"requests": 80 + index, "successes": 76, "failures": 4 + index, "total_tokens": 82500, "amount_usd": 3.42, "last_used_at": iso(NOW)}} for index, item in enumerate(CREDENTIALS)], "settings": TEAM_ACCOUNT_SETTINGS, "usage_retention_days": 365, "host_schema": 6, "turn_state_host_supported": True}
@@ -1476,6 +1573,12 @@ def team_integration(body):
     return team_response(account)
 
 def payload_for(path, query):
+    if path == f"{API_BASE}/model-tests":
+        return model_test_catalog()
+    if path == "/v0/management/proxy-url":
+        return {"proxy-url": ""}
+    if path == "/v0/management/gemini-api-key":
+        return {"gemini-api-key": []}
     if path == f"{API_BASE}/account-runtime":
         return team_account_runtime()
     if path == f"{API_BASE}/risk-center":
@@ -1796,7 +1899,11 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_json(404, {"error": {"message": "Integration not found"}})
             return
-        if route == ("POST", f"{API_BASE}/turn-state/proxies/read"):
+        if route == ("POST", f"{API_BASE}/model-tests/prepare"):
+            self.send_json(*prepare_dummy_model_test(json.loads(request_body or b"{}")))
+        elif route == ("POST", f"{API_BASE}/model-tests/complete"):
+            self.send_json(*complete_dummy_model_test(json.loads(request_body or b"{}")))
+        elif route == ("POST", f"{API_BASE}/turn-state/proxies/read"):
             body = json.loads(request_body or b"{}")
             pool, offset = body.get("pool"), body.get("offset", 0)
             if pool not in {"static", "rotating"} or type(offset) is not int or offset < 0:
@@ -1862,6 +1969,9 @@ class Handler(BaseHTTPRequestHandler):
             if config.get("inject_mode") not in {"always", "replace-only"}:
                 self.send_json(400, {"error": ui_message("backend.turn_state_invalid_inject_mode")})
                 return
+            if not valid_turn_state_pruning(config):
+                self.send_json(400, {"error": {"message": "Invalid automatic proxy removal policy"}})
+                return
             TURN_STATE_CONFIG.update(config)
             del TURN_STATE_UPLOADS[body["id"]]
             self.send_json(200, turn_state_view())
@@ -1872,6 +1982,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if body.get("inject_mode") not in {"always", "replace-only"}:
                 self.send_json(400, {"error": ui_message("backend.turn_state_invalid_inject_mode")})
+                return
+            if not valid_turn_state_pruning(body):
+                self.send_json(400, {"error": {"message": "Invalid automatic proxy removal policy"}})
                 return
             TURN_STATE_CONFIG.update(body)
             self.send_json(200, turn_state_view())
@@ -1911,17 +2024,39 @@ class Handler(BaseHTTPRequestHandler):
                       "account": accounts[0], "model": models[0], "next_check_at": iso(now + timedelta(seconds=60))}
             if not fresh:
                 TURN_STATE_PROBE_STATS["attempts"] += 1
-                TURN_STATE_PROBE_STATS["harvested"] += 1
                 static, rotating = TURN_STATE_CONFIG["probe_proxies"], TURN_STATE_CONFIG["probe_proxies_rotating"]
                 proxy = next(iter(static or rotating), "")
                 result.update({"exit": masked_dummy_proxy(proxy), "proxy_index": 1, "proxy_total": len(static) + len(rotating) or 1,
                                "proxy_pool": "static" if static else "rotating" if rotating else "direct", "proxy_attempt": 1, "length": 292})
                 TURN_STATE_PROGRESS.update(result)
                 time.sleep(0.6)
-                TURN_STATE_TEMPLATES.append({"account": accounts[0], "model": models[0], "length": 292,
-                                             "issued_at": iso(now), "expires_at": iso(now + timedelta(seconds=TURN_STATE_CONFIG["ttl_seconds"])),
-                                             "source": "probe", "exit": result["exit"], "harvested_at": iso(now)})
-                TURN_STATE_COUNTERS["learned"] += 1
+                # Predictable failure endpoints are only dummy fixtures for the
+                # automatic-removal UI; real transport classification is tested in Go.
+                fixture_host = urlparse(proxy).hostname or ""
+                failure = "failed" if "probe-fail" in fixture_host else "degraded" if "probe-degraded" in fixture_host else ""
+                if failure:
+                    TURN_STATE_PROBE_STATS[failure] += 1
+                    result.update(action="error" if failure == "failed" else "degraded",
+                                  length=0 if failure == "failed" else 312,
+                                  reason="Dummy connection failure" if failure == "failed" else "Dummy degraded state",
+                                  next_check_at=iso(now + timedelta(seconds=1)))
+                    result.pop("reason_message", None)
+                    if TURN_STATE_CONFIG["probe_drop_" + failure + "_proxies"]:
+                        remaining = len(static) + len(rotating)
+                        if remaining <= TURN_STATE_CONFIG["probe_min_proxies"]:
+                            result["proxy_disposition"] = "retained_minimum"
+                        else:
+                            (static if static else rotating).remove(proxy)
+                            result["proxy_disposition"] = "removed"
+                            result["proxy_config_revision"] = turn_state_revision()
+                            remaining -= 1
+                        result["proxy_remaining"] = remaining
+                else:
+                    TURN_STATE_PROBE_STATS["harvested"] += 1
+                    TURN_STATE_TEMPLATES.append({"account": accounts[0], "model": models[0], "length": 292,
+                                                 "issued_at": iso(now), "expires_at": iso(now + timedelta(seconds=TURN_STATE_CONFIG["ttl_seconds"])),
+                                                 "source": "probe", "exit": result["exit"], "harvested_at": iso(now)})
+                    TURN_STATE_COUNTERS["learned"] += 1
                 TURN_STATE_PROGRESS.clear()
             TURN_STATE_LAST.update(result)
             self.send_json(200, result)
@@ -1982,6 +2117,14 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"updated": len(scopes)})
         elif route == ("POST", "/v0/management/api-call"):
             body = json.loads(request_body or b"{}")
+            if body.get("url") == "https://model-test.dummy.invalid/responses":
+                prompt = json.loads(body.get("data", "{}")).get("input", "")
+                preset = next((item["id"] for item in MODEL_TEST_PRESETS if item["prompt"] == prompt), "free")
+                output = {"json": '{"name":"Ada","total":42,"tags":["blue","red"]}',
+                          "logic": '{"A":4,"B":2,"C":1,"D":3}',
+                          "code": "function firstUniqueChar(text) { return null; } // Demo response; review manually."}.get(preset, "Dummy model response for your custom prompt.")
+                self.send_json(200, {"status_code": 200, "body": json.dumps({"output_text": output})})
+                return
             auth_index = body.get("auth_index", "")
             auth_file = next((item for item in AUTH_FILES if item["auth_index"] == auth_index), None)
             quota = AUTH_FILE_QUOTAS.get(auth_index)

@@ -155,6 +155,21 @@ test("English durations use singular and plural forms", () => {
   assert.equal(String(i18n.message("time.duration_day", { count: 1 })), "1 天");
 });
 
+test("probe diagnostics recover persisted UI errors without object text", () => {
+  const env = environment();
+  const source = [...ui.matchAll(/<script>\s*([\s\S]*?)<\/script>/g)].at(-1)[1];
+  const helper = parse(source).program.body.find(node => node.type === "FunctionDeclaration" && node.id.name === "turnStateLogReason");
+  assert.ok(helper);
+  env.evaluate("const m = window.billingI18n.message;\n" + source.slice(helper.start, helper.end));
+  const value = env.evaluate(`turnStateLogReason(JSON.parse(JSON.stringify(new window.billingI18n.UIError(m("ui.request_timed_out")).message)))`);
+  assert.equal(String(value), "Request timed out");
+  env.change("zh-CN");
+  assert.equal(String(value), "请求超时");
+  assert.equal(String(env.evaluate('turnStateLogReason({unexpected: true})')), "探测失败");
+  assert.equal(String(env.evaluate('turnStateLogReason("[object Object]")')), "探测失败");
+  assert.equal(String(env.evaluate('turnStateLogReason({message: {key: "ui.request_timed_out", params: {}}})')), "请求超时");
+});
+
 test("cross-origin language messages require the expected parent, origin, and version", () => {
   const env = environment("en", undefined, {
     crossOrigin: true, search: "?lang=zh-CN&parent_origin=https%3A%2F%2Fpanel.example"
