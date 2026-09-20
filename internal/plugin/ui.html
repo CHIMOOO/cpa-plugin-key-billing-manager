@@ -1552,6 +1552,12 @@
       #integration-dialog .field input, #integration-dialog .field textarea, #integration-dialog .field select { width: 100%; }
       .team-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 12px; }
       .team-account-name { min-width: 0; overflow-wrap: anywhere; }
+      .team-account-select { display: flex; align-items: flex-start; gap: 8px; min-width: 0; cursor: pointer; }
+      .team-account-select input { flex: none; margin-top: 3px; }
+      .team-account-bulk { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; margin: 16px 0 8px; }
+      .team-account-bulk .field { margin: 0; flex: 1 1 180px; max-width: 300px; }
+      .team-account-bulk input[type="number"] { width: 100%; }
+      .auth-file-card.is-selected { border-color: var(--accent); }
       .team-account-usage { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 12px; margin: 12px 0; }
       .team-account-concurrency { display: flex; gap: 10px; align-items: flex-end; margin: 14px 0 8px; }
       .team-account-concurrency .field { flex: 1; margin: 0; min-width: 0; }
@@ -2889,7 +2895,16 @@
               </div>
             </div>
           </div>
-          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.team_account_usage">Account usage and concurrency</h2><span id="team-runtime-retention" class="small muted"></span></div><p class="access-help" data-i18n="ui.team_usage_help">Usage comes from CPA usage events in the retained history; upstream subscription quota is queried separately. Refresh to update usage and current concurrency.</p><div id="team-runtime-summary" class="state-metrics"></div><div id="team-runtime-status" class="notice hidden"></div><div id="team-runtime-accounts"></div></div>
+          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.team_account_usage">Account usage and concurrency</h2><span id="team-runtime-retention" class="small muted"></span></div><p class="access-help" data-i18n="ui.team_usage_help">Usage comes from CPA usage events in the retained history; upstream subscription quota is queried separately. Refresh to update usage and current concurrency.</p><div id="team-runtime-summary" class="state-metrics"></div><div id="team-runtime-status" class="notice hidden"></div>
+            <div class="team-account-bulk">
+              <button id="team-runtime-select-all" type="button" disabled data-i18n="ui.team_select_visible">Select all matching accounts</button>
+              <button id="team-runtime-selection-clear" type="button" disabled data-i18n="ui.model_test_selection_clear">Clear selection</button>
+              <label class="field"><span data-i18n="ui.team_bulk_limit">Concurrency per selected account (0 = unlimited)</span><input id="team-runtime-bulk-limit" type="number" min="0" max="1000" step="1" required disabled /></label>
+              <button id="team-runtime-bulk-save" type="button" class="primary" disabled data-i18n="ui.team_bulk_apply">Apply to selected accounts</button>
+            </div>
+            <p id="team-runtime-selection" class="small muted" role="status"></p>
+            <p class="access-help" data-i18n="ui.team_bulk_help">Select all affects the current filter. Changing filters keeps selections, including hidden accounts. The same 0–1000 limit is applied once to each selected account; 0 is unlimited. Disabled accounts can be selected when shown and stay disabled. This controls business request concurrency, not State collection concurrency.</p>
+            <div id="team-runtime-accounts"></div></div>
           <div class="card"><h2 data-i18n="ui.team_subscription_quotas">Upstream subscription quotas</h2>
             <div id="auth-files-body"></div>
           </div>
@@ -6229,11 +6244,13 @@
         const provider = ui.provider.value;
         const search = ui.search.value.trim().toLocaleLowerCase();
         return (ui.files.value || []).filter((file) => {
+          const category = String(file.category || "").trim().toLowerCase();
+          if (!category || category === "unknown") return false;
           if (ui.enabledOnly.checked && file.disabled) return false;
           if (provider && file.category !== provider) return false;
           if (!search) return true;
           const currentPlan = ui.owner.authQuotas.get(file.auth_index)?.plan;
-          return [file.name, file.email, currentPlan, file.category].some((value) =>
+          return [file.name, file.email, file.auth_index, currentPlan, file.category].some((value) =>
             String(value || "").toLocaleLowerCase().includes(search)
           );
         });
@@ -6409,8 +6426,8 @@
                     { class: "auth-file-identity" },
                     el("div", {
                       class: "auth-file-email-title",
-                      title: file.email || m("ui.no_email_provided"),
-                      text: file.email || m("ui.no_email_provided")
+                      title: file.email || file.auth_index,
+                      text: file.email || file.auth_index
                     }),
                     el("div", { class: "auth-file-meta" }, meta.map((value) => el("span", { title: value, text: value })))
                   )
@@ -6880,16 +6897,92 @@
         }
       }
 
-      function renderTeamAccountRuntime() {
-        const resource = resources.admin.accountRuntime, data = resource.value;
-        if (renderDataPending($("team-runtime-accounts"), [resource])) return;
-        const accounts = (data.accounts || []).filter((item) => {
+      function teamAccountSelection() { return (adminUIState.runtimeSelection ||= new Set()); }
+
+      function teamAccountRows(filtered = true) {
+        return (resources.admin.accountRuntime.value?.accounts || []).filter((item) => {
           const category = $("auth-provider").value, search = $("auth-search").value.trim();
+          const provider = String(item.provider || "").trim().toLowerCase();
           return (
-            (!$("auth-enabled-only").checked || !item.disabled) && (!category || item.provider === category) &&
-            matchesTerm([item.name, item.provider, item.auth_index].join(" "), search)
+            provider && provider !== "unknown" &&
+            (!filtered ||
+              ((!$("auth-enabled-only").checked || !item.disabled) && (!category || item.provider === category) &&
+                matchesTerm([item.name, item.provider, item.auth_index].join(" "), search)))
           );
         });
+      }
+
+      function teamAccountBatchBusy() { return !!adminUIState.runtimeBulkSaving || !!adminUIState.runtimeSaving?.size; }
+
+      async function refreshTeamAccountSettings(owner, saved) {
+        // A GET started before this write may still finish with the old limits.
+        // Drain it before applying the write response and starting a fresh read.
+        const pending = resourceGroups.admin.accountRuntime.task;
+        if (pending) await pending;
+        if (owner !== adminUIState) throw new StaleRequestError();
+        for (const account of resources.admin.accountRuntime.value?.accounts || []) {
+          const policy = saved.accounts?.[account.credential_ref];
+          if (policy) account.concurrency_limit = policy.concurrency_limit;
+        }
+        await loadDataGroup(false, "accountRuntime", true);
+      }
+
+      function renderTeamAccountSelection() {
+        const selected = teamAccountSelection(), accounts = teamAccountRows(false);
+        const refs = new Set(accounts.map((item) => item.credential_ref).filter(Boolean));
+        for (const ref of selected) if (!refs.has(ref)) selected.delete(ref);
+        const visible = new Set(teamAccountRows().map((item) => item.credential_ref).filter(Boolean));
+        const busy = teamAccountBatchBusy(), ready = !!resources.admin.accountRuntime.value;
+        $("team-runtime-select-all").disabled = busy || !ready || !visible.size || [...visible].every((ref) => selected.has(ref));
+        $("team-runtime-selection-clear").disabled = busy || !selected.size;
+        $("team-runtime-bulk-limit").disabled = busy || !ready;
+        $("team-runtime-bulk-save").disabled = busy || !selected.size;
+        setText($("team-runtime-bulk-save"), m(busy && adminUIState.runtimeBulkSaving ? "ui.saving" : "ui.team_bulk_apply"));
+        setText(
+          $("team-runtime-selection"),
+          m("ui.team_selection_count", {
+            selected: selected.size,
+            hidden: [...selected].filter((ref) => !visible.has(ref)).length,
+            visible: visible.size
+          })
+        );
+        for (const input of document.querySelectorAll("[data-runtime-select]")) {
+          input.checked = selected.has(input.dataset.runtimeSelect);
+          input.disabled = busy || !input.dataset.runtimeSelect;
+          input.closest("article")?.classList.toggle("is-selected", input.checked);
+        }
+      }
+
+      async function saveTeamAccountBatch() {
+        if (teamAccountBatchBusy() || !$("team-runtime-bulk-limit").reportValidity()) return;
+        const refs = new Set(teamAccountRows(false).map((item) => item.credential_ref).filter(Boolean));
+        const selected = [...teamAccountSelection()].filter((ref) => refs.has(ref));
+        if (!selected.length) return;
+        const limit = Number($("team-runtime-bulk-limit").value), owner = adminUIState;
+        if (!Number.isInteger(limit) || limit < 0 || limit > 1000) return;
+        owner.runtimeBulkSaving = true;
+        renderTeamAccountRuntime();
+        try {
+          const saved = await plugin(
+            "PUT",
+            "/account-runtime/settings",
+            { accounts: Object.fromEntries(selected.map((ref) => [ref, { concurrency_limit: limit }])) },
+            { command: true }
+          );
+          if (owner !== adminUIState) return;
+          await refreshTeamAccountSettings(owner, saved);
+          if (owner === adminUIState) notify(m("ui.team_bulk_saved", { count: selected.length, limit }));
+        } finally {
+          owner.runtimeBulkSaving = false;
+          if (owner === adminUIState) renderTeamAccountRuntime();
+        }
+      }
+
+      function renderTeamAccountRuntime() {
+        const resource = resources.admin.accountRuntime, data = resource.value;
+        renderTeamAccountSelection();
+        if (renderDataPending($("team-runtime-accounts"), [resource])) return;
+        const accounts = teamAccountRows();
         setText($("team-runtime-retention"), m("ui.team_retained_days", { days: data.usage_retention_days || 0 }));
         const unknown = accounts.filter((item) => item.usage_available === false).length;
         $("team-runtime-status").className = unknown ? "notice show" : "notice hidden";
@@ -6915,35 +7008,37 @@
           attrs: { class: "team-account-grid" },
           empty: m("ui.team_no_accounts"),
           render: (item) => {
-            const pending = adminUIState.runtimeSaving?.has(item.credential_ref), usage = item.usage || {};
+            const pending = adminUIState.runtimeSaving?.has(item.credential_ref), busy = teamAccountBatchBusy(), usage = item.usage || {};
+            const name =
+              item.name && item.name.trim().toLowerCase() !== "no email provided" ? item.name : item.auth_index || item.credential_ref;
             const limit = el("input", {
               type: "number",
               min: "0",
               max: "1000",
               step: "1",
               value: item.concurrency_limit || 0,
-              disabled: pending || !item.credential_ref,
-              "aria-label": m("ui.team_account_limit", { name: item.name || item.auth_index })
+              disabled: busy || !item.credential_ref,
+              "aria-label": m("ui.team_account_limit", { name })
             });
             const save = el("button", {
               type: "button",
-              disabled: pending || !item.credential_ref,
+              disabled: busy || !item.credential_ref,
               text: pending ? m("ui.saving") : m("ui.save"),
               onclick: () =>
                 guard(async () => {
-                  if (!limit.reportValidity()) return;
+                  if (teamAccountBatchBusy() || !limit.reportValidity()) return;
                   const owner = adminUIState;
                   owner.runtimeSaving ||= new Set();
                   owner.runtimeSaving.add(item.credential_ref);
                   renderTeamAccountRuntime();
                   try {
-                    await plugin(
+                    const saved = await plugin(
                       "PUT",
                       "/account-runtime/settings",
                       { accounts: { [item.credential_ref]: { concurrency_limit: Number(limit.value) } } },
                       { command: true }
                     );
-                    await loadDataGroup(false, "accountRuntime", true);
+                    await refreshTeamAccountSettings(owner, saved);
                   } finally {
                     owner.runtimeSaving.delete(item.credential_ref);
                     if (owner === adminUIState) renderTeamAccountRuntime();
@@ -6952,11 +7047,27 @@
             });
             return el(
               "article",
-              { class: "auth-file-card" },
+              { class: "auth-file-card" + (teamAccountSelection().has(item.credential_ref) ? " is-selected" : "") },
               el(
                 "div",
                 { class: "row spread" },
-                el("strong", { class: "team-account-name", text: item.name || item.auth_index || item.credential_ref }),
+                el(
+                  "label",
+                  { class: "team-account-select" },
+                  el("input", {
+                    type: "checkbox",
+                    "data-runtime-select": item.credential_ref || "",
+                    checked: teamAccountSelection().has(item.credential_ref),
+                    disabled: busy || !item.credential_ref,
+                    "aria-label": m("ui.model_test_select_account", { account: name }),
+                    onchange: (event) => {
+                      if (event.target.checked) teamAccountSelection().add(item.credential_ref);
+                      else teamAccountSelection().delete(item.credential_ref);
+                      renderTeamAccountSelection();
+                    }
+                  }),
+                  el("strong", { class: "team-account-name", text: name })
+                ),
                 el("span", {
                   class: "tag " + (item.disabled ? "plain" : item.unavailable ? "warn" : "ok"),
                   text: m(item.disabled ? "ui.disabled" : item.unavailable ? "ui.unavailable" : "ui.enabled")
@@ -13270,6 +13381,17 @@
         $("integration-cookie").value = "";
       });
       $("team-require-state").onchange = () => guard(saveTeamStateGate);
+      $("team-runtime-select-all").onclick = () => {
+        if (teamAccountBatchBusy()) return;
+        for (const account of teamAccountRows()) if (account.credential_ref) teamAccountSelection().add(account.credential_ref);
+        renderTeamAccountSelection();
+      };
+      $("team-runtime-selection-clear").onclick = () => {
+        if (teamAccountBatchBusy()) return;
+        teamAccountSelection().clear();
+        renderTeamAccountSelection();
+      };
+      $("team-runtime-bulk-save").onclick = () => guard(saveTeamAccountBatch);
       $("risk-save").onclick = () => guard(saveRiskCenter);
       $("risk-clear-hashes").onclick = () => guard(() => clearRiskData("hashes"));
       $("risk-clear-events").onclick = () => guard(() => clearRiskData("events"));

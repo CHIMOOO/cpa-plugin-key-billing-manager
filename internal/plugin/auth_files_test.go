@@ -64,6 +64,62 @@ func TestAuthFilesExposeOnlyDisplayFieldsInCategoryOrder(t *testing.T) {
 	}
 }
 
+func TestAuthFilesCategoryFallsBackToExplicitProvider(t *testing.T) {
+	for _, tc := range []struct {
+		name, authType, provider, want string
+	}{
+		{"provider-only", "", " Codex ", "codex"},
+		{"unknown-type", " UNKNOWN ", "Claude", "claude"},
+		{"explicit-type-wins", " Codex ", "claude", "codex"},
+		{"custom-type-wins", "custom-native", "codex", "custom-native"},
+		{"both-unknown", " UNKNOWN ", "unknown", "unknown"},
+		{"missing-type-unknown-provider", "", " unknown ", ""},
+		{"unknown-type-missing-provider", "unknown", "", "unknown"},
+		{"both-missing", "", "", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			app := newConfiguredApp(t)
+			file := hostAuthFile{AuthIndex: "dummy-provider-index", Name: "dummy.json", Type: tc.authType, Provider: tc.provider}
+			app.SetHostCaller(func(method string, _ any) (json.RawMessage, error) {
+				if method != hostAuthList {
+					t.Fatalf("display requested unexpected host method %q", method)
+				}
+				return mustJSONRaw(t, hostAuthListResponse{Files: []hostAuthFile{file}}), nil
+			})
+			files, err := app.listAuthFiles(viewAccess{})
+			if err != nil || len(files) != 1 || files[0].Category != tc.want {
+				t.Fatalf("category = %+v, err = %v, want %q", files, err, tc.want)
+			}
+			if files[0].QuotaSupported != (authCategoryOrder(tc.want) != 5) {
+				t.Fatalf("category and quota availability differ: %+v", files[0])
+			}
+		})
+	}
+}
+
+func TestAuthQuotaProviderFallbackMatchesDisplayedCategory(t *testing.T) {
+	app := newConfiguredApp(t)
+	var endpoint string
+	app.SetHostCaller(func(method string, payload any) (json.RawMessage, error) {
+		switch method {
+		case hostAuthList:
+			return json.RawMessage(`{"files":[{"auth_index":"dummy-provider-index","name":"dummy.json","provider":"codex"}]}`), nil
+		case hostAuthGet:
+			return json.RawMessage(`{"json":{"access_token":"dummy-token","account_id":"dummy-account"}}`), nil
+		case hostHTTPDo:
+			endpoint = payload.(hostHTTPRequest).URL
+			return mustJSONRaw(t, hostHTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"plan_type":"plus"}`)}), nil
+		default:
+			t.Fatalf("unexpected host method %q", method)
+			return nil, nil
+		}
+	})
+	response := app.authQuota(ManagementRequest{Query: url.Values{"auth_index": {"dummy-provider-index"}}}, viewAccess{})
+	if response.StatusCode != http.StatusOK || endpoint != "https://chatgpt.com/backend-api/wham/usage" {
+		t.Fatalf("provider-only category selected wrong quota protocol: status = %d, endpoint = %q, body = %s", response.StatusCode, endpoint, response.Body)
+	}
+}
+
 func TestNormalizeCodexPlan(t *testing.T) {
 	tests := map[string]string{
 		"plus": "plus", " PRO ": "pro-20x", "prolite": "pro-5x", "pro-lite": "pro-5x",

@@ -1479,5 +1479,11 @@
   "ui.state_cooldown_save_help": "After saving, zero settings bypass the corresponding existing failure waits on the next collector heartbeat. Positive durations preserve existing deadlines; positive attempt limits preserve the count already used. Clear cooldowns can reset those waits explicitly. A stopped collector stays stopped.",
   "ui.state_remove_limits": "Remove cooldown and attempt limits",
   "ui.state_remove_limits_help": "Remove cooldown and attempt limits fills these four settings and the hourly limit with 0 in your draft. Save all settings to apply it; this does not start collection or change proxy lists and automatic removal options.",
-  "ui.turn_state_probe_attempt_unlimited": " · Attempt {attempt} · Unlimited"
+  "ui.turn_state_probe_attempt_unlimited": " · Attempt {attempt} · Unlimited",
+  "ui.team_select_visible": "Select all matching accounts",
+  "ui.team_bulk_limit": "Concurrency per selected account (0 = unlimited)",
+  "ui.team_bulk_apply": "Apply to selected accounts",
+  "ui.team_selection_count": "Selected {selected} ({hidden} hidden) · {visible} matching accounts",
+  "ui.team_bulk_help": "Select all affects the current filter. Changing filters keeps selections, including hidden accounts. The same 0–1000 limit is applied once to each selected account; 0 is unlimited. Disabled accounts can be selected when shown and stay disabled. This controls business request concurrency, not State collection concurrency.",
+  "ui.team_bulk_saved": "Applied concurrency limit {limit} to {count} selected accounts."
 }

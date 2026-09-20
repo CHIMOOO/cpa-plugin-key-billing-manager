@@ -1479,5 +1479,11 @@
   "ui.state_cooldown_save_help": "保存后，设为 0 的项目会在采集器下次心跳时忽略对应的已有失败等待。正数时长保留已有截止时间，正数次数上限保留当前已用次数；可用「清除冷却」主动清理。已停止的采集器保持停止。",
   "ui.state_remove_limits": "取消冷却与次数限制",
   "ui.state_remove_limits_help": "「取消冷却与次数限制」会把以上四项和小时探测上限在草稿中填为 0，点击「保存全部设置」后生效；不会自动开始采集，也不会改动代理列表及自动丢弃选项。",
-  "ui.turn_state_probe_attempt_unlimited": " · 第 {attempt} 次 · 不限次数"
+  "ui.turn_state_probe_attempt_unlimited": " · 第 {attempt} 次 · 不限次数",
+  "ui.team_select_visible": "全选当前筛选账号",
+  "ui.team_bulk_limit": "所选账号统一并发上限（0 为不限）",
+  "ui.team_bulk_apply": "应用到所选账号",
+  "ui.team_selection_count": "已选 {selected} 个（隐藏 {hidden} 个）· 当前筛选 {visible} 个账号",
+  "ui.team_bulk_help": "全选仅选择当前筛选结果；切换筛选保留已选项，包括隐藏账号。将同一个 0–1000 的并发上限一次应用到所有选中账号，0 为不限。显示停用账号后也可勾选，设置不会启用账号。这里控制业务请求并发，不改变 State 采集并发。",
+  "ui.team_bulk_saved": "已将所选 {count} 个账号的并发上限设为 {limit}。"
 }

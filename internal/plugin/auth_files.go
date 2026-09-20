@@ -155,7 +155,7 @@ func (a *App) authQuota(req ManagementRequest, access viewAccess) ManagementResp
 	if selected.Disabled {
 		return viewJSONError(access, http.StatusUnprocessableEntity, "disabled", "Auth file is disabled")
 	}
-	provider := authCategory(selected.Type)
+	provider := authFileCategory(*selected)
 	if authCategoryOrder(provider) == 5 {
 		return viewJSONError(access, http.StatusUnprocessableEntity, "unsupported", "Quota queries are not supported for this auth file type")
 	}
@@ -193,7 +193,7 @@ func (a *App) listAuthFiles(access viewAccess) ([]authFileView, error) {
 		if file.Type == integrationAuthType || strings.TrimSpace(file.AuthIndex) == "" || strings.EqualFold(strings.TrimSpace(file.AccountType), "api_key") {
 			continue
 		}
-		category := authCategory(file.Type)
+		category := authFileCategory(file)
 		quotaSupported, quotaReason := authQuotaAvailability(file, category)
 		ref := ""
 		if strings.TrimSpace(file.ID) != "" {
@@ -274,6 +274,16 @@ func (a *App) listHostAuthFiles() ([]hostAuthFile, error) {
 
 func authCategory(authType string) string {
 	return strings.ToLower(strings.TrimSpace(authType))
+}
+
+func authFileCategory(file hostAuthFile) string {
+	category := authCategory(file.Type)
+	if category == "" || category == "unknown" {
+		if provider := authCategory(file.Provider); provider != "" && provider != "unknown" {
+			return provider
+		}
+	}
+	return category
 }
 
 func authCategoryOrder(category string) int {
