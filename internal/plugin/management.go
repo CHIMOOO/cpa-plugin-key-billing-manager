@@ -33,6 +33,7 @@ const (
 	routeAccessControl          = "/access-control"
 	routeTurnState              = "/turn-state"
 	routeTurnStateTemplates     = "/turn-state/templates"
+	routeTurnStateDiscard       = "/turn-state/templates/discard"
 	routeTurnStateProbe         = "/turn-state/probe"
 	routeTurnStateRunner        = "/turn-state/runner"
 	routeTurnStateRunnerTick    = "/turn-state/runner/tick"
@@ -102,6 +103,7 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodDelete, routeTurnStateUpload, "Cancel a staged Codex turn-state settings upload", (*App).cancelTurnStateUpload},
 	{http.MethodPost, routeTurnStateUploadCommit, "Apply complete staged Codex turn-state settings", (*App).commitTurnStateUpload},
 	{http.MethodDelete, routeTurnStateTemplates, "Clear Codex turn-state templates", (*App).clearTurnState},
+	{http.MethodPost, routeTurnStateDiscard, "Discard one exact Codex turn-state template", (*App).discardTurnState},
 	{http.MethodPost, routeTurnStateProbe, "Run one Codex turn-state probe", (*App).probeTurnState},
 	{http.MethodGet, routeTurnStateRunner, "View server collection status and recent probe events", (*App).getTurnStateRunner},
 	{http.MethodPut, routeTurnStateRunner, "Start or stop server collection durably", (*App).setTurnStateRunner},

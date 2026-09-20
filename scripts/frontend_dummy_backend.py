@@ -625,6 +625,7 @@ TURN_STATE_CONFIG = {
     "models": ["gpt-6-astra", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
+TURN_STATE_OBSERVATIONS = {"since": iso(NOW), "buckets": [], "events": []}
 TURN_STATE_BUDGET_ATTEMPTS = []
 TURN_STATE_COUNTERS = {"injected": 0, "learned": 0, "passed": 0}
 TURN_STATE_LAST = {}
@@ -653,15 +654,19 @@ def turn_state_budget():
             "exhausted": exhausted, "resumes_at": iso(datetime.fromtimestamp(resume, timezone.utc)) if resume else "0001-01-01T00:00:00Z"}
 
 
+def dummy_template_fingerprint(template):
+    return hashlib.sha256(json.dumps([template["account"], template["model"], template.get("issued_at", template["expires_at"])], separators=(",", ":")).encode()).hexdigest()
+
+
 def turn_state_view():
     config = dict(TURN_STATE_CONFIG)
     for field in ("probe_proxies", "probe_proxies_rotating"):
         config[field] = []
     now = datetime.now(timezone.utc)
-    templates = [dict(item, remaining_seconds=max(0, int((datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) - now).total_seconds())))
+    templates = [dict(item, fingerprint=dummy_template_fingerprint(item), remaining_seconds=max(0, int((datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) - now).total_seconds())))
                  for item in TURN_STATE_TEMPLATES if datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) > now]
     return {"config": config, "templates": templates, "counters": TURN_STATE_COUNTERS,
-            "server_time": iso(now),
+            "server_time": iso(now), "observations": TURN_STATE_OBSERVATIONS,
             "proxy_config_revision": turn_state_revision(),
             "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
             "probe_budget": turn_state_budget(),
@@ -2074,6 +2079,17 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(400, {"error": {"message": "Invalid automatic proxy removal policy"}})
                 return
             TURN_STATE_CONFIG.update(body)
+            self.send_json(200, turn_state_view())
+        elif route == ("POST", f"{API_BASE}/turn-state/templates/discard"):
+            body = json.loads(request_body or b"{}")
+            if body.get("confirm") is not True:
+                self.send_json(400, {"error": "confirmation required"})
+                return
+            selected = next((item for item in TURN_STATE_TEMPLATES if item["account"] == body.get("account") and item["model"] == body.get("model")), None)
+            if selected is None or dummy_template_fingerprint(selected) != body.get("fingerprint"):
+                self.send_json(409, {"error": {"message": "The template changed or expired; refresh the table before discarding it"}})
+                return
+            TURN_STATE_TEMPLATES.remove(selected)
             self.send_json(200, turn_state_view())
         elif route == ("DELETE", f"{API_BASE}/turn-state/templates"):
             body = json.loads(request_body or b"{}")

@@ -3,6 +3,7 @@
 cpa-plugin-codex-turn-state
 https://github.com/arden-aaai/cpa-plugin-codex-turn-state
 Reference revision: 13573a6c86449d1cab3f76ed9e1ae5511bcbb4aa
+Latest behavior review: d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9 (2026-09-20; main declares 0.3.0, latest published release is v0.2.0).
 
 The integrated account/model template algorithm, injection modes and probe retry policy are adapted from this project. This implementation runs synchronously within host callbacks and keeps its own isolated state store.
 

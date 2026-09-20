@@ -35,6 +35,26 @@ func TestTurnStateIgnoresNonCodexAndClearsRetryAttribution(t *testing.T) {
 	}
 }
 
+func TestTurnStateRetryWithoutSelectedAccountDropsObservation(t *testing.T) {
+	app := newConfiguredApp(t)
+	if err := app.turnState.Update([]byte(`{"enabled":true,"learn_responses":false}`)); err != nil {
+		t.Fatal(err)
+	}
+	ref := billing.CredentialFingerprint("dummy-codex")
+	app.credentials[ref] = credentialView{Ref: ref, Provider: "codex", Source: billing.CredentialSourceAuthFiles}
+	turnStateAfterAuth(t, app, "retry-empty", "dummy-codex", "model-a", nil)
+	turnStateAfterAuth(t, app, "retry-empty", "", "model-a", nil)
+	_, err := app.HandleMethod(MethodResponseInterceptAfter, mustMarshal(t, map[string]any{
+		"RequestID": "retry-empty", "Model": "model-a", "ResponseHeaders": http.Header{turnstate.Header: {rpcTurnStateTemplate()}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(app.turnState.Status().Observations.Events) != 0 {
+		t.Fatal("retry without a selected account observed the previous account")
+	}
+}
+
 func TestTurnStateDisabledDoesNotReadHostCredentials(t *testing.T) {
 	app := newConfiguredApp(t)
 	app.hostCaller = func(string, any) (json.RawMessage, error) {

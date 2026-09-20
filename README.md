@@ -294,11 +294,22 @@ flowchart TB
 
 ## Codex Turn State
 
-相关项目 [NanSsye/ccodex-sleep-state-r14](https://github.com/NanSsye/ccodex-sleep-state-r14) 是 gylive 项目的分支。来源关系、r14–r16 近期更新和本插件的适用性评估见 [State 相关项目审查](docs/state-upstream-review-2026-09-20.md)。
+相关项目 [NanSsye/ccodex-sleep-state](https://github.com/NanSsye/ccodex-sleep-state)（原名 `ccodex-sleep-state-r14`）是 gylive 项目的分支。来源关系、近期更新和本插件的适用性评估见 [State 相关项目审查](docs/state-upstream-review-2026-09-20.md)。
 
 自动采集需要同时安装新版插件和独立的[服务器采集器](deploy/README.state-collector.md)，支持 systemd 与 Docker 常驻。v0.0.9 的页面驱动模式不会自动升级成后台任务；只更新插件库而没有安装采集器时，页面会显示离线，不会用浏览器兜底探测。
 
 在独立的「Codex Turn State」页中配置。该模块源自 [arden-aaai/cpa-plugin-codex-turn-state](https://github.com/arden-aaai/cpa-plugin-codex-turn-state)（MIT License，Copyright © 2026 boooot），在其账号/模型模板算法、注入模式和代理重试规则基础上适配本插件的同步调用与独立状态存储。原项目出处、参考版本及完整许可证见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。默认关闭；启用后设置即时生效，修改模式不需要重启 CPA。替换插件动态库仍需重启。
+
+### 上游功能对齐记录
+
+核对日期：**2026-09-20**。下表记录 v0.0.13 实际审查和采用的功能基线；原始集成提交 `13573a6` 的署名记录保留。功能按 CPA 插件能力适配，不表示完整导入两个项目；已安装旧版需升级后才能使用新增功能。
+
+| 参考项目 | 核对版本与提交 | 本插件采用的功能与保留差异 |
+| --- | --- | --- |
+| arden-aaai/cpa-plugin-codex-turn-state | 正式 Release 仍为 [v0.2.0](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/releases/tag/v0.2.0)，提交 `1a62523e8fdc67c4d83555136c74aabd6f9f9d9d`；最新核对 main [`d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9`](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/commit/d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9)，源码标为 0.3.0，尚无该正式 Release | 账号／模型模板与注入、响应 State 观测、重试归属隔离及未知长度分类。观测只留内存、重启清空；保留外置采集器、可配置冷却及网关 TCP 连通性检测。 |
+| NanSsye/ccodex-sleep-state | 最新核对 [r18 预发布版](https://github.com/NanSsye/ccodex-sleep-state/releases/tag/r18)，提交 [`8cab81c9426e36be6cabbd8f38803afb33f75aac`](https://github.com/NanSsye/ccodex-sleep-state/commit/8cab81c9426e36be6cabbd8f38803afb33f75aac)；上次基线为 r16 / `b40529797cc675b09a2f93024a5ecc3e1d90c8cb` | 按行为独立实现严格主动探测、小时预算、响应声明模型、图片 State 隔离，以及 r17 单张模板持久丢弃。r18 长期节点连接池重建不适用：本插件每次采集新建并关闭连接，业务连接由 CPA 管理；未引入其网关、Mihomo 或主备票池。 |
+
+NanSsye 项目为 GPL-3.0，本插件仅参考上述行为独立实现；源码与内嵌组件没有并入本仓库。详细变更与固定提交链接见 [审查记录](docs/state-upstream-review-2026-09-20.md)。
 
 HTTP/SSE 业务注入要求 CPA `7.3.4` 或具有相同修复的版本。旧版 `7.2.143` 的 Codex 执行器不转发该请求头；设置开关和插件注入计数不能检测这个宿主限制。升级宿主后再验证实际请求行为。
 
@@ -319,6 +330,16 @@ CPA 在上游 WS 关闭时，把客户端每轮 WS 请求桥接为 HTTP/SSE，�
 | 默认探测模型 | `gpt-6-astra`、`gpt-5.6-sol`；与旧默认值完全一致的列表会自动纠正，自定义或清空的列表保留 |
 | 模板长度 / 替换长度 | 默认 292 / 312，可按实际协议调整 |
 | 有效期 | 从令牌内嵌时间戳计算，默认 3600 秒；重复采集不会延长令牌寿命 |
+
+### 响应 State 观测与丢弃模板
+
+「响应 State 观测」只读取已精确关联账号和模型的业务响应头，区分**本插件实际写入 State**与**本插件未注入**。客户端自行携带的 State 不算本插件注入，观察模式也不算注入；关闭响应学习仍可观测。面板显示模板长度、替换长度、其他长度及注入后无响应头的次数，保留最近非空头的真实长度，未知长度不会被当成正常。它不统计主动采集，不读取业务正文，也不生成用量、失败率或质量评分；无头不能证明上游接受了模板，无记录也不能证明没有流量。
+
+观测最多保留 256 个账号／模型桶及最近 100 条事件。近 24 小时统计使用当前 UTC 小时与前 23 个小时，并非精确滚动窗口；桶被淘汰、CPA 重启或切换数据路径会丢失相应内存观测。普通设置修改和清模板不会重置观测。页面关闭不影响正常业务回调的观测。
+
+桶的「操作 → 丢弃此模板」会核对当前显示的完整 SHA-256 指纹，只移除账号／模型下这一张 State；页面过时或模板已更新会拒绝操作，避免误删新票。需先停止采集并确认。丢弃记录先原子保存成功，再移除模板；失败保留原票。同一张票不能通过响应学习、主动采集或同一数据目录重启重新回填，直到其原始签发时间满 3600 秒。记录仅保存指纹、桶与时间，不额外保存原始 State；最多保留 4096 条未到期记录，达到上限时拒绝新增丢弃。
+
+「清空」仍是普通删除，允许之后重新学习；清空和清冷却都不会撤销丢弃记录。丢弃不会改变代理池、采集预算、失败冷却或账号暂停；仅释放该模板原有的成功续采等待，也不重放已发送的请求。本插件每桶只有一张票，丢弃后需重新采集，启用了有效 State 门槛的桶可能暂不可用。备份和迁移应一起保留 State 主文件及 `.runtime.json`；恢复一份本身没有丢弃记录的独立旧备份，无法恢复之后发生的丢弃历史。
 
 ### 第一次使用怎么操作
 
@@ -439,7 +460,7 @@ HTTP 401、403、429 或无法读取有效 OAuth 凭证，会按「账号暂停�
 
 用量、计费、时延和上游失败信息均来自 CPA 的 `usage.handle`，不解析业务响应正文重建用量。请求前检查负责准入，调度与最终账号检查负责上游授权、逐账号并发和有效模板保护；请求完成事件只负责释放并发等生命周期工作。
 
-插件在宿主调用内同步完成工作，不创建自己的后台协程、定时器或刷新任务。连续采集、额度刷新与账号授权轮询由管理页面驱动；页面关闭后，服务器不会自行继续这些循环。正常业务请求的已保存计费、权限与 State 规则仍在 CPA 中生效。
+插件在宿主调用内同步完成工作，不创建自己的后台协程、定时器或刷新任务。State 连续采集由独立的 `cpa-state-collector` 服务驱动，安装并启动后可在页面关闭时继续采集；额度刷新、显式模型批量测试与账号授权轮询仍由管理页面驱动。正常业务请求的已保存计费、权限与 State 规则仍在 CPA 中生效。
 
 ### 本地构建与调试
 

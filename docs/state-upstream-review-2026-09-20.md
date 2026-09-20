@@ -1,6 +1,27 @@
 # State 相关项目审查（2026-09-20）
 
-本次核对公开来源、近期版本和移植可行性。后续经用户确认，工作区已独立实现可选严格主动探测、滚动小时预算、模型测试响应声明模型，以及 CPA 图片端点的 State 隔离，纳入 v0.0.11。下表同时记录评估结论与当前工作区进展；实际操作以 README 为准。State 页底部已新增 NanSsye 项目的“相关项目”链接。
+首轮审查核对公开来源、近期版本和移植可行性。可选严格主动探测、滚动小时预算、模型测试响应声明模型，以及 CPA 图片端点的 State 隔离已纳入 v0.0.11。当天再次核对后，新增响应 State 观测与单张模板持久丢弃，纳入 v0.0.13；实际操作与最新对齐表以 README 为准。
+
+## 第二次核对：arden main 0.3.0 开发版、NanSsye r18 预发布版
+
+- **arden**：正式 Release 和 tag 仍是 `v0.2.0` / `1a62523e8fdc67c4d83555136c74aabd6f9f9d9d`。本次审核 main [`d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9`](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/commit/d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9)，[比正式版新增 16 个提交](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/compare/1a62523e8fdc67c4d83555136c74aabd6f9f9d9d...d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9)。源码版本是 0.3.0，不称为已经发布的 v0.3.0。
+- **NanSsye**：仓库已改名为 [`ccodex-sleep-state`](https://github.com/NanSsye/ccodex-sleep-state)，旧地址会跳转。本次核对 [`r18`](https://github.com/NanSsye/ccodex-sleep-state/releases/tag/r18) / `8cab81c9426e36be6cabbd8f38803afb33f75aac`，相对首轮基线新增 r17、r18 两个提交。r18 发布于 2026-09-20 12:02:22 UTC，属于 **prerelease**；该仓库 `/releases/latest` 返回 404 不代表没有发布记录。
+
+| 新增变化 | 本工作区处理 |
+| --- | --- |
+| arden 响应 State 观测 | 已适配：精确账号／模型归属、本插件实际注入标记、七类长度观测、最近 100 事件、最多 256 桶、按小时汇总近 24 小时。业务响应回调只更新有界内存，不落盘、不创建后台任务；重启清空，明确区别于上游持久化实现。 |
+| arden 观测判断修复 | 未知长度独立显示、dry-run 不记实际注入、模板存在不等于近期在注入；最近非空头独立保存长度，后续无头不会把它改成 0。不以长度、静默或是否有记录推断模型质量、业务成功率或流量。 |
+| arden 重试归属修复 | 本插件宿主封装已有 early-return 前清理；补充 Manager 层重试归属隔离，以及缺账号、换账号／模型和注入标记的回归验证。 |
+| NanSsye r17 单票持久丢弃 | 参考行为独立实现：管理员按账号／模型与完整指纹精确丢弃，陈旧点击拒绝；原子保存后生效，同票在签发满 1 小时前不能通过学习、采集或同目录重启回填。保留原有清空语义，没有引入多票 FIFO 池。 |
+| NanSsye r18 节点连接恢复 | 上游连续两次 I/O 失败后更换共享节点连接池代次，并等待旧请求结束；与它的长期复用 Mihomo/HTTP transport 有关。我们每个采集请求使用独立 transport 并立即关闭，业务连接由 CPA 管理，不加入无对应生命周期的重建逻辑。 |
+
+新增源码依据：
+
+- [arden 观测行为与边界](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/blob/d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9/README.md#L58-L87)、[响应长度分类](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/blob/d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9/go/observations.go#L349-L435)、[实际注入及响应头 hooks](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/blob/d3efa48cec2ad4a973c5c7c1c3e794c7b7d7cae9/go/main.go#L1183-L1248)。
+- [arden 缺账号重试归属修复](https://github.com/arden-aaai/cpa-plugin-codex-turn-state/commit/46c467891c7a06d649c7b46169de07c01eecc528)。
+- [NanSsye r17 精确模板丢弃提交](https://github.com/NanSsye/ccodex-sleep-state/commit/41f83eef19314b2ed9120d34168d3aac02076cb6)、[r18 连接恢复提交](https://github.com/NanSsye/ccodex-sleep-state/commit/8cab81c9426e36be6cabbd8f38803afb33f75aac)。
+
+下文保留首轮 r16 / v0.2.0 的来源与功能审查范围，不能将其中的“当前”理解为第二次核对的最新版本。
 
 ## 来源关系与版本范围
 
@@ -46,4 +67,4 @@
 
 本项目对照：[`probe.go`](../internal/turnstate/probe.go)、[`probe_http.go`](../internal/turnstate/probe_http.go)、[`manager.go`](../internal/turnstate/manager.go)、[`turn_state.go`](../internal/plugin/turn_state.go)、[`types.go`](../internal/plugin/types.go)、[`statecollector`](../internal/statecollector/collector.go)。
 
-实施进展：可选小时预算、有界主动探测校验和模型测试中的响应声明模型已独立实现，默认保持原行为；图片修复只处理 CPA 明确图片端点的 State 误拦与学习隔离。备用模板、compact 专项验证、来源节点绑定及手动绕过暂停未加入。
+实施进展：可选小时预算、有界主动探测校验、模型测试中的响应声明模型，以及本次响应 State 观测和单模板持久丢弃已独立实现；图片修复只处理 CPA 明确图片端点的 State 误拦与学习隔离。备用模板、compact 专项验证、来源节点绑定及上游手动绕过暂停规则未加入。我们提供的用户可配置冷却与不限次数模式，仍保留串行间隔、独立小时预算和有效模板续采规则。

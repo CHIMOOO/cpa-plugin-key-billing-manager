@@ -1409,5 +1409,33 @@
   "The proxy gateway TCP connection test could not be completed": {
     "key": "backend.turn_state_proxy_tcp_inconclusive",
     "formats": []
+  },
+  "Account, model, and a complete template fingerprint are required to discard a template": {
+    "key": "backend.turn_state_discard_invalid",
+    "formats": []
+  },
+  "The template changed or expired; refresh the table before discarding it": {
+    "key": "backend.turn_state_discard_changed",
+    "formats": []
+  },
+  "Too many discarded templates are still valid; wait for an older discard to expire": {
+    "key": "backend.turn_state_discard_capacity",
+    "formats": []
+  },
+  "The template was discarded by an administrator and will not be learned again": {
+    "key": "backend.turn_state_discard_learn_blocked",
+    "formats": []
+  },
+  "The upstream returned an administrator-discarded template; it was not saved and the next probe follows the exit pool retry rules": {
+    "key": "backend.turn_state_discard_probe_blocked",
+    "formats": []
+  },
+  "Confirm discarding this exact template before continuing": {
+    "key": "backend.turn_state_discard_confirm",
+    "formats": []
+  },
+  "Stop server collection before discarding a template": {
+    "key": "backend.turn_state_discard_stop_runner",
+    "formats": []
   }
 }

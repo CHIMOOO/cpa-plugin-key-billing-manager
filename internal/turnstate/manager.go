@@ -66,6 +66,7 @@ type Template struct {
 }
 
 type TemplateView struct {
+	Fingerprint      string    `json:"fingerprint"`
 	Account          string    `json:"account"`
 	Model            string    `json:"model"`
 	IssuedAt         time.Time `json:"issued_at"`
@@ -99,20 +100,21 @@ type Counters struct {
 }
 
 type Status struct {
-	Config              Config         `json:"config"`
-	Templates           []TemplateView `json:"templates"`
-	Counters            Counters       `json:"counters"`
-	LastDecision        Decision       `json:"last_decision"`
-	ProxyCounts         map[string]int `json:"proxy_counts"`
-	ProxyConfigRevision string         `json:"proxy_config_revision"`
-	ServerTime          time.Time      `json:"server_time"`
-	RenewalLeadSeconds  int            `json:"renewal_lead_seconds"`
-	ProbeStats          ProbeStats     `json:"probe_stats"`
-	LastProbe           ProbeResult    `json:"last_probe"`
-	ProbeProgress       ProbeProgress  `json:"probe_progress"`
-	ProbeBudget         ProbeBudget    `json:"probe_budget"`
-	PendingLearnedCount int            `json:"pending_learned_count"`
-	PersistenceError    string         `json:"persistence_error,omitempty"`
+	Config              Config            `json:"config"`
+	Templates           []TemplateView    `json:"templates"`
+	Counters            Counters          `json:"counters"`
+	LastDecision        Decision          `json:"last_decision"`
+	ProxyCounts         map[string]int    `json:"proxy_counts"`
+	ProxyConfigRevision string            `json:"proxy_config_revision"`
+	ServerTime          time.Time         `json:"server_time"`
+	RenewalLeadSeconds  int               `json:"renewal_lead_seconds"`
+	ProbeStats          ProbeStats        `json:"probe_stats"`
+	LastProbe           ProbeResult       `json:"last_probe"`
+	ProbeProgress       ProbeProgress     `json:"probe_progress"`
+	ProbeBudget         ProbeBudget       `json:"probe_budget"`
+	PendingLearnedCount int               `json:"pending_learned_count"`
+	PersistenceError    string            `json:"persistence_error,omitempty"`
+	Observations        ObservationStatus `json:"observations"`
 }
 
 type pending struct {
@@ -120,6 +122,7 @@ type pending struct {
 	Model   string
 	At      time.Time
 	Epoch   uint64
+	Wrote   bool
 }
 
 type cooldown struct {
@@ -132,13 +135,14 @@ type cooldown struct {
 }
 
 type diskState struct {
-	Version      int                 `json:"version"`
-	CheckpointID string              `json:"checkpoint_id,omitempty"`
-	Config       Config              `json:"config"`
-	Templates    map[string]Template `json:"templates"`
-	Cooldowns    map[string]cooldown `json:"cooldowns,omitempty"`
-	ProxyCursor  probeProxyCursor    `json:"proxy_cursor,omitzero"`
-	ProbeUsage   []probeUsage        `json:"probe_usage,omitempty"`
+	Version      int                          `json:"version"`
+	CheckpointID string                       `json:"checkpoint_id,omitempty"`
+	Config       Config                       `json:"config"`
+	Templates    map[string]Template          `json:"templates"`
+	Cooldowns    map[string]cooldown          `json:"cooldowns,omitempty"`
+	ProxyCursor  probeProxyCursor             `json:"proxy_cursor,omitzero"`
+	ProbeUsage   []probeUsage                 `json:"probe_usage,omitempty"`
+	Discarded    map[string]discardedTemplate `json:"discarded_templates,omitempty"`
 }
 
 // Manager never starts goroutines or timers. Expiry and cooldown pruning run
@@ -175,6 +179,7 @@ type Manager struct {
 	writeState        func(string, []byte) error
 	persistenceError  string
 	runtimeDirty      bool
+	observations      observationState
 }
 
 func New() *Manager {
@@ -247,8 +252,11 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 		if state.Cooldowns == nil {
 			state.Cooldowns = map[string]cooldown{}
 		}
+		if err := validateDiscarded(state.Discarded); err != nil {
+			return err
+		}
 		if base != "" {
-			if err := loadRuntime(path, base, &state); err != nil {
+			if err := loadRuntime(path, base, &state, m.now()); err != nil {
 				return err
 			}
 		}
@@ -280,6 +288,7 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 	m.uploads = nil
 	m.configRevision++
 	m.pending = map[string]pending{}
+	m.observations = observationState{Since: m.now().UTC()}
 	m.counters, m.last = Counters{Since: m.now().UTC()}, Decision{}
 	m.probeStats, m.lastProbe = ProbeStats{Since: m.now().UTC()}, ProbeResult{}
 	m.pruneLocked(m.now())
@@ -498,7 +507,7 @@ func (m *Manager) Status() Status {
 			continue
 		}
 		expiresAt := t.IssuedAt.Add(time.Duration(cfg.TTLSeconds) * time.Second)
-		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt,
+		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt, Fingerprint: templateFingerprint(t.Value),
 			ExpiresAt: expiresAt, Length: len(t.Value), RemainingSeconds: int64(expiresAt.Sub(now) / time.Second),
 			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt})
 	}
@@ -512,7 +521,7 @@ func (m *Manager) Status() Status {
 		ProxyConfigRevision: m.configRevisionTokenLocked(),
 		ServerTime:          now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
 		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress,
-		ProbeBudget: probeBudget(m.state, now)}
+		ProbeBudget: probeBudget(m.state, now), Observations: m.observationStatusLocked(now)}
 }
 
 func maskSavedExit(exit string) string {
@@ -579,7 +588,7 @@ func issuedAt(value string) (time.Time, bool) {
 }
 
 func (m *Manager) usableLocked(t Template, now time.Time) bool {
-	return usableWithConfig(t, m.state.Config, now)
+	return usableWithConfig(t, m.state.Config, now) && !templateDiscarded(m.state, t.Account, t.Model, t.Value, now)
 }
 
 func usableWithConfig(t Template, cfg Config, now time.Time) bool {
@@ -597,6 +606,7 @@ func (m *Manager) pruneLocked(now time.Time) {
 	}
 	m.prunedAt = now
 	m.pruneConfigUploadsLocked()
+	pruneDiscarded(&m.state, now)
 	for k, t := range m.state.Templates {
 		if k != key(t.Account, t.Model) || !m.usableLocked(t, now) {
 			delete(m.state.Templates, k)
@@ -628,6 +638,9 @@ func (m *Manager) beforeLocked(requestID, account, model string, headers http.He
 }
 
 func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.Header, now time.Time) (http.Header, []string) {
+	// Retries reuse the ID. An unidentifiable or disabled pass must not leave
+	// the previous account or its injection flag attached to a later response.
+	delete(m.pending, requestID)
 	if !m.state.Config.Enabled {
 		return nil, nil
 	}
@@ -664,6 +677,10 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 	} else {
 		m.counters.Substituted++
 	}
+	if p, ok := m.pending[requestID]; ok {
+		p.Wrote = true
+		m.pending[requestID] = p
+	}
 	return http.Header{Header: []string{t.Value}}, []string{Header}
 }
 
@@ -672,14 +689,14 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 func (m *Manager) Learn(requestID, account, model string, headers http.Header) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if !m.state.Config.Enabled || !m.state.Config.LearnResponses {
+	p, remembered := m.pending[requestID]
+	delete(m.pending, requestID)
+	if !m.state.Config.Enabled {
 		return nil
 	}
 	now := m.now()
 	m.pruneLocked(now)
-	p, remembered := m.pending[requestID]
-	delete(m.pending, requestID)
-	if !remembered || p.Epoch < m.allTemplateEpoch || p.Epoch < m.clearedTemplates[key(p.Account, p.Model)] {
+	if !remembered || now.Sub(p.At) > 15*time.Minute || p.Epoch < m.allTemplateEpoch || p.Epoch < m.clearedTemplates[key(p.Account, p.Model)] {
 		if headerValue(headers) != "" {
 			m.recordLocked("skip", "The Codex request has no verifiable account attribution", account, model, now)
 		}
@@ -692,7 +709,8 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 		account, model = p.Account, p.Model
 	}
 	value := headerValue(headers)
-	if value == "" {
+	m.recordObservationLocked(p, len(value), now)
+	if value == "" || !m.state.Config.LearnResponses {
 		return nil
 	}
 	return m.learnLocked(account, model, value, now)
@@ -717,6 +735,10 @@ func (m *Manager) learnFromLocked(account, model, value string, now time.Time, s
 		return nil
 	}
 	k := key(account, model)
+	if templateDiscarded(m.state, account, model, value, now) {
+		m.recordLocked("skip", "The template was discarded by an administrator and will not be learned again", account, model, now)
+		return nil
+	}
 	old, exists := m.state.Templates[k]
 	if exists && !timestamp.After(old.IssuedAt) {
 		return nil

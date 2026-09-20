@@ -1786,6 +1786,20 @@
       .turn-state-table { margin-top: 12px; min-width: 0; }
       .turn-state-table td { max-width: 280px; overflow-wrap: anywhere; white-space: normal; }
       .turn-state-proxy-results { max-height: 280px; overflow: auto; }
+      .state-response-table { max-height: 360px; overflow: auto; }
+      @media (max-width: 640px) {
+        .state-response-table table { min-width: 0; width: 100%; }
+        .state-response-table thead { display: none; }
+        .state-response-table tr { display: block; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+        .state-response-table td { display: block; max-width: none; border: 0; padding: 4px 0; }
+        .state-response-table td[data-label]::before {
+          content: attr(data-label);
+          display: block;
+          color: var(--text-secondary);
+          font-size: 12px;
+          margin-bottom: 3px;
+        }
+      }
       .group-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
       .group-toolbar input { flex: 1 1 160px; min-width: 0; }
       .group-toolbar .native-select { max-width: 100%; }
@@ -2679,10 +2693,16 @@
           </div>
           <div class="card">
             <div class="row spread settings-section-header"><div><h3 data-i18n="ui.state_readiness">Bucket readiness</h3><p id="turn-state-template-summary" class="small muted"></p></div><div class="row"><button id="turn-state-clear-cooldowns" type="button" data-i18n="ui.state_clear_cooldowns">Clear cooldowns</button><button id="turn-state-clear-templates" class="danger" type="button" disabled data-i18n="ui.fork_clear_templates">Clear templates</button></div></div>
-            <p class="access-help" data-i18n="ui.state_readiness_help">Each cell is one account × model. Use Actions to collect, test, clear cooldowns or remove its template. Remaining validity is shown in minutes.</p>
+            <p class="access-help" data-i18n="ui.state_readiness_help">Each cell is one account × model. Use Actions to collect, test, clear cooldowns, clear a template or discard that exact State. Clearing allows relearning; discarding blocks the same State until one hour after issue. Remaining validity is shown in minutes.</p>
             <p class="access-help" data-i18n="ui.state_renewal_continuity">Early renewal does not reset the current template's expiry. A successful new template replaces it; a failed attempt keeps the old template until its original expiry. Buckets may wait for other accounts or cooldowns, and persistent upstream failures can still leave a gap.</p>
             <p id="turn-state-persistence-status" class="small muted" role="status"></p>
             <div id="turn-state-templates" class="turn-state-table"></div>
+          </div>
+          <div class="card" id="turn-state-observations">
+            <div class="row spread settings-section-header"><h3 data-i18n="ui.state_observations">Response State observations</h3><span id="turn-state-observation-since" class="small muted"></span></div>
+            <p class="access-help" data-i18n="ui.state_observation_help">Observes response header lengths for the exact account and model, separated by whether this plugin actually injected State. These are not success rates or model quality scores; no returned header does not prove acceptance. The last 24 hours use the current UTC hour and the preceding 23 hours. Up to 256 buckets and 100 events stay in memory and reset on restart; active collection is excluded.</p>
+            <div id="turn-state-observation-buckets" class="turn-state-table state-response-table"></div>
+            <details class="state-logs"><summary data-i18n="ui.state_observation_events">Recent response State events</summary><div id="turn-state-observation-events" class="turn-state-table state-response-table"></div></details>
           </div>
           <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button data-state-save="scope" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
             <p class="access-help" data-i18n="ui.fork_select_accounts_for_active_probing_including_disabled_codex_accounts_probi">Select accounts for active probing, including disabled Codex accounts. Probing does not change account enablement. No selection means no active probes; learning from normal responses follows the switch above.</p>
@@ -2744,7 +2764,7 @@
             <p id="turn-state-host-requirement" class="access-help" data-i18n="ui.fork_http_sse_injection_requires_cliproxyapi_v7_3_4_or_a_version_that_forwards">HTTP / SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards Turn State request headers. Older versions may report injection without forwarding it upstream. Reused WebSocket connections carry headers only at a new handshake.</p>
 </div>
           <p class="small muted turn-state-attribution"><span data-i18n="ui.fork_based_on">Based on</span> <a href="https://github.com/arden-aaai/cpa-plugin-codex-turn-state" target="_blank" rel="noopener noreferrer">cpa-plugin-codex-turn-state</a></p>
-          <p class="small muted turn-state-attribution"><span data-i18n="ui.state_related_project">Related State project</span> <a href="https://github.com/NanSsye/ccodex-sleep-state-r14" target="_blank" rel="noopener noreferrer" data-i18n="ui.state_related_project_name">NanSsye/ccodex-sleep-state-r14</a></p>
+          <p class="small muted turn-state-attribution"><span data-i18n="ui.state_related_project">Related State project</span> <a href="https://github.com/NanSsye/ccodex-sleep-state" target="_blank" rel="noopener noreferrer" data-i18n="ui.state_related_project_name">NanSsye/ccodex-sleep-state</a></p>
         </section>
 
         <section id="tab-plans" class="hidden">
@@ -9495,6 +9515,93 @@
         await writeTurnState("DELETE", "/turn-state/templates", { account, model }, m("ui.turn_state_bucket_cleared"));
       }
 
+      async function discardTurnStateTemplate(account, model, fingerprint) {
+        if (turnStateBusy() || !/^[a-f0-9]{64}$/.test(fingerprint || "")) return;
+        const owner = adminUIState;
+        const confirmed = await openActionDialog(m("ui.state_discard_template"), m("ui.state_discard_template_warning", { model }));
+        if (!confirmed || owner !== adminUIState || turnStateBusy()) return;
+        await writeTurnState(
+          "POST",
+          "/turn-state/templates/discard",
+          { account, model, fingerprint, confirm: true },
+          m("ui.state_template_discarded")
+        );
+      }
+
+      function turnStateObservationLabel(event) {
+        if (!event) return m("ui.state_observation_empty");
+        const kind = ["match", "replace", "other", "silent"].includes(event.kind) ? event.kind : "other";
+        return m("ui.state_observation_" + kind, { length: event.length ?? 0 });
+      }
+
+      function renderTurnStateObservations(state) {
+        const data = state.observations;
+        const buckets = [...(data?.buckets || [])].sort((a, b) => Date.parse(b.last.at) - Date.parse(a.last.at));
+        const name = (account) => state.probe_accounts.find((item) => item.account === account)?.label || account;
+        const attribution = (event) => m(event.injected ? "ui.state_observation_injected" : "ui.state_observation_native");
+        const eventCell = (event) =>
+          event
+            ? el(
+                "div",
+                {},
+                el("span", {
+                  class: "tag " + (["other", "replace"].includes(event.kind) ? "warn" : "plain"),
+                  text: turnStateObservationLabel(event)
+                }),
+                el("div", { class: "small muted", text: attribution(event) + " · " + when(event.at) })
+              )
+            : el("span", { class: "small muted", text: m("ui.state_observation_no_header") });
+        setText($("turn-state-observation-since"), data?.since ? m("ui.state_observation_since", { at: when(data.since) }) : "");
+        renderCollection($("turn-state-observation-buckets"), buckets, {
+          headers: [
+            m("ui.turn_state_account"),
+            m("ui.state_observation_native_24h"),
+            m("ui.state_observation_injected_24h"),
+            m("ui.state_observation_latest"),
+            m("ui.state_observation_last_header")
+          ],
+          empty: m(data ? "ui.state_observation_empty" : "ui.state_observation_unavailable"),
+          render: (bucket) => {
+            const counts = bucket.recent_24h || {};
+            return el(
+              "tr",
+              {},
+              el("td", {}, el("strong", { text: name(bucket.account) }), el("div", { class: "small muted", text: bucket.model })),
+              el("td", {
+                "data-label": m("ui.state_observation_native_24h"),
+                text: m("ui.state_observation_native_counts", {
+                  match: counts.native_match || 0,
+                  replace: counts.native_replace || 0,
+                  other: counts.native_other || 0
+                })
+              }),
+              el("td", {
+                "data-label": m("ui.state_observation_injected_24h"),
+                text: m("ui.state_observation_injected_counts", {
+                  match: counts.injected_match || 0,
+                  replace: counts.injected_replace || 0,
+                  other: counts.injected_other || 0,
+                  silent: counts.injected_silent || 0
+                })
+              }),
+              el("td", { "data-label": m("ui.state_observation_latest") }, eventCell(bucket.last)),
+              el("td", { "data-label": m("ui.state_observation_last_header") }, eventCell(bucket.last_signed))
+            );
+          }
+        });
+        renderCollection($("turn-state-observation-events"), data?.events || [], {
+          headers: [m("ui.turn_state_account"), m("ui.state_observation_latest")],
+          empty: m(data ? "ui.state_observation_empty" : "ui.state_observation_unavailable"),
+          render: (event) =>
+            el(
+              "tr",
+              {},
+              el("td", {}, el("strong", { text: name(event.account) }), el("div", { class: "small muted", text: event.model })),
+              el("td", { "data-label": m("ui.state_observation_latest") }, eventCell(event))
+            )
+        });
+      }
+
       function renderTurnStateDiagnostics() {
         const diagnostic = turnStateDiagnostics, pools = turnStatePoolState();
         const busy =
@@ -9754,6 +9861,15 @@
               ? el("button", {
                   type: "button",
                   class: "danger small",
+                  disabled: busy || !/^[a-f0-9]{64}$/.test(template.fingerprint || ""),
+                  text: m("ui.state_discard_template"),
+                  onclick: () => guard(() => discardTurnStateTemplate(account, model, template.fingerprint))
+                })
+              : null,
+            template
+              ? el("button", {
+                  type: "button",
+                  class: "danger small",
                   disabled: busy,
                   text: m("ui.turn_state_clear_bucket"),
                   onclick: () => guard(() => clearTurnStateBucket(account, model))
@@ -9985,6 +10101,7 @@
         renderTurnStateDashboard(state);
         renderTurnStateRenewHelp();
         renderTurnStateTemplates();
+        renderTurnStateObservations(state);
         renderTurnStateDiagnostics();
         if (!pools.loaded && !pools.loading && !pools.error && currentRole === "admin" && activeTab(false) === "turn-state")
           loadTurnStateProxies();
@@ -10254,6 +10371,7 @@
           harvested: m("ui.fork_template_harvested"),
           unchanged: m("ui.fork_no_new_template"),
           degraded: m("ui.fork_degraded_state"),
+          discarded: m("ui.state_probe_discarded"),
           cooling: m("ui.state_collection_wait_label"),
           account_wait: m("ui.state_account_wait_label"),
           budget_wait: m("ui.state_budget_wait_label"),

@@ -17,12 +17,13 @@ import (
 // cannot restore templates or cooldowns after a configuration replacement.
 // The original version-1 main file remains readable without a migration.
 type runtimeState struct {
-	Version     int                 `json:"version"`
-	Base        string              `json:"base"`
-	Templates   map[string]Template `json:"templates"`
-	Cooldowns   map[string]cooldown `json:"cooldowns"`
-	ProxyCursor probeProxyCursor    `json:"proxy_cursor,omitzero"`
-	ProbeUsage  []probeUsage        `json:"probe_usage,omitempty"`
+	Version     int                          `json:"version"`
+	Base        string                       `json:"base"`
+	Templates   map[string]Template          `json:"templates"`
+	Cooldowns   map[string]cooldown          `json:"cooldowns"`
+	ProxyCursor probeProxyCursor             `json:"proxy_cursor,omitzero"`
+	ProbeUsage  []probeUsage                 `json:"probe_usage,omitempty"`
+	Discarded   map[string]discardedTemplate `json:"discarded_templates,omitempty"`
 }
 
 func stateDigest(raw []byte) string {
@@ -43,13 +44,18 @@ func cloneState(state diskState) diskState {
 	for k, value := range state.Cooldowns {
 		next.Cooldowns[k] = value
 	}
+	next.Discarded = make(map[string]discardedTemplate, len(state.Discarded))
+	for k, value := range state.Discarded {
+		next.Discarded[k] = value
+	}
 	return next
 }
 
 func pruneState(state *diskState, now time.Time) {
 	state.ProbeUsage = pruneProbeUsage(state.ProbeUsage, now)
+	pruneDiscarded(state, now)
 	for k, value := range state.Templates {
-		if k != key(value.Account, value.Model) || !usableWithConfig(value, state.Config, now) {
+		if k != key(value.Account, value.Model) || !usableWithConfig(value, state.Config, now) || templateDiscarded(*state, value.Account, value.Model, value.Value, now) {
 			delete(state.Templates, k)
 		}
 	}
@@ -60,7 +66,7 @@ func pruneState(state *diskState, now time.Time) {
 	}
 }
 
-func loadRuntime(path, base string, state *diskState) error {
+func loadRuntime(path, base string, state *diskState, now time.Time) error {
 	raw, err := os.ReadFile(path + ".runtime.json")
 	if os.IsNotExist(err) {
 		return nil
@@ -71,6 +77,11 @@ func loadRuntime(path, base string, state *diskState) error {
 	var overlay runtimeState
 	if json.Unmarshal(raw, &overlay) != nil || overlay.Version != 1 || overlay.Base == "" {
 		return messages.Errorf("Invalid turn-state state file")
+	}
+	// Tombstones are exact-value denies, so an older neighboring checkpoint
+	// must not erase them merely because its configuration digest differs.
+	if _, err := mergeDiscarded(state, overlay.Discarded, now); err != nil {
+		return err
 	}
 	if overlay.Base != base {
 		return nil
@@ -146,7 +157,7 @@ func (m *Manager) commitStateLocked(next diskState, full bool, clearScope string
 		}
 	} else {
 		writePath += ".runtime.json"
-		raw, err = json.Marshal(runtimeState{Version: 1, Base: base, Templates: next.Templates, Cooldowns: next.Cooldowns, ProxyCursor: next.ProxyCursor, ProbeUsage: next.ProbeUsage})
+		raw, err = json.Marshal(runtimeState{Version: 1, Base: base, Templates: next.Templates, Cooldowns: next.Cooldowns, ProxyCursor: next.ProxyCursor, ProbeUsage: next.ProbeUsage, Discarded: next.Discarded})
 	}
 	if err == nil {
 		err = write(writePath, raw)
@@ -174,7 +185,7 @@ func (m *Manager) commitStateLocked(next diskState, full bool, clearScope string
 	// remain dirty, and a clear/configuration boundary must not resurrect an
 	// older candidate that arrived while the disk write was in progress.
 	for k, learned := range m.dirtyTemplates {
-		if clearScope == "*" || clearScope == k || !usableWithConfig(learned, next.Config, m.now()) || !usableWithConfig(learned, m.state.Config, m.now()) {
+		if clearScope == "*" || clearScope == k || !usableWithConfig(learned, next.Config, m.now()) || !usableWithConfig(learned, m.state.Config, m.now()) || templateDiscarded(next, learned.Account, learned.Model, learned.Value, m.now()) {
 			delete(m.dirtyTemplates, k)
 			continue
 		}

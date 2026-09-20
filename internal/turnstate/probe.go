@@ -547,6 +547,10 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 			result.Action, result.Reason = "error", "The response length matches, but its Fernet timestamp is invalid, in the future, or expired"
 			break
 		}
+		if templateDiscarded(next, c.account, c.model, response.Value, now) {
+			result.Action, result.Reason = "discarded", "The upstream returned an administrator-discarded template; it was not saved and the next probe follows the exit pool retry rules"
+			break
+		}
 		bucket := key(c.account, c.model)
 		if previous, exists := next.Templates[bucket]; exists && usableWithConfig(previous, next.Config, now) && !issued.After(previous.IssuedAt) {
 			result.Action, result.Reason = "unchanged", "The upstream returned the same or an older template; its original expiry was not extended"
