@@ -2692,7 +2692,9 @@
             <div id="turn-state-accounts" class="selection-list turn-state-accounts"></div>
             <div class="turn-state-fields">              <label class="field turn-state-wide"><span data-i18n="ui.fork_probe_models_one_per_line">Probe models (one per line)</span><textarea id="turn-state-models" rows="2" placeholder="For example: gpt-6-astra, gpt-5.6-sol" data-i18n-placeholder="ui.probe_models_example" disabled></textarea></label></div>
           </div>
-          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_proxy_pools">Proxy pools</h3><button data-state-save="proxies" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>              <div class="turn-state-fields">
+          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_proxy_pools">Proxy pools</h3><button data-state-save="proxies" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>
+            <p class="access-help" data-i18n="ui.turn_state_proxy_check_help">Tests only the TCP connection from CPA to the proxy gateway, with a 5-second timeout and up to 10 checks at once. Sends no account or proxy credentials and does not contact OpenAI. Proxy authentication, exit IPs and collection are not tested. Gateway IP is not the exit IP. A failed result describes this attempt only; removal edits the draft and requires saving.</p>
+            <div class="turn-state-fields">
                 <div class="field"><label for="turn-state-proxies" data-i18n="ui.fork_static_proxies_one_per_line">Static proxies (one per line)</label><textarea id="turn-state-proxies" rows="6" placeholder="http://username:password@host:port" data-i18n-placeholder="ui.fork_http_username_password_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-proxy-count" class="small muted"></span><div class="row"><button id="turn-state-static-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-static-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-static-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-static-test-status" class="small muted" role="status"></div><div id="turn-state-static-results" class="turn-state-table turn-state-proxy-results"></div></div>
                 <div class="field"><label for="turn-state-rotating" data-i18n="ui.fork_rotating_proxies_one_per_line">Rotating proxies (one per line)</label><textarea id="turn-state-rotating" rows="6" placeholder="http://username:password@rotating-host:port" data-i18n-placeholder="ui.fork_http_username_password_rotating_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-rotating-count" class="small muted"></span><div class="row"><button id="turn-state-rotating-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-rotating-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-rotating-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-rotating-test-status" class="small muted" role="status"></div><div id="turn-state-rotating-results" class="turn-state-table turn-state-proxy-results"></div></div>
               </div>
@@ -9528,7 +9530,9 @@
               results.length
                 ? m("ui.turn_state_test_summary", {
                     count: results.length,
-                    failed: results.filter((result) => result.deletable === true).length,
+                    reachable: results.filter((result) => result.status === "reachable").length,
+                    failed: results.filter((result) => result.status === "failed").length,
+                    inconclusive: results.filter((result) => result.status === "inconclusive").length,
                     shown: Math.min(100, results.length)
                   })
                 : ""
@@ -9537,7 +9541,7 @@
             headers: [
               m("ui.turn_state_progress"),
               m("ui.turn_state_proxy_endpoint"),
-              "IP",
+              m("ui.turn_state_gateway_ip"),
               m("ui.turn_state_latency"),
               m("ui.turn_state_test_status")
             ],
@@ -9548,7 +9552,7 @@
                 {},
                 el("td", { text: result.index + "/" + result.total }),
                 el("td", { text: turnStateProxyDisplay(result.proxy || result.input) }),
-                el("td", { text: result.ip || "—" }),
+                el("td", { text: result.gateway_ip || "—" }),
                 el("td", { text: Number.isFinite(result.latency_ms) ? result.latency_ms + " ms" : "—" }),
                 el(
                   "td",

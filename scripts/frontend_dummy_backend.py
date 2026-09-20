@@ -2014,14 +2014,14 @@ class Handler(BaseHTTPRequestHandler):
         elif route == ("POST", f"{API_BASE}/turn-state/proxies/test"):
             body = json.loads(request_body or b"{}")
             proxy = body.get("proxy", "")
-            invalid = "fail" in proxy or "invalid" in proxy
-            inconclusive = "limited" in proxy or "429" in proxy
+            invalid = any(marker in proxy for marker in ("fail", "invalid", "timeout"))
+            inconclusive = "inconclusive" in proxy
             status = "failed" if invalid else "inconclusive" if inconclusive else "reachable"
+            reason_key = "proxy_tcp_timeout" if "timeout" in proxy else "proxy_tcp_failed" if invalid else "proxy_tcp_inconclusive" if inconclusive else "proxy_tcp_reachable"
             time.sleep(0.15)
             self.send_json(200, {"proxy": masked_dummy_proxy(proxy), "status": status,
-                                 "ip": "" if invalid else "203.0.113.24", "latency_ms": 150,
-                                 "http_status": 0 if invalid else 429 if inconclusive else 401,
-                                 "reason": "", "deletable": invalid})
+                                 "gateway_ip": "" if invalid or inconclusive else "203.0.113.24", "latency_ms": 150,
+                                 "reason": "", "reason_message": {"message_key": "backend.turn_state_" + reason_key}, "deletable": invalid})
         elif parsed.path == f"{API_BASE}/turn-state/config-upload":
             body = json.loads(request_body or b"{}")
             if self.command == "POST":

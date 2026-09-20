@@ -1389,5 +1389,25 @@
   "Pending buckets are waiting for account pauses or exit cooldowns; collection will resume automatically": {
     "key": "backend.turn_state_waiting",
     "formats": []
+  },
+  "The proxy gateway TCP connection succeeded; authentication and outbound access were not tested": {
+    "key": "backend.turn_state_proxy_tcp_reachable",
+    "formats": []
+  },
+  "The proxy gateway TCP connection timed out": {
+    "key": "backend.turn_state_proxy_tcp_timeout",
+    "formats": []
+  },
+  "The proxy gateway hostname could not be resolved": {
+    "key": "backend.turn_state_proxy_tcp_dns_failed",
+    "formats": []
+  },
+  "The proxy gateway TCP connection failed": {
+    "key": "backend.turn_state_proxy_tcp_failed",
+    "formats": []
+  },
+  "The proxy gateway TCP connection test could not be completed": {
+    "key": "backend.turn_state_proxy_tcp_inconclusive",
+    "formats": []
   }
 }

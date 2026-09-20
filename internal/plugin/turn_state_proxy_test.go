@@ -63,9 +63,7 @@ func TestProxyManagementCheckIsIndependentAndRedacted(t *testing.T) {
 		return nil, nil
 	}
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodConnect || r.Host != "chatgpt.com:443" || r.Header.Get("Authorization") != "" {
-			t.Errorf("unexpected proxy check request: %+v", r)
-		}
+		t.Error("TCP gateway check must not send an HTTP or CONNECT request")
 		w.WriteHeader(http.StatusProxyAuthRequired)
 	}))
 	defer proxy.Close()
@@ -77,7 +75,7 @@ func TestProxyManagementCheckIsIndependentAndRedacted(t *testing.T) {
 		t.Fatalf("proxy test response = %d, headers=%v", response.StatusCode, response.Headers)
 	}
 	var result turnstate.ProxyCheckResult
-	if err := json.Unmarshal(response.Body, &result); err != nil || result.Status != "failed" || !result.Deletable || result.HTTPStatus != 407 {
+	if err := json.Unmarshal(response.Body, &result); err != nil || result.Status != "reachable" || result.Deletable || result.HTTPStatus != 0 || result.GatewayIP != "127.0.0.1" || result.IP != "" {
 		t.Fatalf("proxy test result=%+v, err=%v", result, err)
 	}
 	// Status includes the current server time, so compare the state-bearing
