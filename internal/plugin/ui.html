@@ -2604,12 +2604,6 @@
             <input id="group-id" type="hidden" />
             <div class="chooser-identity-fields"><label class="field"><span data-i18n="ui.fork_group_name">Group name</span><input id="group-name" placeholder="For example: Codex team" data-i18n-placeholder="ui.fork_for_example_codex_team" /></label>
             <label class="toggle-filter"><input id="group-enabled" type="checkbox" role="switch" checked /><span data-i18n="ui.fork_enable_group">Enable group</span></label></div>
-            <fieldset class="group-routing-modes">
-              <legend data-i18n="ui.group_routing_mode">Account pool role</legend>
-              <label><input type="radio" name="group-routing-mode" value="ordinary" checked /><span><strong data-i18n="ui.group_mode_ordinary">Ordinary</strong><span class="small muted" data-i18n="ui.group_mode_ordinary_help">Combined with other bound groups unless this key has an enabled exclusive group.</span></span></label>
-              <label><input type="radio" name="group-routing-mode" value="exclusive" /><span><strong data-i18n="ui.group_mode_exclusive">Exclusive</strong><span class="small muted" data-i18n="ui.group_mode_exclusive_help">This key uses only this group and its bound common groups. Ordinary groups are excluded. Only one enabled exclusive group is allowed per key.</span></span></label>
-              <label><input type="radio" name="group-routing-mode" value="common" /><span><strong data-i18n="ui.group_mode_common">Common</strong><span class="small muted" data-i18n="ui.group_mode_common_help">Remains available alongside an exclusive group. Only keys explicitly bound to this group can use its accounts.</span></span></label>
-            </fieldset>
             <div class="selection-section">
 
               <details class="chooser-rule-help"><summary data-i18n="ui.chooser_rules_help">How access rules combine</summary><p class="access-help" data-i18n="ui.fork_routing_rules_and_direct_selections_are_merged_with_denied_entries_taking">Routing rules and direct selections are merged, with denied entries taking precedence. Only allowed upstream credentials are authorized; unselected credentials are denied.</p></details>
@@ -2634,6 +2628,12 @@
               <div id="group-key-count" class="small muted"></div>
               <div id="group-key-list" class="selection-list"></div>
             </details>
+            <fieldset class="group-routing-modes">
+              <legend data-i18n="ui.group_routing_mode">Account pool role</legend>
+              <label><input type="radio" name="group-routing-mode" value="ordinary" checked /><span><strong data-i18n="ui.group_mode_ordinary">Ordinary</strong><span class="small muted" data-i18n="ui.group_mode_ordinary_help">Combined with other bound groups unless this key has an enabled exclusive group.</span></span></label>
+              <label><input type="radio" name="group-routing-mode" value="exclusive" /><span><strong data-i18n="ui.group_mode_exclusive">Exclusive</strong><span class="small muted" data-i18n="ui.group_mode_exclusive_help">This key uses only this group and its bound common groups. Ordinary groups are excluded. Only one enabled exclusive group is allowed per key.</span></span></label>
+              <label><input type="radio" name="group-routing-mode" value="common" /><span><strong data-i18n="ui.group_mode_common">Common</strong><span class="small muted" data-i18n="ui.group_mode_common_help">Remains available alongside an exclusive group. Only keys explicitly bound to this group can use its accounts.</span></span></label>
+            </fieldset>
             <div class="row dialog-actions"><button id="group-cancel" type="button" data-i18n="ui.cancel">Cancel</button><button id="group-save" class="primary" type="button" data-i18n="ui.save">Save</button></div>
           </dialog>
         </section>
