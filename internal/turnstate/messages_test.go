@@ -12,7 +12,7 @@ func TestProbeReasonsPreserveTranslationMetadata(t *testing.T) {
 		key    string
 	}{
 		{200, "backend.turn_state_harvested"},
-		{401, "backend.turn_state_account_refused"},
+		{401, "backend.turn_state_account_paused"},
 		{429, "backend.turn_state_rate_limited"},
 		{503, "backend.turn_state_upstream_status"},
 	} {

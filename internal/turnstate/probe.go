@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -15,6 +16,9 @@ import (
 type Credential struct {
 	AccessToken string
 	AccountID   string
+	// ProbeVerifyCompletion is an in-memory request option, never an OAuth
+	// credential field and never persisted with host authentication files.
+	ProbeVerifyCompletion bool
 }
 
 type ProbeResponse struct {
@@ -23,6 +27,9 @@ type ProbeResponse struct {
 	// ProxyFailure is set only by the transport after a connection or proxy
 	// authentication failure, never by upstream account or quota responses.
 	ProxyFailure bool
+	// CompletionFailure is a bounded, fixed diagnostic from strict active
+	// probing. An unsuccessful response body is not proof of a broken proxy.
+	CompletionFailure string
 }
 
 type ProbeResult struct {
@@ -77,14 +84,100 @@ type probeCandidate struct {
 	index, total, attempt              int
 }
 
+// Match the reference collector's account-wide backoff. A rejected request
+// does not prove that every exit is unusable; keep this independent of the
+// 55-minute per-bucket static-exit cooldown. Never retry a 429 by changing IP.
+const probeAccountBackoff = 10 * time.Minute
+
+// probeProxyCursor is shared by all account/model buckets. Only a digest and
+// an index are persisted, never another copy of the proxy URL or credentials.
+// The identity survives insertion/reordering; the index is a safe fallback for
+// old or externally edited state. Empty cursors start at the first entry.
+type probeProxyCursor struct {
+	Next  string `json:"next,omitempty"`
+	Index int    `json:"index,omitempty"`
+}
+
+func probeProxyCount(cfg Config) int {
+	return max(1, len(cfg.ProbeProxies)+len(cfg.ProbeProxiesRotating))
+}
+
+func probeProxyAt(cfg Config, index int) (string, bool) {
+	if index < len(cfg.ProbeProxies) {
+		return cfg.ProbeProxies[index], false
+	}
+	index -= len(cfg.ProbeProxies)
+	if index < len(cfg.ProbeProxiesRotating) {
+		return cfg.ProbeProxiesRotating[index], true
+	}
+	return "", false // An intentionally empty pool uses the direct exit.
+}
+
+func probeProxyIdentity(cfg Config, index int) string {
+	proxy, rotating := probeProxyAt(cfg, index)
+	hash := sha256.Sum256([]byte(fmt.Sprintf("%t\x00%s", rotating, proxy)))
+	return fmt.Sprintf("%x", hash)
+}
+
+func probeProxyStart(cfg Config, cursor probeProxyCursor) int {
+	total := probeProxyCount(cfg)
+	index := cursor.Index
+	if index < 0 || index >= total {
+		index = 0
+	}
+	if cursor.Next == "" || probeProxyIdentity(cfg, index) == cursor.Next {
+		return index
+	}
+	for offset := 0; offset < total; offset++ {
+		if probeProxyIdentity(cfg, offset) == cursor.Next {
+			return offset
+		}
+	}
+	return index
+}
+
+func probeProxyCursorAt(cfg Config, index int) probeProxyCursor {
+	if len(cfg.ProbeProxies)+len(cfg.ProbeProxiesRotating) == 0 {
+		return probeProxyCursor{}
+	}
+	index %= probeProxyCount(cfg)
+	return probeProxyCursor{Next: probeProxyIdentity(cfg, index), Index: index}
+}
+
+func reconcileProbeProxyCursor(previous, next Config, cursor probeProxyCursor) probeProxyCursor {
+	if slices.Equal(previous.ProbeProxies, next.ProbeProxies) && slices.Equal(previous.ProbeProxiesRotating, next.ProbeProxiesRotating) {
+		return cursor
+	}
+	if cursor.Next == "" || len(next.ProbeProxies)+len(next.ProbeProxiesRotating) == 0 {
+		return probeProxyCursorAt(next, 0)
+	}
+	// Resolve the next surviving entry in the old cyclic order. A map contains
+	// only digests and positions, keeping edits linear in the pool size.
+	positions := make(map[string]int, probeProxyCount(next))
+	for index := 0; index < probeProxyCount(next); index++ {
+		positions[probeProxyIdentity(next, index)] = index
+	}
+	start, total := probeProxyStart(previous, cursor), probeProxyCount(previous)
+	for offset := 0; offset < total; offset++ {
+		if index, exists := positions[probeProxyIdentity(previous, (start+offset)%total)]; exists {
+			return probeProxyCursorAt(next, index)
+		}
+	}
+	return probeProxyCursorAt(next, 0)
+}
+
 func (c probeCandidate) progress() ProbeResult {
 	pool := "static"
+	// Only authenticated management progress/events receive the complete URL.
+	// Persisted template provenance remains masked in finishProbe.
+	exit := c.proxy
 	if c.rotating {
 		pool = "rotating"
 	} else if c.proxy == "" {
 		pool = "direct"
+		exit = "direct"
 	}
-	return ProbeResult{Account: c.account, Model: c.model, Exit: maskProxy(c.proxy),
+	return ProbeResult{Account: c.account, Model: c.model, Exit: exit,
 		ProxyIndex: c.index, ProxyTotal: c.total, ProxyPool: pool, ProxyAttempt: c.attempt}
 }
 
@@ -165,6 +258,15 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 		m.writerMu.Unlock()
 		return result, nil
 	}
+	if budget := probeBudget(next, now); budget.Exhausted {
+		m.mu.Unlock()
+		m.writerMu.Unlock()
+		return ProbeResult{Action: "budget_wait", Reason: "The hourly probe budget is exhausted; collection resumes when earlier attempts leave the rolling hour", NextCheckAt: budget.ResumesAt}, nil
+	}
+	// Reserve before credential access and transport, together with the exit
+	// cooldown. Failures and process interruption keep this conservative charge;
+	// a failed atomic save sends no upstream request and consumes no budget.
+	next.ProbeUsage = reserveProbeUsage(next.ProbeUsage, now)
 	reserved := cooldown{Until: now.Add(55 * time.Minute)}
 	if candidate.rotating {
 		budget := rotatingBudget(next, candidate.account, candidate.model, now)
@@ -176,6 +278,10 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 		reserved = cooldown{Until: budget.Until, Attempts: 1}
 	}
 	next.Cooldowns[candidate.cooldownKey] = reserved
+	// Persist the next exit with the reservation. Another bucket and a process
+	// restart both continue after this attempt; a crash must not keep returning
+	// to the first URL. Eligibility and retry budgets remain bucket-specific.
+	next.ProxyCursor = probeProxyCursorAt(next.Config, candidate.index)
 	if err := m.commitStateLocked(next, false, ""); err != nil {
 		m.mu.Unlock()
 		m.writerMu.Unlock()
@@ -204,6 +310,7 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 	if err != nil {
 		return m.finishProbe(candidate, ProbeResponse{}, "Cannot read a valid Codex OAuth credential; sign in again or check the account", 10*time.Minute)
 	}
+	credential.ProbeVerifyCompletion = next.Config.ProbeVerifyCompletion
 	response, err := m.runProbe(credential, candidate.model, candidate.proxy)
 	if err != nil {
 		// Never return OAuth tokens or proxy credentials in transport errors.
@@ -261,17 +368,14 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 	if len(accounts) == 0 || len(models) == 0 {
 		return probeCandidate{}, ProbeResult{Action: "error", Reason: "Save the probe accounts and models first", NextCheckAt: now.Add(time.Minute)}, false
 	}
-	statics := cfg.ProbeProxies
-	if len(statics) == 0 && len(cfg.ProbeProxiesRotating) == 0 {
-		statics = []string{""}
-	}
+	total, start := probeProxyCount(cfg), probeProxyStart(cfg, m.state.ProxyCursor)
 	earlier := func(at time.Time) {
 		if at.After(now) && at.Before(result.NextCheckAt) {
 			result.NextCheckAt = at
 		}
 	}
 	var renewing, missing []probeCandidate
-	fresh, eligible := 0, 0
+	fresh, eligible, pending, paused := 0, 0, 0, 0
 	for _, selectedAccount := range accounts {
 		if available != nil && !available(selectedAccount) {
 			continue
@@ -288,41 +392,40 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 					continue
 				}
 			}
+			pending++
 			if rest := m.state.Cooldowns[accountKey(selectedAccount)]; rest.Until.After(now) {
+				paused++
 				earlier(rest.Until)
 				continue
 			}
 			var candidate probeCandidate
 			found := false
-			for index, proxy := range statics {
-				id := proxyKey(selectedAccount, selectedModel, proxy, false)
-				if rest := m.state.Cooldowns[id]; rest.Until.After(now) {
+			var budget cooldown
+			budgetLoaded := false
+			for offset := 0; offset < total; offset++ {
+				index := (start + offset) % total
+				proxy, rotating := probeProxyAt(cfg, index)
+				if rotating && !budgetLoaded {
+					budget = rotatingBudget(m.state, selectedAccount, selectedModel, now)
+					budgetLoaded = true
+				}
+				if rotating && budget.Until.After(now) && budget.Attempts >= 10 {
+					earlier(budget.Until)
+					continue
+				}
+				id := proxyKey(selectedAccount, selectedModel, proxy, rotating)
+				rest := m.state.Cooldowns[id]
+				if rest.Until.After(now) && (!rotating || rest.RenewalBucket != "") {
 					earlier(rest.Until)
 					continue
 				}
-				candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, index: index + 1, total: len(statics) + len(cfg.ProbeProxiesRotating), attempt: 1}
+				attempt := 1
+				if rotating {
+					attempt = budget.Attempts + 1
+				}
+				candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: rotating, index: index + 1, total: total, attempt: attempt}
 				found = true
 				break
-			}
-			if !found && len(cfg.ProbeProxiesRotating) > 0 {
-				budget := rotatingBudget(m.state, selectedAccount, selectedModel, now)
-				if budget.Until.After(now) && budget.Attempts >= 10 {
-					earlier(budget.Until)
-				} else {
-					for offset := 0; offset < len(cfg.ProbeProxiesRotating); offset++ {
-						index := (budget.Attempts + offset) % len(cfg.ProbeProxiesRotating)
-						proxy := cfg.ProbeProxiesRotating[index]
-						id := proxyKey(selectedAccount, selectedModel, proxy, true)
-						rest := m.state.Cooldowns[id]
-						if rest.RenewalBucket != "" && rest.Until.After(now) {
-							earlier(rest.Until)
-							continue
-						}
-						candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: true, index: len(statics) + index + 1, total: len(statics) + len(cfg.ProbeProxiesRotating), attempt: budget.Attempts + 1}
-						found = true
-						break
-					}
-				}
 			}
 			if found {
 				if hasTemplate {
@@ -365,6 +468,10 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 	}
 	if fresh == eligible*len(models) {
 		result.Action, result.Reason = "fresh", "All templates are fresh; probing resumes shortly before expiry"
+	} else if pending > 0 && paused == pending {
+		result.Action, result.Reason = "account_wait", "Pending buckets are waiting for account pauses; collection will resume automatically"
+	} else if paused > 0 {
+		result.Reason = "Pending buckets are waiting for account pauses or exit cooldowns; collection will resume automatically"
 	}
 	return probeCandidate{}, result, false
 }
@@ -391,14 +498,17 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	case failure != "":
 		result.Action, result.Reason = "error", failure
 	case response.Status == 401 || response.Status == 403:
-		result.Action, result.Reason = "error", "The upstream rejected this account; probes are paused for 55 minutes. Check sign-in and permissions"
-		rest = 55 * time.Minute
+		result.ReasonMessage = messages.New("The upstream returned HTTP %d; this account is paused for 10 minutes. Check sign-in, permissions, and the exit before retrying", response.Status)
+		result.Action, result.Reason = "error", result.ReasonMessage.Text
+		rest = probeAccountBackoff
 	case response.Status == 429:
 		result.Action, result.Reason = "error", "The upstream rate-limited this account; probes are paused for 10 minutes"
-		rest = 10 * time.Minute
+		rest = probeAccountBackoff
 	case response.Status != 200:
 		result.ReasonMessage = messages.New("The upstream returned HTTP %d; no template was harvested", response.Status)
 		result.Action, result.Reason = "error", result.ReasonMessage.Text
+	case response.CompletionFailure != "":
+		result.Action, result.Reason = "error", response.CompletionFailure
 	case len(response.Value) == next.Config.TemplateLength:
 		issued, parsed := issuedAt(response.Value)
 		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now}

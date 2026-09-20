@@ -39,6 +39,8 @@ type Config struct {
 	ProbeDropFailedProxies   bool     `json:"probe_drop_failed_proxies"`
 	ProbeDropDegradedProxies bool     `json:"probe_drop_degraded_proxies"`
 	ProbeMinProxies          int      `json:"probe_min_proxies"`
+	ProbeHourlyLimit         int      `json:"probe_hourly_limit"`
+	ProbeVerifyCompletion    bool     `json:"probe_verify_completion"`
 }
 
 func DefaultConfig() Config {
@@ -102,6 +104,7 @@ type Status struct {
 	ProbeStats          ProbeStats     `json:"probe_stats"`
 	LastProbe           ProbeResult    `json:"last_probe"`
 	ProbeProgress       ProbeProgress  `json:"probe_progress"`
+	ProbeBudget         ProbeBudget    `json:"probe_budget"`
 	PendingLearnedCount int            `json:"pending_learned_count"`
 	PersistenceError    string         `json:"persistence_error,omitempty"`
 }
@@ -125,6 +128,8 @@ type diskState struct {
 	Config       Config              `json:"config"`
 	Templates    map[string]Template `json:"templates"`
 	Cooldowns    map[string]cooldown `json:"cooldowns,omitempty"`
+	ProxyCursor  probeProxyCursor    `json:"proxy_cursor,omitzero"`
+	ProbeUsage   []probeUsage        `json:"probe_usage,omitempty"`
 }
 
 // Manager never starts goroutines or timers. Expiry and cooldown pruning run
@@ -238,6 +243,9 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 				return err
 			}
 		}
+		if err := validateProbeUsage(state.ProbeUsage); err != nil {
+			return err
+		}
 		if apply != nil {
 			if err := apply(); err != nil {
 				return err
@@ -284,6 +292,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.ProbeMinProxies < 1 || cfg.ProbeMinProxies > 2*MaxProxyPoolEntries {
 		return messages.Errorf("The minimum retained proxy count must be between 1 and 40000")
+	}
+	if cfg.ProbeHourlyLimit < 0 || cfg.ProbeHourlyLimit > 10000 {
+		return messages.Errorf("The hourly probe limit must be 0 (unlimited) or between 1 and 10000")
 	}
 	var err error
 	if cfg.Models, err = cleanList(cfg.Models, 100); err != nil {
@@ -479,7 +490,8 @@ func (m *Manager) Status() Status {
 		PendingLearnedCount: len(m.dirtyTemplates), PersistenceError: m.persistenceError,
 		ProxyConfigRevision: m.configRevisionTokenLocked(),
 		ServerTime:          now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
-		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress}
+		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress,
+		ProbeBudget: probeBudget(m.state, now)}
 }
 
 func maskSavedExit(exit string) string {

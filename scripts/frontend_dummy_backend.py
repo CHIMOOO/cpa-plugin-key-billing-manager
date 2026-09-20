@@ -619,9 +619,11 @@ TURN_STATE_CONFIG = {
     "enabled": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
     "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
     "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
+    "probe_verify_completion": False, "probe_hourly_limit": 0,
     "models": ["gpt-6-astra", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
+TURN_STATE_BUDGET_ATTEMPTS = []
 TURN_STATE_COUNTERS = {"injected": 0, "learned": 0, "passed": 0}
 TURN_STATE_LAST = {}
 TURN_STATE_UPLOADS = {}
@@ -639,6 +641,16 @@ def ui_message(key):
     return {"message": english[key], "message_key": key}
 
 
+def turn_state_budget():
+    now = time.time()
+    TURN_STATE_BUDGET_ATTEMPTS[:] = [at for at in TURN_STATE_BUDGET_ATTEMPTS if at > now - 3600]
+    limit, used = TURN_STATE_CONFIG.get("probe_hourly_limit", 0), len(TURN_STATE_BUDGET_ATTEMPTS)
+    exhausted = bool(limit and used >= limit)
+    resume = TURN_STATE_BUDGET_ATTEMPTS[used - limit] + 3600 if exhausted else 0
+    return {"limit": limit, "used": used, "remaining": max(0, limit - used) if limit else 0,
+            "exhausted": exhausted, "resumes_at": iso(datetime.fromtimestamp(resume, timezone.utc)) if resume else "0001-01-01T00:00:00Z"}
+
+
 def turn_state_view():
     config = dict(TURN_STATE_CONFIG)
     for field in ("probe_proxies", "probe_proxies_rotating"):
@@ -650,6 +662,7 @@ def turn_state_view():
             "server_time": iso(now),
             "proxy_config_revision": turn_state_revision(),
             "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
+            "probe_budget": turn_state_budget(),
             "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS, "runner": dict(TURN_STATE_RUNNER),
             "probe_progress": {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)},
             "probe_supported": True, "probe_unavailable_reason": "",
@@ -672,9 +685,12 @@ def turn_state_revision():
 
 
 def valid_turn_state_pruning(config):
-    for field in ("probe_drop_failed_proxies", "probe_drop_degraded_proxies"):
+    for field in ("probe_drop_failed_proxies", "probe_drop_degraded_proxies", "probe_verify_completion"):
         if field in config and type(config[field]) is not bool:
             return False
+    limit = config.get("probe_hourly_limit", TURN_STATE_CONFIG["probe_hourly_limit"])
+    if type(limit) is not int or not 0 <= limit <= 10000:
+        return False
     minimum = config.get("probe_min_proxies", TURN_STATE_CONFIG["probe_min_proxies"])
     return type(minimum) is int and 1 <= minimum <= 40000
 
@@ -2103,6 +2119,13 @@ class Handler(BaseHTTPRequestHandler):
                       "reason_message": {"message_key": reason["message_key"]},
                       "account": accounts[0], "model": models[0], "next_check_at": iso(now + timedelta(seconds=60))}
             if not fresh:
+                budget = turn_state_budget()
+                if budget["exhausted"]:
+                    reason = ui_message("backend.turn_state_hourly_exhausted")
+                    self.send_json(200, {"action": "budget_wait", "reason": reason["message"],
+                                        "reason_message": {"message_key": reason["message_key"]}, "next_check_at": budget["resumes_at"]})
+                    return
+                TURN_STATE_BUDGET_ATTEMPTS.append(time.time())
                 TURN_STATE_PROBE_STATS["attempts"] += 1
                 static, rotating = TURN_STATE_CONFIG["probe_proxies"], TURN_STATE_CONFIG["probe_proxies_rotating"]
                 proxy = next(iter(static or rotating), "")

@@ -26,6 +26,10 @@ func (a *App) clearTurnStateCooldowns(req ManagementRequest) (response Managemen
 	if err != nil {
 		return jsonMessageError(http.StatusBadRequest, "invalid_turn_state", messages.FromError(err))
 	}
+	// The runner may still cache the old cooldown result for up to one minute.
+	// Wake its next heartbeat, including when an in-flight tick returns later;
+	// keep normal freshness/budget checks and the operator's enabled state.
+	a.turnStateRunner.requestCheck()
 	// A successful local mutation does not depend on a host inventory refresh.
 	return JSONResponse(http.StatusOK, struct {
 		turnstate.Status

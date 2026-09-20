@@ -1307,5 +1307,55 @@
   "Cannot secure server collection settings": {
     "key": "backend.state_runner_permission_failed",
     "formats": []
+  },
+  "Strict probe verification failed: the response body exceeded 1 MiB; no template was saved": {
+    "key": "backend.turn_state_strict_body_limit",
+    "formats": []
+  },
+  "Strict probe verification failed: the response body could not be read completely within 25 seconds; no template was saved": {
+    "key": "backend.turn_state_strict_read_failed",
+    "formats": []
+  },
+  "Strict probe verification failed: unsupported response content encoding; no template was saved": {
+    "key": "backend.turn_state_strict_encoding",
+    "formats": []
+  },
+  "Strict probe verification failed: expected an SSE or JSON response; no template was saved": {
+    "key": "backend.turn_state_strict_format",
+    "formats": []
+  },
+  "Strict probe verification failed: malformed response data; no template was saved": {
+    "key": "backend.turn_state_strict_malformed",
+    "formats": []
+  },
+  "Strict probe verification failed: the upstream response failed or was incomplete; no template was saved": {
+    "key": "backend.turn_state_strict_incomplete",
+    "formats": []
+  },
+  "Strict probe verification failed: no completed response was confirmed; no template was saved": {
+    "key": "backend.turn_state_strict_no_completion",
+    "formats": []
+  },
+  "The hourly probe budget is exhausted; collection resumes when earlier attempts leave the rolling hour": {
+    "key": "backend.turn_state_hourly_exhausted",
+    "formats": []
+  },
+  "The hourly probe limit must be 0 (unlimited) or between 1 and 10000": {
+    "key": "backend.turn_state_hourly_invalid",
+    "formats": []
+  },
+  "The upstream returned HTTP %d; this account is paused for 10 minutes. Check sign-in, permissions, and the exit before retrying": {
+    "key": "backend.turn_state_account_paused",
+    "formats": [
+      "%d"
+    ]
+  },
+  "Pending buckets are waiting for account pauses; collection will resume automatically": {
+    "key": "backend.turn_state_account_wait",
+    "formats": []
+  },
+  "Pending buckets are waiting for account pauses or exit cooldowns; collection will resume automatically": {
+    "key": "backend.turn_state_waiting",
+    "formats": []
   }
 }

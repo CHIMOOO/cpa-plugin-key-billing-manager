@@ -23,7 +23,7 @@ func TestLargeFailedBucketDoesNotStarveOtherAccountsOrModels(t *testing.T) {
 	want := []string{"account-a/model-a", "account-a/model-b", "account-b/model-a", "account-b/model-b"}
 	for i := 0; i < 8; i++ {
 		result, err := m.Probe("", "", dummyCredential)
-		if err != nil || result.Action != "degraded" || result.Account+"/"+result.Model != want[i%len(want)] || result.ProxyIndex != i/4+1 {
+		if err != nil || result.Action != "degraded" || result.Account+"/"+result.Model != want[i%len(want)] || result.ProxyIndex != i+1 {
 			t.Fatalf("bucket/exit fairness attempt %d: %+v %v", i, result, err)
 		}
 		*now = now.Add(3 * time.Second)
@@ -85,7 +85,7 @@ func TestAccountRefusalStaysPausedWhenFinalPersistenceFails(t *testing.T) {
 				t.Fatal("final persistence failure was hidden")
 			}
 			*now = now.Add(3 * time.Second)
-			if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "cooling" || calls != 1 {
+			if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "account_wait" || calls != 1 {
 				t.Fatalf("disk failure re-hit a refused account: %+v %v calls=%d", result, err, calls)
 			}
 			if err := m.PersistLearned(); err != nil {
@@ -93,7 +93,7 @@ func TestAccountRefusalStaysPausedWhenFinalPersistenceFails(t *testing.T) {
 			}
 			restarted := readRestarted(t, m)
 			restarted.runProbe = m.runProbe
-			if result, err := restarted.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "cooling" {
+			if result, err := restarted.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "account_wait" {
 				t.Fatal("retried persistence did not preserve known refusal", result, err)
 			}
 			if result, err := m.Probe("account-b", "model-a", dummyCredential); err != nil || result.Account != "account-b" || calls != 2 {

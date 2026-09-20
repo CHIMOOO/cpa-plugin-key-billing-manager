@@ -88,7 +88,7 @@ func TestProbeHarvestRenewalAndAccountRefusals(t *testing.T) {
 					t.Fatalf("account refusal misclassified: %+v", result)
 				}
 				*now = now.Add(30 * time.Second)
-				if result, _ = m.Probe("", "", dummyCredential); result.Action != "cooling" || calls != 1 {
+				if result, _ = m.Probe("", "", dummyCredential); result.Action != "account_wait" || calls != 1 {
 					t.Fatalf("account refusal retried too soon: %+v", result)
 				}
 			}

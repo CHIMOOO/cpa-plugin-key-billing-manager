@@ -47,7 +47,8 @@ func codexAuthFile(file hostAuthFile) bool {
 	return provider == "codex" && file.ID != "" && file.AuthIndex != ""
 }
 
-func (a *App) getTurnState(_ ManagementRequest) ManagementResponse {
+func (a *App) getTurnState(_ ManagementRequest) (response ManagementResponse) {
+	defer func() { response.Headers.Set("Cache-Control", "private, no-store") }()
 	// Response learning publishes in memory without delaying the client on
 	// disk. This explicit management call commits pending templates; any save
 	// error remains visible in Status without flooding the plugin log.
@@ -114,7 +115,8 @@ func (a *App) probeTurnState(req ManagementRequest) ManagementResponse {
 	return a.executeTurnStateProbe(req)
 }
 
-func (a *App) executeTurnStateProbe(req ManagementRequest) ManagementResponse {
+func (a *App) executeTurnStateProbe(req ManagementRequest) (response ManagementResponse) {
+	defer func() { response.Headers.Set("Cache-Control", "private, no-store") }()
 	var input struct {
 		Account string `json:"account"`
 		Model   string `json:"model"`

@@ -17,10 +17,12 @@ import (
 // cannot restore templates or cooldowns after a configuration replacement.
 // The original version-1 main file remains readable without a migration.
 type runtimeState struct {
-	Version   int                 `json:"version"`
-	Base      string              `json:"base"`
-	Templates map[string]Template `json:"templates"`
-	Cooldowns map[string]cooldown `json:"cooldowns"`
+	Version     int                 `json:"version"`
+	Base        string              `json:"base"`
+	Templates   map[string]Template `json:"templates"`
+	Cooldowns   map[string]cooldown `json:"cooldowns"`
+	ProxyCursor probeProxyCursor    `json:"proxy_cursor,omitzero"`
+	ProbeUsage  []probeUsage        `json:"probe_usage,omitempty"`
 }
 
 func stateDigest(raw []byte) string {
@@ -32,6 +34,7 @@ func cloneState(state diskState) diskState {
 	// Config slices are immutable after publication. Configuration writers
 	// clone them before edits; runtime commits never copy the large proxy pool.
 	next := state
+	next.ProbeUsage = append([]probeUsage(nil), state.ProbeUsage...)
 	next.Templates = make(map[string]Template, len(state.Templates))
 	for k, value := range state.Templates {
 		next.Templates[k] = value
@@ -44,6 +47,7 @@ func cloneState(state diskState) diskState {
 }
 
 func pruneState(state *diskState, now time.Time) {
+	state.ProbeUsage = pruneProbeUsage(state.ProbeUsage, now)
 	for k, value := range state.Templates {
 		if k != key(value.Account, value.Model) || !usableWithConfig(value, state.Config, now) {
 			delete(state.Templates, k)
@@ -78,6 +82,8 @@ func loadRuntime(path, base string, state *diskState) error {
 		return messages.Errorf("Cannot restrict turn-state state file permissions")
 	}
 	state.Templates, state.Cooldowns = overlay.Templates, overlay.Cooldowns
+	state.ProxyCursor = overlay.ProxyCursor
+	state.ProbeUsage = overlay.ProbeUsage
 	return nil
 }
 
@@ -117,6 +123,7 @@ func (m *Manager) commitStateLocked(next diskState, full bool, clearScope string
 	base := m.baseDigest
 	full = full || m.basePath != path || base == ""
 	write := m.writeState
+	previousConfig := m.state.Config
 	if write == nil {
 		write = atomicWriteState
 	}
@@ -126,6 +133,10 @@ func (m *Manager) commitStateLocked(next diskState, full bool, clearScope string
 	var configDigest string
 	writePath := path
 	if full {
+		// Preserve the next surviving entry across configuration edits and
+		// automatic removal. The pools are immutable snapshots; reconciliation
+		// and hashing stay outside the mutex used by business requests.
+		next.ProxyCursor = reconcileProbeProxyCursor(previousConfig, next.Config, next.ProxyCursor)
 		var nonce [16]byte
 		if _, err = rand.Read(nonce[:]); err == nil {
 			next.CheckpointID = hex.EncodeToString(nonce[:])
@@ -135,7 +146,7 @@ func (m *Manager) commitStateLocked(next diskState, full bool, clearScope string
 		}
 	} else {
 		writePath += ".runtime.json"
-		raw, err = json.Marshal(runtimeState{Version: 1, Base: base, Templates: next.Templates, Cooldowns: next.Cooldowns})
+		raw, err = json.Marshal(runtimeState{Version: 1, Base: base, Templates: next.Templates, Cooldowns: next.Cooldowns, ProxyCursor: next.ProxyCursor, ProbeUsage: next.ProbeUsage})
 	}
 	if err == nil {
 		err = write(writePath, raw)

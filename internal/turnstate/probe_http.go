@@ -142,8 +142,12 @@ func doHTTPProbe(client *http.Client, endpoint string, credential Credential, mo
 	defer response.Body.Close()
 	// The state is in the final upstream response headers. A CONNECT response
 	// from an HTTP(S) proxy is handled by Transport and cannot be harvested.
-	// Closing immediately also avoids draining an unbounded SSE body and stops
-	// Client.Timeout's per-call deadline. No client or connection pool is kept
-	// between host calls, and the plugin schedules no background work.
-	return ProbeResponse{Status: response.StatusCode, Value: strings.TrimSpace(response.Header.Get(Header))}, nil
+	// Legacy mode closes immediately. Strict mode reads only this synthetic
+	// probe's bounded response until its completion event, under the same total
+	// Client.Timeout. Business responses are never buffered or inspected here.
+	result := ProbeResponse{Status: response.StatusCode, Value: strings.TrimSpace(response.Header.Get(Header))}
+	if credential.ProbeVerifyCompletion && response.StatusCode == http.StatusOK {
+		result.CompletionFailure = verifyProbeCompletion(response)
+	}
+	return result, nil
 }

@@ -239,8 +239,8 @@ func TestServerRunnerFailuresRetryWithoutClearingIntentAndBoundLogs(t *testing.T
 		status = runnerState(t, runnerTick(a, "instance-a"))
 	}
 	raw := mustMarshal(t, status)
-	if len(status.Events) != 100 || status.Events[0].Sequence != 12 || status.Events[99].Sequence != 111 || status.LastError != "" || bytes.Contains(raw, []byte("dummy-secret")) || bytes.Contains(raw, []byte("dummy-user")) {
-		t.Fatal("event ring was not bounded, ordered, or sanitized", string(raw))
+	if len(status.Events) != 100 || status.Events[0].Sequence != 12 || status.Events[99].Sequence != 111 || status.LastError != "" || !bytes.Contains(raw, []byte("socks5://dummy-user:dummy-secret@proxy.invalid:3000")) {
+		t.Fatal("event ring was not bounded, ordered, or retaining complete management proxy addresses", string(raw))
 	}
 }
 
@@ -262,6 +262,61 @@ func TestServerRunnerControlValidationAndFailedSaveRollback(t *testing.T) {
 	}
 	if response := a.setTurnStateRunner(ManagementRequest{Body: []byte(`{"enabled":true}`)}); response.StatusCode != 400 {
 		t.Fatal("started server collection without a configured account scope")
+	}
+}
+
+func TestServerRunnerProxyLogsRemainCompleteAndPrivate(t *testing.T) {
+	a, _ := runnerFixture(t)
+	runnerEnable(t, a, true)
+	const proxy = "socks5://dummy-session-b:dummy%40password@[2001:db8::1]:3000"
+	a.turnStateRunner.probe = func() ManagementResponse {
+		return JSONResponse(http.StatusOK, turnstate.ProbeResult{Action: "harvested", Exit: proxy})
+	}
+	runnerState(t, runnerTick(a, "instance-a"))
+	for _, path := range []string{routeTurnStateRunner, routeTurnState, routeTurnStateProbeProgress} {
+		response := a.routeManagement(ManagementRequest{Method: http.MethodGet}, path)
+		if response.StatusCode != http.StatusOK || response.Headers.Get("Cache-Control") != "private, no-store" {
+			t.Fatalf("management probe logs may be cached: %s %d %v", path, response.StatusCode, response.Headers)
+		}
+		if path != routeTurnStateProbeProgress && !bytes.Contains(response.Body, []byte(proxy)) {
+			t.Fatalf("management log lost the exact session-specific proxy: %s", path)
+		}
+	}
+	for _, value := range []string{"javascript:dummy-secret", "http://", "http://dummy:dummy-secret@proxy.invalid\nforged-line"} {
+		if got := sanitizeRunnerResult(turnstate.ProbeResult{Exit: value}); got.Exit != "invalid proxy" {
+			t.Fatalf("accepted an invalid proxy log address: %+v", got)
+		}
+	}
+}
+
+func TestServerRunnerCompleteProxyLogsFitCollectorResponseLimit(t *testing.T) {
+	a, now := runnerFixture(t)
+	runnerEnable(t, a, true)
+	// Valid proxy userinfo can grow sixfold in JSON. The collector must still
+	// receive complete, readable status instead of entering error backoff.
+	proxy := "socks5://dummy-session:" + strings.Repeat("&", 4000) + "@proxy.invalid:3000"
+	if err := a.turnState.Update(mustMarshal(t, map[string]any{"probe_proxies": []string{proxy}})); err != nil {
+		t.Fatal(err)
+	}
+	a.turnStateRunner.probe = func() ManagementResponse {
+		return JSONResponse(http.StatusOK, turnstate.ProbeResult{Action: "harvested", Exit: proxy})
+	}
+	var status turnStateRunnerStatus
+	for i := 0; i < 110; i++ {
+		*now = now.Add(31 * time.Second)
+		response := runnerTick(a, "instance-a")
+		if len(response.Body) >= 2<<20 {
+			t.Fatal("complete proxy logs exceeded the installed collector response limit")
+		}
+		status = runnerState(t, response)
+	}
+	if len(status.Events) == 0 || len(status.Events) >= 100 || status.Events[len(status.Events)-1].Sequence != 110 {
+		t.Fatal("byte-limited log did not retain the most recent events in order")
+	}
+	for i, event := range status.Events {
+		if event.Result.Exit != proxy || (i > 0 && event.Sequence != status.Events[i-1].Sequence+1) {
+			t.Fatal("byte pruning truncated an address or broke event ordering")
+		}
 	}
 }
 

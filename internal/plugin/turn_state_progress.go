@@ -6,6 +6,6 @@ import "net/http"
 // configuration so the UI can display the active exit during a bounded probe.
 func (a *App) getTurnStateProbeProgress(_ ManagementRequest) ManagementResponse {
 	response := JSONResponse(http.StatusOK, a.turnState.ProbeProgress())
-	response.Headers.Set("Cache-Control", "no-store")
+	response.Headers.Set("Cache-Control", "private, no-store")
 	return response
 }

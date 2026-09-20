@@ -126,7 +126,7 @@ func TestRenewalChangeCanDelayRenewalAndReturnToAutomatic(t *testing.T) {
 	}
 }
 
-func TestProbeProgressTracksActualReservedCandidateAndRedactsCredentials(t *testing.T) {
+func TestProbeProgressTracksActualReservedCandidateAndCompleteProxy(t *testing.T) {
 	m, now := newTestManager(t)
 	if err := m.Update([]byte(`{"probe_proxies":["http://dummy-user:dummy-password@static.invalid:8080"],"probe_proxies_rotating":["http://dummy-user:dummy-password@rotating.invalid:8080"]}`)); err != nil {
 		t.Fatal(err)
@@ -145,16 +145,16 @@ func TestProbeProgressTracksActualReservedCandidateAndRedactsCredentials(t *test
 	go func() { result, err := m.Probe("", "", dummyCredential); completed <- outcome{result, err} }()
 	<-started
 	progress := m.ProbeProgress()
-	if !progress.Active || progress.Result.ProxyIndex != 1 || progress.Result.ProxyTotal != 2 || progress.Result.ProxyPool != "static" || progress.Result.ProxyAttempt != 1 || progress.Result.Exit != "http://***@static.invalid:8080" {
+	if !progress.Active || progress.Result.ProxyIndex != 1 || progress.Result.ProxyTotal != 2 || progress.Result.ProxyPool != "static" || progress.Result.ProxyAttempt != 1 || progress.Result.Exit != "http://dummy-user:dummy-password@static.invalid:8080" {
 		t.Fatalf("incorrect active progress: %+v", progress)
 	}
 	encoded, _ := json.Marshal(progress)
-	if strings.Contains(string(encoded), "dummy-password") || strings.Contains(string(encoded), "dummy-user") {
-		t.Fatal("progress exposes proxy credentials")
+	if !strings.Contains(string(encoded), "http://dummy-user:dummy-password@static.invalid:8080") {
+		t.Fatal("management progress did not preserve the complete configured proxy URL")
 	}
 	close(finish)
 	first := <-completed
-	if first.err != nil || first.result.Action != "degraded" || first.result.ProxyIndex != 1 {
+	if first.err != nil || first.result.Action != "degraded" || first.result.ProxyIndex != 1 || first.result.Exit != progress.Result.Exit || m.Status().LastProbe.Exit != progress.Result.Exit {
 		t.Fatalf("first result: %+v", first)
 	}
 	if m.ProbeProgress().Active {
@@ -198,7 +198,7 @@ func TestTemplateViewShowsRemainingLifetimeAndMaskedProvenance(t *testing.T) {
 	if row.RemainingSeconds != 3000 || row.Source != "probe" || row.Exit != "http://***@proxy.invalid:8080" || !row.HarvestedAt.Equal(*now) || !status.ServerTime.Equal(*now) {
 		t.Fatalf("incorrect template metadata: %+v", row)
 	}
-	raw, _ := json.Marshal(status)
+	raw, _ := json.Marshal(status.Templates)
 	if strings.Contains(string(raw), "dummy-password") || strings.Contains(string(raw), tokenAt(issued)) {
 		t.Fatal("template table exposes credentials or token")
 	}

@@ -19,6 +19,10 @@ import (
 
 const turnStateRunnerLease = 90 * time.Second
 
+// Complete proxy URLs can expand during JSON encoding. Bound event bytes as
+// well as count so old collectors' 2 MiB response limit remains sufficient.
+const turnStateRunnerEventBytes = 1 << 20
+
 type turnStateRunnerControl struct {
 	Version  int    `json:"version"`
 	Enabled  bool   `json:"enabled"`
@@ -26,9 +30,10 @@ type turnStateRunnerControl struct {
 }
 
 type turnStateRunnerEvent struct {
-	Sequence uint64                `json:"sequence"`
-	At       time.Time             `json:"at"`
-	Result   turnstate.ProbeResult `json:"result"`
+	Sequence  uint64                `json:"sequence"`
+	At        time.Time             `json:"at"`
+	Result    turnstate.ProbeResult `json:"result"`
+	jsonBytes int
 }
 
 type turnStateRunnerStatus struct {
@@ -65,10 +70,12 @@ type turnStateRunner struct {
 	lastSeen     time.Time
 	leaseUntil   time.Time
 	nextCheck    time.Time
+	wakeRevision uint64
 	configToken  string
 	inFlight     bool
 	manual       bool
 	events       []turnStateRunnerEvent
+	eventBytes   int
 	sequence     uint64
 	lastError    string
 	stopPending  bool
@@ -134,7 +141,19 @@ func (r *turnStateRunner) installConfiguration(path string, control turnStateRun
 	r.instance, r.version, r.configToken, r.lastError = "", "", "", ""
 	r.lastSeen, r.leaseUntil, r.nextCheck = time.Time{}, time.Time{}, time.Time{}
 	r.inFlight, r.manual, r.sequence, r.events = false, false, 0, nil
+	r.eventBytes = 0
+	r.wakeRevision = 0
 	r.stopPending = false
+}
+
+// requestCheck invalidates a cached due-time hint without changing durable
+// collection intent or starting a probe. The independent collector will
+// re-evaluate normal template, cooldown, and budget rules on its next heartbeat.
+func (r *turnStateRunner) requestCheck() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.wakeRevision++
+	r.nextCheck = time.Time{}
 }
 
 func (r *turnStateRunner) statusLocked() turnStateRunnerStatus {
@@ -272,6 +291,7 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 	r.manual = false
 	probe := r.probe
 	startRevision := r.control.Revision
+	startWakeRevision := r.wakeRevision
 	r.mu.Unlock()
 	// Finalize even if a host callback panics; a failed tick must not leave a
 	// permanent active flag and silently disable a durable collection intent.
@@ -292,19 +312,31 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 				r.nextCheck = finished.Add(time.Minute)
 			}
 		}
-		if r.control.Revision != startRevision {
-			// An explicit Stop/Start during the draining request supersedes
-			// that old request's scheduling hint, but does not spawn a second.
+		if r.control.Revision != startRevision || r.wakeRevision != startWakeRevision {
+			// Stop/Start or cleared cooldowns supersede an in-flight request's
+			// scheduling hint, without admitting a second concurrent request.
 			r.nextCheck = time.Time{}
 		}
+		// Management logs describe the next scheduler check, rather than the
+		// manager's potentially much later account/exit cooldown deadline.
+		result.NextCheckAt = r.nextCheck
 		r.lastError = ""
 		if result.Action == "error" {
 			r.lastError = result.Reason
 		}
 		r.sequence++
-		r.events = append(r.events, turnStateRunnerEvent{Sequence: r.sequence, At: finished, Result: result})
-		if len(r.events) > 100 {
-			r.events = append([]turnStateRunnerEvent(nil), r.events[len(r.events)-100:]...)
+		event := turnStateRunnerEvent{Sequence: r.sequence, At: finished, Result: result}
+		encoded, _ := json.Marshal(event)
+		event.jsonBytes = len(encoded) + 1 // Include the array separator.
+		r.events = append(r.events, event)
+		r.eventBytes += event.jsonBytes
+		removed := 0
+		for len(r.events)-removed > 1 && (len(r.events)-removed > 100 || r.eventBytes > turnStateRunnerEventBytes) {
+			r.eventBytes -= r.events[removed].jsonBytes
+			removed++
+		}
+		if removed > 0 {
+			r.events = append([]turnStateRunnerEvent(nil), r.events[removed:]...)
 		}
 		out = runnerResponse(http.StatusOK, r.statusLocked())
 	}()
@@ -324,15 +356,15 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 func sanitizeRunnerResult(result turnstate.ProbeResult) turnstate.ProbeResult {
 	if result.Exit != "" && result.Exit != "direct" {
 		proxy, err := url.Parse(result.Exit)
-		if err != nil || proxy.Hostname() == "" {
+		if err != nil || proxy.Hostname() == "" ||
+			(proxy.Scheme != "http" && proxy.Scheme != "https" && proxy.Scheme != "socks5" && proxy.Scheme != "socks5h") ||
+			strings.ContainsAny(result.Exit, "\r\n\x00") {
 			result.Exit = "invalid proxy"
-		} else {
-			result.Exit = proxy.Scheme + "://" + proxy.Host
-			if proxy.User != nil {
-				result.Exit = proxy.Scheme + "://***@" + proxy.Host
-			}
 		}
 	}
+	// Recent events are returned only through authenticated, no-store management
+	// responses. Preserve the configured URL so session-specific proxies sharing
+	// a gateway remain distinguishable; collector stdout never logs these events.
 	result.Account = strings.TrimSpace(result.Account)
 	if result.ReasonMessage.IsZero() {
 		result.ReasonMessage = messages.Literal(result.Reason)
