@@ -1658,5 +1658,18 @@
   "ui.model_test_expected": "expected {value}",
   "ui.model_test_final_answer": "Final answer",
   "ui.model_test_svg_replay": "Replay animation",
-  "ui.model_test_not_passed": "Not passed"
+  "ui.model_test_not_passed": "Not passed",
+  "ui.capture_collapse": "Collapse",
+  "ui.capture_expand": "Expand",
+  "ui.capture_view_account": "Show requests of",
+  "ui.capture_view_all": "All accounts ({count})",
+  "ui.capture_model_mismatch": "The upstream declared a different model than the request",
+  "ui.capture_chat": "Conversation",
+  "ui.capture_chat_title": "Conversation #{seq}",
+  "ui.capture_chat_user": "User",
+  "ui.capture_chat_assistant": "Assistant",
+  "ui.capture_chat_reply": "This response",
+  "ui.capture_chat_image": "[Image]",
+  "ui.capture_chat_empty": "This request contains no user or assistant messages.",
+  "ui.capture_chat_unreadable": "The request body cannot be read as a conversation. It may be truncated or use an unsupported format."
 }

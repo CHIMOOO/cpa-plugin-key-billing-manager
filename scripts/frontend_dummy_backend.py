@@ -1717,7 +1717,13 @@ def capture_simulate():
             capture_touch(entry)
     if listener and CAPTURE["polls"] % 3 == 1:
         CAPTURE["seq"] += 1
-        body = json.dumps({"model": "gpt-5.4", "stream": True, "input": [{"role": "user", "content": [{"type": "input_text", "text": "Hello from request %d <b>&amp;</b>" % CAPTURE["seq"]}]}]})
+        body = json.dumps({"model": "gpt-5.4", "stream": True, "instructions": "You are a demo assistant.", "input": [
+            {"type": "message", "role": "developer", "content": [{"type": "input_text", "text": "Demo developer prompt."}]},
+            {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "<environment_context>\n  <cwd>/demo</cwd>\n</environment_context>"}]},
+            {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "What is the capital of France?"}]},
+            {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "Paris."}]},
+            {"type": "function_call", "name": "demo_tool", "arguments": "{}", "call_id": "call_demo"},
+            {"type": "message", "role": "user", "content": [{"type": "input_text", "text": "Hello from request %d <b>&amp;</b>" % CAPTURE["seq"]}]}]})
         entry = {"seq": CAPTURE["seq"], "request_id": "req-demo-%d" % CAPTURE["seq"], "attempts": 1, "auth_id": "codex-demo.json", "auth_index": listener["auth_index"], "auth_name": listener["name"],
                  "path": "/v1/responses", "source_format": "openai-response", "to_format": "codex", "model": "gpt-5.4", "requested_model": "gpt-5.4", "stream": True,
                  "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "completed_at": None,

@@ -1658,5 +1658,18 @@
   "ui.model_test_expected": "期望 {value}",
   "ui.model_test_final_answer": "最终答案",
   "ui.model_test_svg_replay": "重新播放",
-  "ui.model_test_not_passed": "未通过"
+  "ui.model_test_not_passed": "未通过",
+  "ui.capture_collapse": "收起",
+  "ui.capture_expand": "展开",
+  "ui.capture_view_account": "按账号查看",
+  "ui.capture_view_all": "全部账号（{count}）",
+  "ui.capture_model_mismatch": "上游声明的模型与请求的模型不一致",
+  "ui.capture_chat": "对话视图",
+  "ui.capture_chat_title": "对话 #{seq}",
+  "ui.capture_chat_user": "用户",
+  "ui.capture_chat_assistant": "助手",
+  "ui.capture_chat_reply": "本次回复",
+  "ui.capture_chat_image": "[图片]",
+  "ui.capture_chat_empty": "这条请求里没有用户或助手消息。",
+  "ui.capture_chat_unreadable": "请求体无法解析为对话，可能被截断或格式不受支持。"
 }

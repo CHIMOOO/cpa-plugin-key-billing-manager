@@ -1618,6 +1618,57 @@
         white-space: pre-wrap;
         overflow-wrap: anywhere;
       }
+      .capture-block-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+      .capture-block-toggle::before { content: "\25BE"; font-size: 12px; color: var(--text-secondary); transition: transform 0.15s; }
+      .capture-block-toggle[aria-expanded="false"]::before { transform: rotate(-90deg); }
+      .capture-block-toggle:hover h4 { color: var(--primary-color); }
+      .capture-list-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+      .capture-list-toolbar .native-select { max-width: 100%; }
+      .capture-model-mismatch { color: var(--amber-text); font-weight: 600; }
+      .settings-dialog.capture-chat-dialog { width: min(860px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); }
+      .capture-chat-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 10px;
+        align-items: center;
+        margin: 4px 0 12px;
+        overflow-wrap: anywhere;
+      }
+      .capture-chat {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        max-height: calc(100dvh - 220px);
+        overflow: auto;
+        padding: 4px 2px;
+      }
+      .capture-chat-message { display: grid; gap: 4px; max-width: min(88%, 680px); }
+      .capture-chat-message.is-user { align-self: flex-end; justify-items: end; }
+      .capture-chat-message.is-assistant { align-self: flex-start; justify-items: start; }
+      .capture-chat-role { font-size: 12px; color: var(--text-secondary); }
+      .capture-chat-bubble {
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        line-height: 1.6;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      .capture-chat-message.is-user .capture-chat-bubble { background: var(--count-badge-bg); border-top-right-radius: 4px; }
+      .capture-chat-message.is-assistant .capture-chat-bubble { border-top-left-radius: 4px; }
+      .capture-chat-message.is-reply .capture-chat-bubble { border-color: var(--primary-color); }
       .team-group-accounts { display: grid; gap: 8px; width: 100%; }
       .team-group-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; }
       .team-group-account-note { grid-column: 1 / -1; min-width: 0; white-space: normal; }
@@ -3299,9 +3350,14 @@
             </details>
           </div>
           <div class="capture-layout">
-            <div class="card capture-list-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_requests">Captured requests</h3><div class="row capture-list-actions"><span id="capture-count" class="small muted"></span><button id="capture-clear" class="small danger" type="button" disabled data-i18n="ui.capture_clear">Clear</button></div></div><div id="capture-list" class="capture-list"></div></div>
-            <div class="card capture-detail-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_detail">Detail</h3><div class="row capture-detail-actions"><label class="toggle-filter"><input id="capture-pretty" type="checkbox" checked /><span data-i18n="ui.capture_pretty">Format JSON</span></label><button id="capture-download-full" class="small" type="button" disabled data-i18n="ui.capture_download_full">Download full record</button></div></div><div id="capture-detail"></div></div>
+            <div class="card capture-list-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_requests">Captured requests</h3><div class="row capture-list-actions"><span id="capture-count" class="small muted"></span><button id="capture-clear" class="small danger" type="button" disabled data-i18n="ui.capture_clear">Clear</button></div></div><div class="capture-list-toolbar"><span class="native-select"><select id="capture-view-account" aria-label="Show requests of" data-i18n-aria-label="ui.capture_view_account"></select></span></div><div id="capture-list" class="capture-list"></div></div>
+            <div class="card capture-detail-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_detail">Detail</h3><div class="row capture-detail-actions"><label class="toggle-filter"><input id="capture-pretty" type="checkbox" checked /><span data-i18n="ui.capture_pretty">Format JSON</span></label><button id="capture-chat-open" class="small hidden" type="button" disabled data-i18n="ui.capture_chat">Conversation</button><button id="capture-download-full" class="small" type="button" disabled data-i18n="ui.capture_download_full">Download full record</button></div></div><div id="capture-detail"></div></div>
           </div>
+          <dialog id="capture-chat-dialog" class="settings-dialog capture-chat-dialog" aria-labelledby="capture-chat-title">
+            <div class="row spread"><h2 id="capture-chat-title" data-i18n="ui.capture_chat">Conversation</h2><button id="capture-chat-close" type="button" data-i18n="ui.state_quality_close">Close</button></div>
+            <div id="capture-chat-meta" class="capture-chat-meta"></div>
+            <div id="capture-chat" class="capture-chat"></div>
+          </dialog>
         </section>
         <section id="tab-integrations" class="hidden">
           <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.team_integrations">Integrations</h2><button id="integration-new" class="primary" type="button" disabled data-i18n="ui.team_integration_add">Add account</button></div>
@@ -7365,7 +7421,14 @@
             )
           )
         );
-        renderCollection($("team-runtime-accounts"), accounts, {
+        const pinnedAccounts = pinSelected(
+          (adminUIState.runtimePin ||= {}),
+          JSON.stringify([$("auth-provider").value, $("auth-search").value.trim(), $("auth-enabled-only").checked]),
+          accounts,
+          (item) => item.credential_ref || item.auth_index,
+          (item) => !!item.credential_ref && teamAccountSelection().has(item.credential_ref)
+        );
+        renderCollection($("team-runtime-accounts"), pinnedAccounts, {
           attrs: { class: "team-account-grid" },
           empty: m("ui.team_no_accounts"),
           render: (item) => {
@@ -7746,11 +7809,14 @@
       function modelTestProxyHost(endpoint) { return String(endpoint || "").replace(/^[a-z0-9+.-]+:\/\/(\*\*\*@)?/i, ""); }
 
       function filteredModelTestAccounts() {
-        const category = $("model-test-provider").value, query = $("model-test-search").value.trim();
-        return modelTestAccounts().filter(
+        const category = $("model-test-provider").value, query = $("model-test-search").value.trim(), state = modelTestState();
+        const matching = modelTestAccounts().filter(
           (account) =>
             (category === "all" || modelTestProvider(account) === category) &&
             matchesTerm([account.name, account.provider, account.auth_index, account.source, account.proxy].join(" "), query)
+        );
+        return pinSelected((state.accountPin ||= {}), JSON.stringify([category, query]), matching, modelTestAccountKey, (account) =>
+          state.selected.has(modelTestAccountKey(account))
         );
       }
 
@@ -8462,6 +8528,8 @@
         applying: false,
         applyFailed: false,
         masked: true,
+        viewAccount: "",
+        accountPin: {},
         titleClicks: 0,
         titleClickAt: 0,
         error: ""
@@ -8639,6 +8707,7 @@
         if (captureState.titleClicks < 10) return;
         captureState.titleClicks = 0;
         captureState.masked = !captureState.masked;
+        if (captureState.masked && $("capture-chat-dialog").open) $("capture-chat-dialog").close();
         renderCaptureDetail();
       }
 
@@ -8732,6 +8801,13 @@
         return requested && model && requested !== model ? requested + " → " + model : requested || model;
       }
 
+      // Only the model the upstream declared is compared; router aliases are expected.
+      function captureModelMismatch(row) {
+        const declared = String(row.response_model || "").trim().toLowerCase();
+        if (!declared) return false;
+        return ![row.model, row.requested_model].some((model) => String(model || "").trim().toLowerCase() === declared);
+      }
+
       function captureStatusLabel(row) {
         if (row.moved_away) return String(m("ui.capture_moved_away"));
         if (row.rejected) return m("ui.capture_rejected") + (row.status_code ? " " + row.status_code : "");
@@ -8794,8 +8870,33 @@
         return parts.join("\n");
       }
 
-      function captureBlock(title, text, filename) {
-        const pre = el("pre", { class: "capture-pre", tabindex: "0" }, text);
+      function captureCollapsed() {
+        const value = viewPreference("admin", "capture.collapsed", {});
+        return value && !Array.isArray(value) ? value : {};
+      }
+
+      // Each part's collapsed state is remembered in this browser.
+      function captureBlock(part, title, text, filename) {
+        const collapsed = !!captureCollapsed()[part];
+        const pre = el("pre", { class: "capture-pre" + (collapsed ? " hidden" : ""), tabindex: "0" }, text);
+        const toggle = el(
+          "button",
+          {
+            type: "button",
+            class: "capture-block-toggle",
+            "aria-expanded": String(!collapsed),
+            title: m(collapsed ? "ui.capture_expand" : "ui.capture_collapse"),
+            onclick: () => {
+              const next = { ...captureCollapsed(), [part]: !pre.classList.contains("hidden") };
+              if (!next[part]) delete next[part];
+              saveViewPreference("admin", "capture.collapsed", next);
+              pre.classList.toggle("hidden", !!next[part]);
+              toggle.setAttribute("aria-expanded", String(!next[part]));
+              toggle.title = m(next[part] ? "ui.capture_expand" : "ui.capture_collapse");
+            }
+          },
+          el("h4", { text: title })
+        );
         const copy = el("button", {
           type: "button",
           class: "small",
@@ -8812,7 +8913,7 @@
           text: m("ui.capture_download"),
           onclick: () => downloadCaptureText(filename, text)
         });
-        return [el("div", { class: "capture-block-head" }, el("h4", { text: title }), el("div", { class: "row" }, copy, download)), pre];
+        return [el("div", { class: "capture-block-head" }, toggle, el("div", { class: "row" }, copy, download)), pre];
       }
 
       function renderCaptureDetail() {
@@ -8820,6 +8921,9 @@
         const row = captureState.rows.get(captureState.selected);
         const pretty = $("capture-pretty").checked;
         $("capture-download-full").disabled = !row || !detail;
+        $("capture-chat-open").classList.toggle("hidden", captureState.masked);
+        $("capture-chat-open").disabled = captureState.masked || !row || !detail;
+        if ($("capture-chat-dialog").open) renderCaptureChat();
         const signature = row ? [row.seq, detail?.revision ?? "", pretty, captureState.masked, locale()].join(":") : locale();
         if (captureState.shown === signature && target.childElementCount) return;
         // Keep the reader's position while a streamed response grows.
@@ -8839,7 +8943,11 @@
             ? el("span", { class: "small muted", text: detail.requested_model + " →" })
             : null,
           detail.response_model
-            ? el("span", { class: "tag ok", text: m("ui.capture_response_model", { model: detail.response_model }) })
+            ? el("span", {
+                class: "tag " + (captureModelMismatch(detail) ? "warn" : "ok"),
+                title: captureModelMismatch(detail) ? m("ui.capture_model_mismatch") : null,
+                text: m("ui.capture_response_model", { model: detail.response_model })
+              })
             : null,
           detail.source_format
             ? el("span", { class: "small muted", text: detail.source_format + (detail.to_format ? " → " + detail.to_format : "") })
@@ -8849,16 +8957,21 @@
           detail.chunks ? el("span", { class: "small muted", text: m("ui.capture_chunks", { count: detail.chunks }) }) : null,
           captureStatusTag(row)
         ];
-        const blocks = [...captureBlock(m("ui.capture_request"), captureRequestText(detail, pretty), captureFileName(detail, "request"))];
+        const blocks = [
+          ...captureBlock("request", m("ui.capture_request"), captureRequestText(detail, pretty), captureFileName(detail, "request"))
+        ];
         if (detail.upstream_body?.size)
           blocks.push(
             ...captureBlock(
+              "upstream",
               m("ui.capture_upstream_body"),
               captureBodyText(detail.upstream_body, pretty),
               captureFileName(detail, "upstream")
             )
           );
-        blocks.push(...captureBlock(m("ui.capture_response"), captureResponseText(detail, pretty), captureFileName(detail, "response")));
+        blocks.push(
+          ...captureBlock("response", m("ui.capture_response"), captureResponseText(detail, pretty), captureFileName(detail, "response"))
+        );
         target.replaceChildren(el("div", { class: "capture-meta" }, meta), ...blocks);
         if (!sameRow) return;
         target.querySelectorAll(".capture-pre").forEach((pre, index) => {
@@ -8867,10 +8980,163 @@
         });
       }
 
+      // The conversation view reads the captured bodies in the browser. It shows
+      // only user and assistant text: system and developer prompts, tools and
+      // tool calls, reasoning and injected context blocks are left out.
+      function captureChatParts(content) {
+        if (typeof content === "string") return [content];
+        if (!Array.isArray(content)) return [];
+        return content.flatMap((part) => {
+          if (typeof part === "string") return [part];
+          if (!part || typeof part !== "object" || part.thought) return [];
+          if (["input_text", "output_text", "text"].includes(part.type) || (!part.type && typeof part.text === "string"))
+            return typeof part.text === "string" ? [part.text] : [];
+          if (["input_image", "image_url", "image"].includes(part.type) || part.inlineData || part.inline_data)
+            return [String(m("ui.capture_chat_image"))];
+          return [];
+        });
+      }
+
+      function captureChatInjected(text) {
+        const value = text.trim();
+        return !value || /^<([a-zA-Z][\w-]*)[^>]*>[\s\S]*<\/\1>$/.test(value) || /^#\s*AGENTS\.md instructions/i.test(value);
+      }
+
+      function captureChatMessage(role, content) {
+        const kind = role === "user" ? "user" : ["assistant", "model"].includes(role) ? "assistant" : "";
+        if (!kind) return null;
+        const parts = captureChatParts(content).filter((text) => kind === "assistant" || !captureChatInjected(text));
+        const text = parts.join("\n\n").trim();
+        return text ? { role: kind, text } : null;
+      }
+
+      function captureChatMessages(text) {
+        let body;
+        try { body = JSON.parse(text || ""); } catch (_) { return null; }
+        if (!body || typeof body !== "object") return null;
+        let messages = [];
+        if (typeof body.input === "string") messages = [captureChatMessage("user", body.input)];
+        else if (Array.isArray(body.input))
+          messages = body.input.map((item) =>
+            item && (item.type === "message" || (!item.type && item.role)) ? captureChatMessage(item.role, item.content) : null
+          );
+        else if (Array.isArray(body.messages)) messages = body.messages.map((item) => captureChatMessage(item?.role, item?.content));
+        else if (Array.isArray(body.contents))
+          messages = body.contents.map((item) => captureChatMessage(item?.role || "user", item?.parts));
+        else return null;
+        return messages.filter(Boolean);
+      }
+
+      function captureReplyEvents(text) {
+        if (/^\s*[{[]/.test(text)) { try { return [JSON.parse(text)]; } catch (_) {} }
+        const events = [];
+        for (const line of text.split("\n")) {
+          const match = /^data:\s?(.*)$/.exec(line.trim());
+          if (!match || !match[1] || match[1] === "[DONE]") continue;
+          try { events.push(JSON.parse(match[1])); } catch (_) {}
+        }
+        return events;
+      }
+
+      function captureReplyText(body) {
+        let streamed = "", final = "";
+        const outputText = (output) =>
+          (Array.isArray(output) ? output : []).filter((item) => item?.type === "message").flatMap((item) => captureChatParts(item.content))
+            .join("\n\n");
+        for (const event of captureReplyEvents(body?.text || "")) {
+          if (!event || typeof event !== "object") continue;
+          if (event.type === "response.output_text.delta" && typeof event.delta === "string") streamed += event.delta;
+          else if (event.type === "content_block_delta" && typeof event.delta?.text === "string") streamed += event.delta.text;
+          else if (Array.isArray(event.choices)) {
+            for (const choice of event.choices) {
+              const value = choice?.delta?.content ?? choice?.message?.content;
+              if (typeof value === "string") streamed += value;
+            }
+          } else if (Array.isArray(event.candidates)) streamed += captureChatParts(event.candidates[0]?.content?.parts).join("");
+          const response = event.object === "response" ? event : String(event.type || "").startsWith("response.") ? event.response : null;
+          if (response?.output) final = outputText(response.output) || final;
+          if (event.type === "message" && event.role === "assistant") final = captureChatParts(event.content).join("\n\n") || final;
+        }
+        return (streamed || final).trim();
+      }
+
+      function renderCaptureChat() {
+        const detail = captureState.detail, row = captureState.rows.get(captureState.selected);
+        const target = $("capture-chat");
+        if (captureState.masked || !detail || !row) return void $("capture-chat-dialog").close();
+        const signature = [detail.seq, detail.revision, locale()].join(":");
+        if (target.dataset.shown === signature) return;
+        const follow = !target.dataset.shown || target.scrollHeight - target.scrollTop - target.clientHeight < 24;
+        const sameRow = (target.dataset.shown || "").split(":")[0] === String(detail.seq);
+        target.dataset.shown = signature;
+        setText($("capture-chat-title"), m("ui.capture_chat_title", { seq: detail.seq }));
+        $("capture-chat-meta").replaceChildren(
+          ...[
+            detail.auth_name || detail.auth_index ? el("span", { class: "small", text: detail.auth_name || detail.auth_index }) : null,
+            captureModelText(detail) ? el("span", { class: "tag plain", text: captureModelText(detail) }) : null,
+            detail.response_model
+              ? el("span", {
+                  class: "tag " + (captureModelMismatch(detail) ? "warn" : "ok"),
+                  text: m("ui.capture_response_model", { model: detail.response_model })
+                })
+              : null,
+            captureStatusTag(row)
+          ].filter(Boolean)
+        );
+        let messages = captureChatMessages(detail.request_body?.text);
+        if (messages === null && detail.upstream_body?.size) messages = captureChatMessages(detail.upstream_body.text);
+        const bubble = (message, reply = false) =>
+          el(
+            "div",
+            { class: "capture-chat-message is-" + message.role + (reply ? " is-reply" : "") },
+            el("span", {
+              class: "capture-chat-role",
+              text: m(reply ? "ui.capture_chat_reply" : message.role === "user" ? "ui.capture_chat_user" : "ui.capture_chat_assistant")
+            }),
+            el("div", { class: "capture-chat-bubble", text: message.text })
+          );
+        const children = (messages || []).map((message) => bubble(message));
+        const reply = captureReplyText(detail.response_body);
+        if (reply) children.push(bubble({ role: "assistant", text: reply }, true));
+        else if (!detail.completed_at && !detail.moved_away) children.push(el("div", { class: "empty", text: m("ui.capture_waiting") }));
+        if (!children.length)
+          children.push(el("div", { class: "empty", text: m(messages === null ? "ui.capture_chat_unreadable" : "ui.capture_chat_empty") }));
+        const top = target.scrollTop;
+        target.replaceChildren(...children);
+        target.scrollTop = follow || !sameRow ? target.scrollHeight : top;
+      }
+
+      function openCaptureChat() {
+        if (captureState.masked || !captureState.detail) return;
+        delete $("capture-chat").dataset.shown;
+        $("capture-chat-dialog").showModal();
+        renderCaptureChat();
+      }
+
       function downloadCaptureRecord() {
         const detail = captureState.detail, row = captureState.rows.get(captureState.selected);
         if (!detail || !row) return;
         downloadCaptureText(captureFileName(detail, "full"), captureFullRecord(detail, row, $("capture-pretty").checked));
+      }
+
+      // Selected entries move to the top when a list is first shown or its
+      // search or filter changes. Ticking a box never moves the row under the
+      // pointer; the next search or filter change pins it.
+      function pinSelected(memo, key, items, idOf, isSelected) {
+        if (memo.pinKey !== key || !memo.pinned) {
+          memo.pinKey = key;
+          memo.pinned = new Set();
+          memo.pinSeen = new Set();
+        }
+        for (const item of items) {
+          const id = idOf(item);
+          if (memo.pinSeen.has(id)) continue;
+          memo.pinSeen.add(id);
+          if (isSelected(item)) memo.pinned.add(id);
+        }
+        if (!memo.pinned.size) return items;
+        const pinned = items.filter((item) => memo.pinned.has(idOf(item)));
+        return pinned.length ? [...pinned, ...items.filter((item) => !memo.pinned.has(idOf(item)))] : items;
       }
 
       function filteredCaptureAccounts() {
@@ -8881,12 +9147,18 @@
           if (!accounts.some((account) => account.auth_index === listener.auth_index))
             accounts.push({ auth_index: listener.auth_index, name: listener.name || listener.auth_index, provider: "" });
         const term = $("capture-account-search").value.trim(), filter = $("capture-account-filter").value;
-        return accounts.filter(
+        const matching = accounts.filter(
           (account) =>
             matchesTerm([account.name, account.auth_index, account.provider].join(" "), term) &&
             (filter === "listening" ? listening.has(account.auth_index) : filter !== "enabled" || !account.disabled)
-        )
-          .map((account) => ({ ...account, listener: listening.get(account.auth_index) }));
+        );
+        return pinSelected(
+          captureState.accountPin,
+          JSON.stringify([term, filter]),
+          matching,
+          (account) => account.auth_index,
+          (account) => listening.has(account.auth_index)
+        ).map((account) => ({ ...account, listener: listening.get(account.auth_index) }));
       }
 
       function renderCaptureAccounts() {
@@ -8953,6 +9225,30 @@
         return accounts.length;
       }
 
+      // Requests can be read as one pool or per account; the account column
+      // is dropped while a single account is shown.
+      function renderCaptureViewAccounts(rows) {
+        const select = $("capture-view-account"), names = new Map(), counts = new Map();
+        for (const listener of captureListeners()) names.set(listener.auth_index, listener.name || listener.auth_index);
+        for (const row of rows) {
+          if (!row.auth_index) continue;
+          if (!names.has(row.auth_index) || row.auth_name) names.set(row.auth_index, row.auth_name || row.auth_index);
+          counts.set(row.auth_index, (counts.get(row.auth_index) || 0) + 1);
+        }
+        if (captureState.viewAccount && !names.has(captureState.viewAccount)) captureState.viewAccount = "";
+        const options = [["", m("ui.capture_view_all", { count: rows.length })]];
+        for (const [index, name] of [...names].sort((left, right) => String(left[1]).localeCompare(String(right[1]))))
+          options.push([index, name + " (" + (counts.get(index) || 0) + ")"]);
+        const signature = JSON.stringify([options, captureState.viewAccount]);
+        if (select.dataset.shown !== signature) {
+          select.dataset.shown = signature;
+          select.replaceChildren(
+            ...options.map(([value, text]) => el("option", { value, text, selected: value === captureState.viewAccount }))
+          );
+        }
+        return captureState.viewAccount;
+      }
+
       function renderTrafficCapture() {
         const resource = resources.admin.trafficCapture;
         if (resource.value && resource.value !== captureState.source) {
@@ -9005,16 +9301,18 @@
             size: formatCaptureBytes(limits.max_body_bytes || 2 * 1024 * 1024)
           })
         );
-        const rows = [...captureState.rows.values()].sort((left, right) => right.seq - left.seq);
+        const allRows = [...captureState.rows.values()].sort((left, right) => right.seq - left.seq);
+        const view = renderCaptureViewAccounts(allRows);
+        const rows = view ? allRows.filter((row) => row.auth_index === view) : allRows;
         setText($("capture-count"), rows.length ? m("ui.capture_count", { count: rows.length }) : "");
         renderCollection($("capture-list"), rows, {
           headers: [
             m("ui.time"),
-            m("ui.capture_account_column"),
+            view ? null : m("ui.capture_account_column"),
             m("ui.model"),
             m("ui.capture_status"),
             { label: m("ui.capture_size"), num: true }
-          ],
+          ].filter(Boolean),
           empty: m("ui.capture_empty"),
           render: (row) =>
             el(
@@ -9032,13 +9330,17 @@
                 }
               },
               el("td", { text: window.billingI18n.date(row.started_at, { timeStyle: "medium", hour12: false }) }),
-              el("td", { class: "capture-cell-account small", text: row.auth_name || row.auth_index || "" }),
+              view ? null : el("td", { class: "capture-cell-account small", text: row.auth_name || row.auth_index || "" }),
               el(
                 "td",
                 { class: "capture-cell-model" },
                 el("div", { text: captureModelText(row) }),
                 row.response_model
-                  ? el("div", { class: "small muted", text: m("ui.capture_upstream_model", { model: row.response_model }) })
+                  ? el("div", {
+                      class: "small " + (captureModelMismatch(row) ? "capture-model-mismatch" : "muted"),
+                      title: captureModelMismatch(row) ? m("ui.capture_model_mismatch") : null,
+                      text: m("ui.capture_upstream_model", { model: row.response_model })
+                    })
                   : null
               ),
               el("td", {}, captureStatusTag(row), row.stream ? el("div", { class: "small muted", text: m("ui.capture_stream") }) : null),
@@ -10576,7 +10878,14 @@
           )
         );
         const providers = choices.filter((item) => item.kind === "provider");
-        const concrete = choices.filter((item) => item.kind !== "provider");
+        const concrete = pinSelected(
+          (selection.pins ||= {}),
+          JSON.stringify([kind, term, selection.credentialCategory || "", selection.credentialView || ""]),
+          choices.filter((item) => item.kind !== "provider"),
+          (item) => item.kind + ":" + item.value,
+          (item) =>
+            item.kind === "route" ? selection.routeIDs.has(item.value) : routeChoiceState(selection, item.kind, item.value) !== "none"
+        );
         const visibleSelected = choices.filter((item) =>
           item.kind === "route" ? selection.routeIDs.has(item.value) : routeChoiceState(selection, item.kind, item.value) !== "none"
         ).length;
@@ -11569,10 +11878,17 @@
           if (!accounts.some((item) => item.account === account))
             accounts.push({ account, label: m("ui.saved_unavailable_account", { account }), unavailable: true });
         const term = $("turn-state-account-search").value.trim(), filter = $("turn-state-account-filter").value;
-        return accounts.filter(
+        const matching = accounts.filter(
           (item) =>
             matchesTerm((item.label || "") + " " + item.account, term) &&
             (filter === "selected" ? selected.has(item.account) : filter !== "enabled" || (!item.disabled && !item.unavailable))
+        );
+        return pinSelected(
+          (adminUIState.turnStateAccountPin ||= {}),
+          JSON.stringify([term, filter]),
+          matching,
+          (item) => item.account,
+          (item) => selected.has(item.account)
         );
       }
       function renderTurnStateAccounts(busy = false) {
@@ -15374,6 +15690,12 @@
       $("capture-hooks-apply").onclick = () => guard(applyCaptureHooks);
       $("capture-pretty").onchange = () => renderCaptureDetail();
       $("capture-download-full").onclick = downloadCaptureRecord;
+      $("capture-view-account").onchange = (event) => {
+        captureState.viewAccount = event.target.value;
+        renderTrafficCapture();
+      };
+      $("capture-chat-open").onclick = openCaptureChat;
+      $("capture-chat-close").onclick = () => $("capture-chat-dialog").close();
       $("risk-clear-hashes").onclick = () => guard(() => clearRiskData("hashes"));
       $("risk-clear-events").onclick = () => guard(() => clearRiskData("events"));
       for (const field of RISK_FIELDS)
