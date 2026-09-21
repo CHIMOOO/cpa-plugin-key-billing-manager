@@ -14,6 +14,8 @@ import (
 	"time"
 	"unicode"
 	"unicode/utf8"
+
+	"cpa-key-billing/internal/billing"
 )
 
 // Traffic capture is an operator debugging view. It records what this plugin's
@@ -568,6 +570,10 @@ func (a *App) captureAccounts() ([]captureAccount, map[string]hostAuthFile, erro
 			continue
 		}
 		view := modelTestAccountView(file)
+		// Like the other account lists, hide auth files CPA reports without an email.
+		if view.Source == billing.CredentialSourceAuthFiles && cleanText(file.Email) == "" {
+			continue
+		}
 		accounts = append(accounts, captureAccount{AuthIndex: file.AuthIndex, Name: view.Name, Provider: view.Provider, Disabled: view.Disabled})
 		byIndex[file.AuthIndex] = file
 	}

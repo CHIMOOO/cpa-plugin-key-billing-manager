@@ -232,3 +232,33 @@ func TestTrafficCaptureRecordsTheUpstreamResponseModel(t *testing.T) {
 		}
 	}
 }
+
+func TestTrafficCaptureHidesAuthFilesWithoutEmail(t *testing.T) {
+	app := newConfiguredApp(t)
+	files := []hostAuthFile{
+		{ID: "dummy-mail", AuthIndex: "index-mail", Type: "codex", Source: "file", Email: "dummy@example.invalid"},
+		{ID: "dummy-blank", AuthIndex: "index-blank", Type: "codex", Source: "file"},
+		{ID: "dummy-config", AuthIndex: "index-config", Provider: "openai", Source: "config", Label: "dummy-provider"},
+	}
+	app.SetHostCaller(func(method string, payload any) (json.RawMessage, error) {
+		return mustMarshal(t, hostAuthListResponse{Files: files}), nil
+	})
+	response := callManagement(t, app, http.MethodGet, "/traffic-capture", url.Values{"accounts": {"1"}}, nil)
+	var view struct {
+		Accounts []captureAccount `json:"accounts"`
+	}
+	if json.Unmarshal(response.Body, &view) != nil {
+		t.Fatalf("status = %s", response.Body)
+	}
+	got := []string{}
+	for _, account := range view.Accounts {
+		got = append(got, account.AuthIndex)
+	}
+	if strings.Join(got, ",") != "index-config,index-mail" {
+		t.Fatalf("accounts = %v", got)
+	}
+	watch := callManagement(t, app, http.MethodPost, "/traffic-capture/watch", nil, map[string]any{"auth_index": "index-blank"})
+	if watch.StatusCode != http.StatusBadRequest {
+		t.Fatalf("hidden account accepted: %d %s", watch.StatusCode, watch.Body)
+	}
+}
