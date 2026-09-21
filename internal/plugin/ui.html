@@ -1728,7 +1728,14 @@
       .state-collector-card .state-metrics { margin: 14px 0 0; }
       .state-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 16px; position: sticky; top: 8px; z-index: 3; }
       .state-nav button { white-space: normal; line-height: 1.3; }
-      .state-setting-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 14px 0; }
+      .state-setting-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 16px;
+        margin: 14px 0;
+      }
       .state-setting-row > span { font-weight: 600; }
       .state-mode { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(420px, 100%); margin: 0; }
       .state-toggle-list { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 14px 0; }
@@ -10588,7 +10595,9 @@
           m(
             state.config.suspended
               ? "ui.state_suspended_badge"
-              : !state.config.enabled ? "ui.state_disabled_badge" : state.config.dry_run ? "ui.state_observe_badge" : "ui.state_inject_badge"
+              : !state.config.enabled
+                ? "ui.state_disabled_badge"
+                : state.config.dry_run ? "ui.state_observe_badge" : "ui.state_inject_badge"
           )
         );
         setText($("turn-state-draft-status"), adminUIState.turnStateDirty ? m("ui.state_apply_unsaved") : m("ui.state_apply_saved"));
@@ -14147,7 +14156,8 @@
       });
       $("team-require-state").onchange = () => guard(saveTeamStateGate);
       $("turn-state-master").onchange = () => guard(saveTurnStateMaster);
-      for (const tab of document.querySelectorAll("#tab-turn-state [data-state-view]")) tab.onclick = () => showTurnStateView(tab.dataset.stateView);
+      for (const tab of document.querySelectorAll("#tab-turn-state [data-state-view]"))
+        tab.onclick = () => showTurnStateView(tab.dataset.stateView);
       for (const button of document.querySelectorAll("[data-state-mode]"))
         button.onclick = () => {
           const enabled = $("turn-state-enabled"), mode = button.dataset.stateMode;
