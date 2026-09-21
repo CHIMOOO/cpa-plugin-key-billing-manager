@@ -1495,15 +1495,25 @@ TEAM_DEVICE_LOGINS = {}
 TEAM_NATIVE_CHANNELS = {"codex-api-key": [{"prefix": "other-codex", "api-key": "sk-dummy-codex", "extra-preserve": 123}], "claude-api-key": [{"prefix": "other-claude", "api-key": "sk-dummy-claude", "extra-preserve": 456}]}
 TEAM_NATIVE_CHANNELS["codex-api-key"][0].update({"auth-index": "model-demo-native-codex", "models": [{"name": "gpt-6-astra", "alias": "demo-astra"}]})
 MODEL_TESTS = {}
+DUMMY_PELICAN_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260">
+<rect width="400" height="260" fill="#dff1ff"/>
+<g><rect x="0" y="222" width="800" height="38" fill="#8fbf6a"/><animateTransform attributeName="transform" type="translate" from="0 0" to="-400 0" dur="4s" repeatCount="indefinite"/></g>
+<g transform="translate(120 190)"><circle r="34" fill="none" stroke="#333" stroke-width="5"/><g><line x1="-34" y1="0" x2="34" y2="0" stroke="#555" stroke-width="2"/><line x1="0" y1="-34" x2="0" y2="34" stroke="#555" stroke-width="2"/><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="1s" repeatCount="indefinite"/></g></g>
+<g transform="translate(280 190)"><circle r="34" fill="none" stroke="#333" stroke-width="5"/><g><line x1="-34" y1="0" x2="34" y2="0" stroke="#555" stroke-width="2"/><line x1="0" y1="-34" x2="0" y2="34" stroke="#555" stroke-width="2"/><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="1s" repeatCount="indefinite"/></g></g>
+<path d="M120 190 L190 190 L250 130 L160 130 Z M250 130 L280 190 M250 130 L262 105" fill="none" stroke="#c0392b" stroke-width="6" stroke-linejoin="round"/>
+<g><ellipse cx="200" cy="105" rx="46" ry="30" fill="#fafafa" stroke="#333" stroke-width="3"/><circle cx="238" cy="68" r="18" fill="#fafafa" stroke="#333" stroke-width="3"/><path d="M252 64 L318 78 L252 84 Q262 96 250 98 Z" fill="#f5b041" stroke="#b9770e" stroke-width="2"/><circle cx="243" cy="63" r="3" fill="#222"/><animateTransform attributeName="transform" type="translate" values="0 0;0 -5;0 0" dur="0.5s" repeatCount="indefinite"/></g>
+<g transform="translate(190 190)"><g><line x1="0" y1="0" x2="0" y2="-18" stroke="#333" stroke-width="4"/><circle cx="0" cy="-18" r="5" fill="#f5b041"/><animateTransform attributeName="transform" type="rotate" from="0" to="360" dur="1s" repeatCount="indefinite"/></g></g>
+</svg>"""
 MODEL_TEST_PRESETS = json.loads((UI_PATH.parent / "model_test_presets.json").read_text(encoding="utf-8"))
 
 
 def model_test_catalog(include_native=False):
     accounts = [{"auth_index": file["auth_index"], "credential_ref": dummy_state_credential_ref(file["credential_ref"]), "name": file["name"],
                  "provider": file["category"], "source": "auth-files", "disabled": file["disabled"],
+                 "proxy": "socks5://***@proxy-%d.example.com:1080" % index if index % 2 == 0 and file["category"] == "codex" else "",
                  "supported": file["category"] == "codex",
                  "reason": "Only Codex OAuth is supported for file-account tests" if file["category"] != "codex" else ""}
-                for file in AUTH_FILES]
+                for index, file in enumerate(AUTH_FILES)]
     for item in CREDENTIALS:
         if item["provider"] == "codex" and item["source"] == "auth-files" and not any(file["credential_ref"] == item["ref"] for file in AUTH_FILES):
             accounts.append({"auth_index": dummy_state_auth_index(item), "credential_ref": dummy_state_credential_ref(item["ref"]),
@@ -1516,7 +1526,7 @@ def model_test_catalog(include_native=False):
                      "name": "Disabled account demo", "provider": "codex", "source": "auth-files",
                      "supported": True, "disabled": True})
     return {"accounts": accounts, "presets": MODEL_TEST_PRESETS, "usage_available": False,
-            "limits": {"max_active": 4, "max_prompt_bytes": 8192, "lease_seconds": 90,
+            "limits": {"max_active": 8, "max_prompt_bytes": 8192, "lease_seconds": 90,
                        "send_within_seconds": 10, "max_response_bytes": 1048576}}
 
 
@@ -1544,6 +1554,7 @@ def prepare_dummy_model_test(body):
         return 400, {"error": {"message": "Invalid proxy; no direct fallback is allowed"}}
     test_id = f"{time.time_ns():048x}"
     MODEL_TESTS[test_id] = {"preset": preset["id"], "account": account, "model": model, "requested_model": body["model"]}
+    time.sleep(0.05)
     now = datetime.now(timezone.utc)
     return 200, {"test_id": test_id, "start_before": iso(now + timedelta(seconds=10)),
                  "expires_at": iso(now + timedelta(seconds=90)), "lease_expires_at": iso(now + timedelta(seconds=90)),
@@ -1611,10 +1622,13 @@ def complete_dummy_model_test(body):
         return 200, dict(result, reason="No supported model text output")
     result.update(outcome="completed", output=output[:16384], output_truncated=len(output) > 16384)
     preset = next((item for item in MODEL_TEST_PRESETS if item["id"] == lease["preset"]), {})
-    expected = preset.get("expected") if preset.get("assertion") == "Exact JSON object" else None
-    if expected is not None:
-        passed = not result["output_truncated"] and model_test_exact_json(output, expected)
-        result["assertions"] = [{"name": "Exact JSON object", "passed": passed, "expected": expected}]
+    if preset.get("assertion") == "Final answer":
+        answers = re.findall(r"(?:最终答案|final answer)[*_\s]*[:：][*_\s]*(\d+)", output, re.I)
+        passed = not result["output_truncated"] and bool(answers) and answers[-1].lstrip("0") == preset["expected"]
+        result["assertions"] = [{"name": "Final answer", "passed": passed, "expected": preset["expected"]}]
+    elif preset.get("assertion") == "Exact JSON object":
+        passed = not result["output_truncated"] and model_test_exact_json(output, preset["expected"])
+        result["assertions"] = [{"name": "Exact JSON object", "passed": passed, "expected": preset["expected"]}]
     return 200, result
 
 def team_account_runtime():
@@ -1740,7 +1754,7 @@ def payload_for(path, query):
     if path == f"{API_BASE}/model-tests":
         return model_test_catalog()
     if path == "/v0/management/proxy-url":
-        return {"proxy-url": ""}
+        return {"proxy-url": "http://gateway.example.com:8080"}
     if path == "/v0/management/gemini-api-key":
         return {"gemini-api-key": []}
     if path == f"{API_BASE}/account-runtime":
@@ -2371,10 +2385,20 @@ class Handler(BaseHTTPRequestHandler):
             if body.get("url") == "https://model-test.dummy.invalid/responses":
                 prompt = json.loads(body.get("data", "{}")).get("input", "")
                 preset = next((item["id"] for item in MODEL_TEST_PRESETS if item["prompt"] == prompt), "free")
-                entry = next((item for item in MODEL_TEST_PRESETS if item["id"] == preset), {})
-                output = entry.get("expected") or {"code": "function firstUniqueChar(text) { return null; } // Demo response; review manually.",
-                          "pelican": '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180" viewBox="0 0 320 180"><circle cx="90" cy="125" r="35" fill="none" stroke="black"/><circle cx="235" cy="125" r="35" fill="none" stroke="black"/><text x="20" y="30">Dummy pelican preview</text></svg>'}.get(preset, "Dummy model response for your custom prompt.")
-                self.send_json(200, {"status_code": 200, "body": json.dumps({"output_text": output, "model": json.loads(body.get("data", "{}")).get("model", "")})})
+                time.sleep(random.uniform(0.6, 2.4))
+                model = json.loads(body.get("data", "{}")).get("model", "")
+                if random.random() < 0.08:
+                    self.send_json(200, {"status_code": 502, "body": '{"error":{"message":"dummy upstream failure"}}'})
+                    return
+                if preset == "candy":
+                    answer = 21 if random.random() < 0.7 else random.choice([18, 19, 22, 23])
+                    output = "按形状分别考虑最坏情况：\n圆形最多取到只含西瓜和单一口味……\n五角星形同理……\n\n最终答案：%d" % answer
+                elif preset == "pelican":
+                    output = DUMMY_PELICAN_SVG
+                else:
+                    output = "Dummy model response for your custom prompt."
+                declared = model if random.random() < 0.85 else model + "-2026-08-01"
+                self.send_json(200, {"status_code": 200, "body": json.dumps({"output_text": output, "model": declared})})
                 return
             auth_index = body.get("auth_index", "")
             auth_file = next((item for item in AUTH_FILES if item["auth_index"] == auth_index), None)

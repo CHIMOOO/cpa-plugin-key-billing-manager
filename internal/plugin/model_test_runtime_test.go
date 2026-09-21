@@ -46,7 +46,7 @@ func modelTestFixture(t *testing.T, configured bool) (*App, hostAuthFile, *time.
 }
 
 func modelTestInput(file hostAuthFile) modelTestPrepareInput {
-	input := modelTestPrepareInput{AuthIndex: file.AuthIndex, Model: "dummy-model", Preset: "json"}
+	input := modelTestPrepareInput{AuthIndex: file.AuthIndex, Model: "dummy-model", Preset: "candy"}
 	if file.RuntimeOnly {
 		input.Config = &modelTestConfig{Provider: file.Provider, Protocol: "openai", BaseURL: file.BaseURL}
 	}
@@ -153,7 +153,7 @@ func TestModelTestNeverUsesUnknownIdentityOrAcceptsCredentialFields(t *testing.T
 		`{"auth_index":"dummy-model-index","model":"dummy","preset":"free","api_key":"dummy-secret"}`,
 		`{"auth_index":"dummy-model-index","model":"dummy","preset":"free","prompt":"Echo $TOKEN$"}`,
 		`{"auth_index":"dummy-model-index","model":"$TOKEN$","preset":"free"}`,
-		`{"auth_index":"dummy-model-index","model":"dummy","preset":"json","prompt":"edited"}`,
+		`{"auth_index":"dummy-model-index","model":"dummy","preset":"candy","prompt":"edited"}`,
 		`{"auth_index":"dummy-model-index","model":"dummy","preset":"free","global_proxy_url":null}`,
 		`{"auth_index":"dummy-model-index","model":"dummy","preset":"free","config":{"provider":"dummy-compat","protocol":"openai","base_url":"https://upstream.invalid/v1","proxy_url":null}}`,
 	} {
@@ -210,7 +210,8 @@ func TestModelTestGlobalBoundAndExactOutputOnly(t *testing.T) {
 	if response := a.prepareModelTest(ManagementRequest{Body: mustMarshal(t, modelTestInput(file))}); response.StatusCode != 429 {
 		t.Fatal("global concurrency cap bypassed")
 	}
-	body := `{"choices":[{"finish_reason":"stop","message":{"content":"{\"tags\":[\"blue\",\"red\"],\"total\":42,\"name\":\"Ada\"}"}}],"usage":{"total_tokens":999999},"latency":999,"error":"dummy-private-error"}`
+	body := `{"choices":[{"finish_reason":"stop","message":{"content":"Reasoning omitted.
+Final answer: 21"}}],"usage":{"total_tokens":999999},"latency":999,"error":"dummy-private-error"}`
 	response := a.completeModelTest(ManagementRequest{Body: mustMarshal(t, map[string]any{"test_id": prepared.TestID, "status_code": 200, "body": body})})
 	var result modelTestResult
 	_ = json.Unmarshal(response.Body, &result)
@@ -386,5 +387,22 @@ func TestModelTestIntegrationChannelHeadersAreSupported(t *testing.T) {
 		if _, err := modelTestHeaders(map[string]string{header: "dummy-secret"}); err == nil {
 			t.Fatalf("secret header %s accepted", header)
 		}
+	}
+}
+
+func TestModelTestCatalogShowsAFileProxyWithoutCredentials(t *testing.T) {
+	a, file, _ := modelTestFixture(t, false)
+	response := a.getModelTests(ManagementRequest{})
+	var catalog struct {
+		Accounts []modelTestAccount `json:"accounts"`
+	}
+	if response.StatusCode != http.StatusOK || json.Unmarshal(response.Body, &catalog) != nil || len(catalog.Accounts) != 1 {
+		t.Fatalf("catalog=%d %s", response.StatusCode, response.Body)
+	}
+	if account := catalog.Accounts[0]; account.AuthIndex != file.AuthIndex || account.Proxy != "socks5://***@proxy.invalid:1080" {
+		t.Fatalf("account proxy = %+v", account)
+	}
+	if strings.Contains(string(response.Body), "dummy-password") || strings.Contains(string(response.Body), "dummy-user") {
+		t.Fatal("the catalog exposed proxy credentials")
 	}
 }

@@ -1658,23 +1658,149 @@
         .state-quality-dialog .model-test-account-list { max-height: 240px; }
       }
       .model-test-head { margin-bottom: 16px; }
-      .model-test-runbar { position: sticky; top: 8px; z-index: 3; }
-      .model-test-runbar-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) auto; gap: 12px; align-items: end; }
-      .model-test-runbar-fields .field { min-width: 0; margin: 0; }
-      .model-test-runbar-fields input, .model-test-runbar-fields select { width: 100%; min-width: 0; }
-      .model-test-runbar-actions { flex-wrap: nowrap; }
-      .model-test-runbar-status { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; overflow-wrap: anywhere; }
-      .model-test-runbar-status > :empty { display: none; }
-      .model-test-filters { display: grid; gap: 10px; margin: 12px 0; }
-      .model-test-criteria { margin-top: 14px; }
-      .model-test-criteria p { margin: 4px 0 0; }
-      .model-test-prompt-panel { margin-top: 14px; }
+      .model-test-setup-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr);
+        gap: 12px;
+        align-items: end;
+      }
+      .model-test-setup-grid .field { min-width: 0; margin: 0; }
+      .model-test-setup-grid input, .model-test-setup-grid select { width: 100%; min-width: 0; }
+      .model-test-task {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-secondary);
+      }
+      .model-test-criteria p { margin: 4px 0 0; overflow-wrap: anywhere; }
+      .model-test-criteria a { overflow-wrap: anywhere; }
+      .model-test-prompt-panel { margin-top: 10px; }
       .model-test-prompt-panel > summary { cursor: pointer; font-weight: 600; }
       .model-test-prompt-panel textarea { display: block; width: 100%; min-width: 0; margin: 10px 0 6px; resize: vertical; }
-      .model-test-layout { display: grid; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 16px; align-items: start; }
-      .model-test-layout > *, .model-test-workspace { min-width: 0; }
-      .model-test-accounts .field { margin: 0; }
-      .model-test-accounts input[type="search"], .model-test-accounts select { width: 100%; min-width: 0; }
+      .model-test-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 14px; }
+      .model-test-actions > span { overflow-wrap: anywhere; }
+      .model-test-progress { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+      .model-test-progress-bar { flex: 1; height: 6px; border-radius: 999px; background: var(--bg-tertiary); overflow: hidden; }
+      .model-test-progress-bar > span {
+        display: block;
+        width: 0;
+        height: 100%;
+        background: var(--primary-color);
+        transition: width 0.2s ease;
+      }
+      .model-test-account-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+        gap: 6px;
+        max-height: 330px;
+      }
+      .selection-list label.model-test-account {
+        align-items: flex-start;
+        min-width: 0;
+        padding: 8px 10px 8px 6px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+      .selection-list label.model-test-account.is-selected { border-color: var(--primary-color); }
+      .model-test-account-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+      .selection-list label .model-test-account-text > strong { font-weight: 600; }
+      .model-test-account-text small { color: var(--text-secondary); }
+      .model-test-account-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+      .model-test-account-tags .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      #model-test-global-proxy { margin: 0 0 10px; overflow-wrap: anywhere; }
+      #model-test-global-proxy:empty { display: none; }
+      .model-test-summary { margin-bottom: 16px; }
+      .model-test-summary table td { vertical-align: middle; }
+      .model-test-summary-account { min-width: 150px; max-width: 240px; overflow-wrap: anywhere; }
+      .model-test-summary-account button {
+        padding: 0;
+        min-height: 0;
+        border: 0;
+        background: none;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+        cursor: pointer;
+      }
+      .model-test-summary-account button:hover { text-decoration: underline; }
+      .model-test-models { display: flex; flex-wrap: wrap; gap: 4px; max-width: 220px; }
+      .model-test-models .tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .model-test-dots { display: flex; flex-wrap: wrap; gap: 3px; max-width: 320px; }
+      .model-test-dot {
+        width: 14px;
+        min-width: 14px;
+        height: 14px;
+        min-height: 14px;
+        padding: 0;
+        border: 1px solid var(--border-color);
+        border-radius: 3px;
+        background: var(--bg-tertiary);
+        cursor: pointer;
+      }
+      :root .model-test-dot { min-height: 14px; padding: 0; }
+      .model-test-dot.is-running { border-color: var(--primary-color); animation: model-test-pulse 1s ease-in-out infinite; }
+      .model-test-dot.is-passed, .model-test-dot.is-manual { background: #3f9d62; border-color: #3f9d62; }
+      .model-test-dot.is-manual { background: #6d8fbf; border-color: #6d8fbf; }
+      .model-test-dot.is-failed, .model-test-dot.is-not_passed { background: #c9544d; border-color: #c9544d; }
+      .model-test-dot.is-incomplete { background: #c99a3d; border-color: #c99a3d; }
+      .model-test-dot.is-model-diff { box-shadow: inset 0 0 0 2px #e0b341; }
+      .model-test-dot.is-stopped { opacity: 0.45; }
+      @keyframes model-test-pulse {
+        50% { opacity: 0.4; }
+      }
+      .model-test-run-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 10px; }
+      .model-test-run-toolbar h4 { margin: 0 auto 0 0; font-size: 14px; }
+      .model-test-results { max-height: 760px; overflow: auto; }
+      .model-test-runs { width: 100%; min-width: 520px; table-layout: fixed; }
+      .model-test-runs th:nth-child(1) { width: 44px; }
+      .model-test-runs th:nth-child(2) { width: 24%; }
+      .model-test-runs th:nth-child(3) { width: 104px; }
+      .model-test-runs th:nth-child(4) { width: 20%; }
+      .model-test-runs th:nth-child(5) { width: 64px; }
+      .model-test-runs td { overflow-wrap: anywhere; }
+      .model-test-runs tr.model-test-run { cursor: pointer; }
+      .model-test-runs tr.model-test-run:hover td { background: var(--bg-hover); }
+      .model-test-runs tr.model-test-run.is-open td { background: var(--count-badge-bg); }
+      .model-test-runs td { vertical-align: top; }
+
+      .model-test-run-answer { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+      .model-test-run-detail > td { padding: 12px 14px 16px; background: var(--bg-secondary); }
+      .model-test-run-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        align-items: center;
+        margin-bottom: 10px;
+        overflow-wrap: anywhere;
+      }
+      .model-test-run-detail pre {
+        margin: 8px 0 0;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        max-height: 420px;
+        overflow: auto;
+        padding: 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-primary);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      .model-test-run-detail details { margin-top: 10px; }
+      .model-test-run-detail details > summary { cursor: pointer; font-size: 12px; }
+      .model-test-checks { padding-left: 20px; margin: 6px 0; font-size: 12px; line-height: 1.7; }
+      .model-test-svg { display: grid; justify-items: start; gap: 6px; margin: 4px 0 10px; }
+      .model-test-svg p { margin: 0; }
+      .model-test-svg-preview {
+        display: block;
+        width: min(100%, 520px);
+        max-height: 380px;
+        object-fit: contain;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: #fff;
+      }
       .model-test-account-list { display: grid; gap: 8px; max-height: 560px; overflow: auto; margin-top: 12px; }
       .model-test-account-row {
         display: grid;
@@ -1686,21 +1812,11 @@
         border-radius: 8px;
         cursor: pointer;
       }
-      .model-test-account-row.is-focused { border-color: var(--accent); background: var(--bg-secondary); }
       .model-test-account-row:has(input:disabled) { cursor: default; }
       .model-test-account-row input { margin-top: 4px; }
       .model-test-account-info { min-width: 0; }
       .model-test-account-name { display: block; overflow-wrap: anywhere; }
       .model-test-account-detail { display: block; margin-top: 4px; overflow-wrap: anywhere; }
-      .model-test-route {
-        padding: 10px 12px;
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        overflow-wrap: anywhere;
-      }
-      .model-test-route strong { display: block; margin-bottom: 4px; }
-      .model-test-results { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 14px; }
       .model-test-result { min-width: 0; padding: 16px; border: 1px solid var(--border-color); border-radius: 10px; }
       .model-test-result h3 { margin: 0 0 8px; font-size: 14px; overflow-wrap: anywhere; }
       .model-test-model-info { overflow-wrap: anywhere; }
@@ -1713,31 +1829,20 @@
         background: var(--bg-secondary);
         border-radius: 8px;
       }
-      .model-test-checks { padding-left: 20px; font-size: 12px; line-height: 1.7; }
-      .model-test-svg-preview {
-        display: block;
-        width: 100%;
-        max-height: 420px;
-        object-fit: contain;
-        margin: 12px 0;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        background: #fff;
-      }
       @media (max-width: 980px) {
-        .model-test-layout { grid-template-columns: minmax(0, 1fr); }
+        .model-test-setup-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         .model-test-account-list { max-height: 320px; }
         .capture-layout { grid-template-columns: minmax(0, 1fr); }
         .capture-list { max-height: 360px; }
-        .model-test-runbar { position: static; }
       }
       @media (max-width: 640px) {
-        .model-test-runbar-fields { grid-template-columns: minmax(0, 1fr); }
+        .model-test-setup-grid > .field:nth-child(-n + 2) { grid-column: 1 / -1; }
+        .model-test-actions > button { flex: 1; white-space: nowrap; }
+        .model-test-actions > span { flex-basis: 100%; }
         .capture-accounts { grid-template-columns: minmax(0, 1fr); }
         .capture-account { flex-wrap: wrap; }
         .selection-list .capture-account > label { flex-basis: 100%; }
         .capture-account > .tag { margin-left: auto; }
-        .model-test-runbar-actions > button { flex: 1; }
       }
       .project-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; text-decoration: none; }
       .project-link svg { flex: none; width: 16px; height: 16px; fill: currentColor; }
@@ -2942,7 +3047,7 @@
               </div>
             </div>
             <p id="state-quality-total" class="small muted" role="status"></p>
-            <div class="row dialog-actions"><button id="state-quality-run" class="primary" type="button" disabled data-i18n="ui.state_quality_run">Run selected tasks</button><button id="state-quality-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button><span id="state-quality-progress" class="small muted" role="status"></span></div>
+            <div class="row dialog-actions"><button id="state-quality-run" class="primary" type="button" disabled data-i18n="ui.state_quality_run">Run selected tasks</button><button id="state-quality-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop</button><span id="state-quality-progress" class="small muted" role="status"></span></div>
             <h3 data-i18n="ui.state_quality_results">Results by task</h3><p class="access-help" data-i18n="ui.state_quality_results_help">The batch stays in page memory; a new batch replaces it. Expand a result to inspect the exact answer, expected result, model declaration and proxy route. Model declarations do not prove identity or answer quality; response code is never executed.</p><div id="state-quality-results" class="model-test-results"></div>
           </dialog>
           <p class="small muted turn-state-attribution"><span data-i18n="ui.fork_based_on">Based on</span> <a href="https://github.com/arden-aaai/cpa-plugin-codex-turn-state" target="_blank" rel="noopener noreferrer">cpa-plugin-codex-turn-state</a></p>
@@ -3116,46 +3221,46 @@
 
         <section id="tab-model-tests" class="hidden">
           <div class="turn-state-page-head model-test-head">
-            <div class="state-head-title"><h2 data-i18n="ui.model_tests">Model tests</h2><span class="tag plain" data-i18n="ui.model_test_single_request">One request at a time</span></div>
+            <div class="state-head-title"><h2 data-i18n="ui.model_tests">Model tests</h2><span id="model-test-concurrency-tag" class="tag plain"></span></div>
           </div>
           <div id="model-test-status" class="notice hidden" role="status"></div>
-          <div class="card model-test-runbar">
-            <div class="model-test-runbar-fields">
+          <div class="card model-test-setup">
+            <div class="model-test-setup-grid">
               <label class="field"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" value="gpt-6-astra" autocomplete="off" disabled /><datalist id="model-test-models"></datalist></label>
-              <label class="field"><span data-i18n="ui.model_test_preset">Prompt preset</span><span class="native-select"><select id="model-test-preset"><option value="json" data-i18n="ui.model_test_preset_json">Instruction following · exact JSON</option><option value="logic" data-i18n="ui.model_test_preset_logic">Reasoning · constraint puzzle</option><option value="code" data-i18n="ui.model_test_preset_code">Coding · review the response</option><option value="free" data-i18n="ui.model_test_preset_free">Open question · custom prompt</option></select></span></label>
-              <div class="row model-test-runbar-actions"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Test selected accounts</button><button id="model-test-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button></div>
+              <label class="field"><span data-i18n="ui.model_test_preset">Prompt preset</span><span class="native-select"><select id="model-test-preset"><option value="candy" data-i18n="ui.model_test_preset_candy">Candy guarantee puzzle · answer 21</option><option value="pelican" data-i18n="ui.model_test_preset_pelican">Pelican riding a bicycle · animated SVG</option><option value="free" data-i18n="ui.model_test_preset_free">Open question · custom prompt</option></select></span></label>
+              <label class="field"><span data-i18n="ui.model_test_rounds">Runs per account</span><input id="model-test-rounds" type="number" min="1" max="100" step="1" value="1" disabled /></label>
+              <label class="field"><span data-i18n="ui.model_test_concurrency">Concurrent requests</span><input id="model-test-concurrency" type="number" min="1" max="8" step="1" value="4" disabled /></label>
             </div>
-            <div class="model-test-runbar-status"><span id="model-test-selection" class="small" role="status"></span><span id="model-test-running" class="small muted" role="status"></span><span id="model-test-model-hint" class="small muted"></span></div>
-          </div>
-          <div class="model-test-layout">
-          <aside class="card model-test-accounts" aria-labelledby="model-test-account-heading">
-            <h3 id="model-test-account-heading" data-i18n="ui.model_test_accounts">Test accounts</h3>
-            <div class="model-test-filters">
-              <label class="field"><span data-i18n="ui.model_test_provider">Provider category</span><span class="native-select"><select id="model-test-provider"><option value="all" data-i18n="ui.model_test_provider_all">All providers</option><option value="codex" data-i18n="ui.model_test_provider_codex">Codex</option><option value="claude" data-i18n="ui.model_test_provider_claude">Claude</option><option value="gemini" data-i18n="ui.model_test_provider_gemini">Gemini</option><option value="openai" data-i18n="ui.model_test_provider_openai">OpenAI compatible</option><option value="other" data-i18n="ui.model_test_provider_other">Other</option></select></span></label>
-              <label class="field"><span data-i18n="ui.model_test_search">Search accounts</span><input id="model-test-search" type="search" autocomplete="off" /></label>
+            <div class="model-test-task">
+              <div class="model-test-criteria"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p><div id="model-test-sources" class="small muted"></div></div>
+              <details id="model-test-prompt-panel" class="model-test-prompt-panel"><summary data-i18n="ui.model_test_prompt">Prompt (editable)</summary><textarea id="model-test-prompt" rows="8" maxlength="16000" spellcheck="false" aria-label="Prompt (editable)" data-i18n-aria-label="ui.model_test_prompt"></textarea><span id="model-test-custom-note" class="small muted hidden" data-i18n="ui.model_test_custom_note">This prompt was edited. Preset assertions are disabled; review the response against your own criteria.</span></details>
             </div>
-            <div class="row"><button id="model-test-select-visible" type="button" data-i18n="ui.model_test_select_visible">Select matching accounts</button><button id="model-test-selection-clear" type="button" data-i18n="ui.model_test_selection_clear">Clear selection</button></div>
-            <div id="model-test-accounts" class="model-test-account-list"></div>
-          </aside>
-          <div class="model-test-workspace">
-          <div class="card">
-            <h3 data-i18n="ui.model_test_setup">Test content</h3>
-            <div id="model-test-proxy" class="model-test-route" role="status"></div>
-            <div class="model-test-criteria"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p><div id="model-test-sources" class="small muted"></div></div>
-            <details id="model-test-prompt-panel" class="model-test-prompt-panel"><summary data-i18n="ui.model_test_prompt">Prompt (editable)</summary><textarea id="model-test-prompt" rows="7" maxlength="16000" spellcheck="false" aria-label="Prompt (editable)" data-i18n-aria-label="ui.model_test_prompt"></textarea><span id="model-test-custom-note" class="small muted hidden" data-i18n="ui.model_test_custom_note">This prompt was edited. Preset assertions are disabled; review the response against your own criteria.</span></details>
+            <div class="model-test-actions">
+              <button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Start test</button><button id="model-test-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop</button>
+              <span id="model-test-plan" class="small muted" role="status"></span>
+            </div>
+            <div class="model-test-progress hidden" id="model-test-progress"><div class="model-test-progress-bar"><span id="model-test-progress-fill"></span></div><span id="model-test-running" class="small muted" role="status"></span></div>
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
               <p data-i18n="ui.model_test_intro">Compare responses to the same prompt across accounts or models. Tests consume upstream quota. Checks assess this task only, not overall intelligence or the model’s true identity.</p>
               <p data-i18n="ui.model_test_billing">This is a diagnostic request through CPA’s management API. It consumes upstream quota but does not create downstream billing or usage records.</p>
-              <p data-i18n="ui.model_test_batch_help">Click anywhere on an account card to select it. Only accounts with a supported test protocol are shown; disabled accounts can be tested without enabling them for traffic. Select up to 50 accounts. Each receives the same model and prompt once, sequentially. Failures are not retried. Stopping or leaving this tab skips pending accounts and lets the current request finish.</p>
+              <p data-i18n="ui.model_test_batch_help">Select up to 50 accounts. Each account runs the prompt the chosen number of times, one request at a time, while different accounts run in parallel up to the concurrency limit. Failures are not retried. Stopping or leaving this tab skips pending runs and lets running requests finish.</p>
             </details>
           </div>
-          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.model_test_comparison">Response comparison</h3><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div><div id="model-test-results" class="model-test-results"></div>
+          <div class="card model-test-accounts">
+            <div class="row spread settings-section-header"><h3 id="model-test-account-heading" data-i18n="ui.model_test_accounts">Test accounts</h3><span id="model-test-selection" class="tag plain" role="status"></span></div>
+            <div class="state-account-toolbar"><input id="model-test-search" type="search" autocomplete="off" placeholder="Search accounts" data-i18n-placeholder="ui.model_test_search" aria-label="Search accounts" data-i18n-aria-label="ui.model_test_search" /><span class="native-select"><select id="model-test-provider" aria-label="Provider category" data-i18n-aria-label="ui.model_test_provider"><option value="all" data-i18n="ui.model_test_provider_all">All providers</option><option value="codex" data-i18n="ui.model_test_provider_codex">Codex</option><option value="claude" data-i18n="ui.model_test_provider_claude">Claude</option><option value="gemini" data-i18n="ui.model_test_provider_gemini">Gemini</option><option value="openai" data-i18n="ui.model_test_provider_openai">OpenAI compatible</option><option value="other" data-i18n="ui.model_test_provider_other">Other</option></select></span><button id="model-test-select-visible" type="button" data-i18n="ui.model_test_select_visible">Select matching accounts</button><button id="model-test-selection-clear" type="button" data-i18n="ui.model_test_selection_clear">Clear selection</button></div>
+            <p id="model-test-global-proxy" class="small muted"></p>
+            <div id="model-test-accounts" class="selection-list model-test-account-grid" aria-labelledby="model-test-account-heading"></div>
+          </div>
+          <div class="card model-test-results-card">
+            <div class="row spread settings-section-header"><h3 data-i18n="ui.model_test_comparison">Response comparison</h3><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div>
+            <div id="model-test-summary" class="model-test-summary"></div>
+            <div class="model-test-run-toolbar"><h4 data-i18n="ui.model_test_runs">Individual runs</h4><span class="native-select"><select id="model-test-run-account" aria-label="Account" data-i18n-aria-label="ui.capture_account_column"></select></span><span class="native-select"><select id="model-test-run-filter" aria-label="Show runs" data-i18n-aria-label="ui.model_test_run_filter"><option value="all" data-i18n="ui.model_test_filter_all">All runs</option><option value="problem" data-i18n="ui.model_test_filter_problem">Failed or not passed</option><option value="model" data-i18n="ui.model_test_filter_model">Declared model differs</option></select></span></div>
+            <div id="model-test-results" class="model-test-results"></div>
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
-              <p data-i18n="ui.model_test_memory">The current batch (up to 50 results) stays in this page’s memory only; starting another batch replaces it. Response code is never executed. SVG previews are static images.</p>
+              <p data-i18n="ui.model_test_memory">Results stay in this page’s memory only; starting another test replaces them. Response code is never executed. SVG previews play as isolated images without scripts.</p>
               <p data-i18n="ui.model_test_model_declaration_help">The response model is declared by the upstream for this test. A different name may reflect an alias or model version; matching names do not prove model identity or answer quality. It does not change billing or routing.</p>
             </details>
-          </div>
-          </div>
           </div>
         </section>
 
@@ -4198,10 +4303,12 @@
           $("model-test-model").value = "gpt-6-astra";
           $("model-test-provider").value = "all";
           $("model-test-search").value = "";
-          $("model-test-preset").value = "json";
+          $("model-test-preset").value = "candy";
+          $("model-test-rounds").value = "1";
+          $("model-test-concurrency").value = "4";
           $("model-test-accounts").replaceChildren();
+          $("model-test-summary").replaceChildren();
           $("model-test-results").replaceChildren();
-          $("model-test-proxy").replaceChildren();
           $("model-test-status").className = "notice hidden";
           $("state-quality-results").replaceChildren();
           $("state-quality-accounts").replaceChildren();
@@ -7463,9 +7570,8 @@
         "block-message"
       ];
       const MODEL_TEST_PRESETS = {
-        json: { prompt: "ui.model_test_json_prompt", criteria: "ui.model_test_json_criteria", label: "ui.model_test_preset_json" },
-        logic: { prompt: "ui.model_test_logic_prompt", criteria: "ui.model_test_logic_criteria", label: "ui.model_test_preset_logic" },
-        code: { prompt: "ui.model_test_code_prompt", criteria: "ui.model_test_code_criteria", label: "ui.model_test_preset_code" },
+        candy: { criteria: "ui.model_test_candy_criteria", label: "ui.model_test_preset_candy" },
+        pelican: { criteria: "ui.model_test_pelican_criteria", label: "ui.model_test_preset_pelican" },
         free: { prompt: "ui.model_test_free_prompt", criteria: "ui.model_test_free_criteria", label: "ui.model_test_preset_free" }
       };
 
@@ -7533,6 +7639,7 @@
               if (credential["proxy-url"] !== "") config.proxy_url = credential["proxy-url"];
             }
             if (entry.headers && typeof entry.headers === "object") config.headers = { ...entry.headers };
+            account.proxy = modelTestProxyEndpoint(config.proxy_url);
             rows.push({ account, config });
           }
         }
@@ -7545,6 +7652,10 @@
           plugin("GET", "/model-tests"),
           ...MODEL_TEST_NATIVE_RESOURCES.map((resource) => readNativeModelTestEntries(resource, key))
         ]);
+        const global = await api("GET", "/v0/management/proxy-url", null, { key, raw: true }).catch((error) => {
+          if (error instanceof AuthError || error instanceof StaleRequestError) throw error;
+          return null;
+        });
         for (const result of results)
           if (result.status === "rejected" && (result.reason instanceof AuthError || result.reason instanceof StaleRequestError))
             throw result.reason;
@@ -7584,20 +7695,25 @@
             accounts.push(account);
           } else accounts.push(account);
         }
-        return { ...catalog, accounts, warnings };
+        const globalProxy = typeof global?.["proxy-url"] === "string" ? modelTestProxyEndpoint(global["proxy-url"]) : "";
+        return { ...catalog, accounts, warnings, global_proxy: globalProxy };
       }
 
       const MODEL_TEST_BATCH_LIMIT = 50;
+      const MODEL_TEST_ROUND_LIMIT = 100;
+      const MODEL_TEST_RUN_LIMIT = 1000;
 
       function modelTestState() {
         return (adminUIState.modelTest ||= {
           running: false,
           results: [],
           baselinePrompt: "",
-          preset: "json",
+          preset: "candy",
           error: "",
           selected: new Set(),
-          focused: "",
+          expanded: new Set(),
+          hintAccount: "",
+          renderQueued: false,
           stopRequested: false
         });
       }
@@ -7619,20 +7735,23 @@
         return "other";
       }
 
+      function modelTestProxyEndpoint(proxy) {
+        if (typeof proxy !== "string" || !proxy.trim()) return "";
+        try {
+          const link = new URL(proxy.trim());
+          return link.host ? link.protocol + "//" + (link.username || link.password ? "***@" : "") + link.host : "invalid";
+        } catch (_) { return "invalid"; }
+      }
+
+      function modelTestProxyHost(endpoint) { return String(endpoint || "").replace(/^[a-z0-9+.-]+:\/\/(\*\*\*@)?/i, ""); }
+
       function filteredModelTestAccounts() {
-        const category = $("model-test-provider").value, query = $("model-test-search").value.trim().toLowerCase();
+        const category = $("model-test-provider").value, query = $("model-test-search").value.trim();
         return modelTestAccounts().filter(
           (account) =>
             (category === "all" || modelTestProvider(account) === category) &&
-            (!query ||
-              [account.name, account.provider, account.auth_index, account.source].some((value) =>
-                String(value || "").toLowerCase().includes(query)
-              ))
+            matchesTerm([account.name, account.provider, account.auth_index, account.source, account.proxy].join(" "), query)
         );
-      }
-
-      function selectedModelTestAccount() {
-        return modelTestAccounts().find((account) => modelTestAccountKey(account) === modelTestState().focused);
       }
 
       function modelTestPreset(id) {
@@ -7661,39 +7780,39 @@
         const preset = modelTestPreset(id);
         state.preset = id;
         const canonical = resources.admin.modelTests.value?.presets?.find((entry) => entry.id === id)?.prompt;
-        state.baselinePrompt = typeof canonical === "string" ? canonical : String(m(preset.prompt));
+        state.baselinePrompt = typeof canonical === "string" ? canonical : preset.prompt ? String(m(preset.prompt)) : "";
         $("model-test-prompt").value = state.baselinePrompt;
         renderModelTestPresetDetails();
         $("model-test-custom-note").classList.add("hidden");
         if (id === "free") $("model-test-prompt-panel").open = true;
       }
 
-      function renderModelTestProxy(proxy, accountName) {
-        $("model-test-proxy").replaceChildren(
-          el("strong", { text: accountName ? m("ui.model_test_route_for", { account: accountName }) : m("ui.model_test_route") }),
-          el("span", {
-            text: proxy
-              ? m(
-                  proxy.source === "account"
-                    ? "ui.model_test_proxy_account"
-                    : proxy.source === "global" ? "ui.model_test_proxy_global" : "ui.model_test_proxy_direct",
-                  { endpoint: proxy.endpoint || "" }
-                )
-              : m("ui.model_test_batch_route")
-          })
-        );
-      }
-
       function modelTestAssertionLabel(name) {
         if (name === "Exact JSON object") return m("ui.model_test_exact_json");
         if (name === "Exact output") return m("ui.model_test_exact_output");
+        if (name === "Final answer") return m("ui.model_test_final_answer");
         return name;
       }
 
+      function modelTestProxyText(proxy) {
+        return m(
+          proxy.source === "account"
+            ? "ui.model_test_proxy_account"
+            : proxy.source === "global" ? "ui.model_test_proxy_global" : "ui.model_test_proxy_direct",
+          { endpoint: proxy.endpoint || "" }
+        );
+      }
+
+      // SVG answers render only as images: scripts never run there and external
+      // resources never load, while SMIL animation still plays.
       function modelTestSVGPreview(output) {
         if (typeof output !== "string" || output.length > 120000) return "";
-        const text = output.trim().replace(/^```(?:svg|xml)?\s*\n([\s\S]*?)\n```$/i, "$1").trim();
-        if (!text.startsWith("<") || /<!DOCTYPE|<!ENTITY/i.test(text)) return "";
+        const fenced = /```(?:svg|xml|html)?\s*\n([\s\S]*?)\n```/i.exec(output);
+        const source = (fenced ? fenced[1] : output).trim();
+        const start = source.search(/<svg[\s>]/i), end = source.toLowerCase().lastIndexOf("</svg>");
+        if (start < 0 || end < start) return "";
+        const text = source.slice(start, end + 6);
+        if (/<!DOCTYPE|<!ENTITY/i.test(text)) return "";
         const doc = new DOMParser().parseFromString(text, "image/svg+xml"), root = doc.documentElement;
         if (doc.querySelector("parsererror") || root.localName !== "svg" || root.namespaceURI !== "http://www.w3.org/2000/svg") return "";
         const elements = new Set([
@@ -7718,7 +7837,12 @@
           "symbol",
           "use",
           "title",
-          "desc"
+          "desc",
+          "animate",
+          "animateTransform",
+          "animateMotion",
+          "set",
+          "mpath"
         ]);
         for (const node of [root, ...root.querySelectorAll("*")]) {
           if (!elements.has(node.localName) || node.namespaceURI !== root.namespaceURI) {
@@ -7730,75 +7854,463 @@
             if (
               name.startsWith("on") || name === "src" || name === "base" || name === "style" ||
               (name === "href" && !/^#[A-Za-z_][\w:.-]*$/.test(value)) ||
+              (name === "attributename" && /href|^on/i.test(value)) ||
               (/url\s*\(/i.test(value) && !/^url\(\s*#[A-Za-z_][\w:.-]*\s*\)$/.test(value))
             )
               node.removeAttributeNode(attr);
           }
         }
-        // An SVG rendered as an image is additionally isolated from document scripts and external resources.
         return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(root));
+      }
+
+      function modelTestSVGBlock(output) {
+        const preview = modelTestSVGPreview(output);
+        if (!preview) return null;
+        let image = el("img", { class: "model-test-svg-preview", src: preview, alt: m("ui.model_test_svg_preview"), loading: "lazy" });
+        // A new URL fragment makes the browser start a fresh animation timeline.
+        const replay = el("button", {
+          type: "button",
+          class: "small",
+          text: m("ui.model_test_svg_replay"),
+          onclick: () => {
+            const next = image.cloneNode(false);
+            next.src = preview + "#replay-" + Date.now();
+            image.replaceWith(next);
+            image = next;
+          }
+        });
+        return el(
+          "div",
+          { class: "model-test-svg" },
+          image,
+          replay,
+          el("p", { class: "small muted", text: m("ui.model_test_svg_review") })
+        );
+      }
+
+      function modelTestRecordState(record) {
+        if (["waiting", "running", "stopped"].includes(record.phase)) return record.phase;
+        if (record.error || !record.result || record.result.outcome === "failed") return "failed";
+        if (record.result.outcome === "incomplete") return "incomplete";
+        const checks = Array.isArray(record.result.assertions) ? record.result.assertions : [];
+        if (!checks.length) return "manual";
+        return checks.every((check) => check.passed === true) ? "passed" : "not_passed";
+      }
+
+      function modelTestModelDiffers(record) { return ["different", "conflicting"].includes(record.result?.response_model_status); }
+
+      const MODEL_TEST_STATE_VIEW = {
+        waiting: ["plain", "ui.model_test_phase_waiting"],
+        running: ["plain", "ui.model_test_phase_running"],
+        stopped: ["plain", "ui.model_test_phase_stopped"],
+        failed: ["bad", "ui.model_test_failed"],
+        incomplete: ["warn", "ui.model_test_incomplete"],
+        manual: ["plain", "ui.model_test_manual"],
+        passed: ["ok", "ui.model_test_passed"],
+        not_passed: ["bad", "ui.model_test_not_passed"]
+      };
+
+      function modelTestStateTag(record) {
+        const [tone, key] = MODEL_TEST_STATE_VIEW[modelTestRecordState(record)];
+        return el("span", { class: "tag " + tone, text: m(key) });
+      }
+
+      function modelTestDuration(ms) {
+        if (!Number.isFinite(ms)) return "";
+        return ms < 1000 ? Math.round(ms) + " ms" : (ms / 1000).toFixed(ms < 10000 ? 1 : 0) + " s";
+      }
+
+      function modelTestAnswerLine(record) {
+        if (record.error) return record.error;
+        if (record.result?.reason && !record.result?.output)
+          return window.billingI18n.serverMessage(record.result.reason_message, record.result.reason);
+        const output = String(record.result?.output || "");
+        const lines = output.split("\n").map((line) => line.trim()).filter(Boolean);
+        // The last line holds a requested final answer; SVG answers are summarized.
+        if (/^\s*(```[a-z]*\s*)?<svg[\s>]/i.test(output)) return "<svg …>";
+        return lines.length ? lines[lines.length - 1].slice(0, 200) : "";
+      }
+
+      function modelTestSummaryRows(state) {
+        const groups = new Map();
+        for (const record of state.results) {
+          if (!groups.has(record.key))
+            groups.set(record.key, { key: record.key, account: record.account, proxy: record.accountProxy, records: [] });
+          groups.get(record.key).records.push(record);
+        }
+        return [...groups.values()];
+      }
+
+      function renderModelTestSummary(state) {
+        const groups = modelTestSummaryRows(state);
+        renderCollection($("model-test-summary"), groups, {
+          headers: [
+            m("ui.capture_account_column"),
+            m("ui.model_test_sequence"),
+            m("ui.model_test_pass_rate"),
+            m("ui.model_test_declared_models"),
+            { label: m("ui.model_test_average_time"), num: true }
+          ],
+          empty: m("ui.model_test_empty"),
+          render: (group) => {
+            const finished = group.records.filter((record) => !["waiting", "running", "stopped"].includes(record.phase));
+            const checked = finished.filter((record) => ["passed", "not_passed"].includes(modelTestRecordState(record)));
+            const passed = checked.filter((record) => modelTestRecordState(record) === "passed").length;
+            const failed = finished.filter((record) => ["failed", "incomplete"].includes(modelTestRecordState(record))).length;
+            const models = new Map();
+            for (const record of finished) {
+              const name = record.result?.response_model;
+              if (name) models.set(name, (models.get(name) || 0) + 1);
+            }
+            const differs = finished.some(modelTestModelDiffers);
+            const times = finished.map((record) => record.elapsed).filter(Number.isFinite);
+            const average = times.length ? times.reduce((sum, value) => sum + value, 0) / times.length : NaN;
+            return el(
+              "tr",
+              {},
+              el(
+                "td",
+                { class: "model-test-summary-account" },
+                el("button", {
+                  type: "button",
+                  text: group.account,
+                  title: m("ui.model_test_show_account_runs"),
+                  onclick: () => {
+                    $("model-test-run-account").value = group.key;
+                    renderModelTestResults();
+                  }
+                }),
+                group.proxy
+                  ? el("div", {
+                      class: "small muted",
+                      title: group.proxy,
+                      text: m("ui.model_test_proxy_tag", { endpoint: modelTestProxyHost(group.proxy) })
+                    })
+                  : null
+              ),
+              el(
+                "td",
+                {},
+                el("div", { class: "small muted", text: finished.length + " / " + group.records.length }),
+                el(
+                  "div",
+                  { class: "model-test-dots" },
+                  group.records.map((record) => {
+                    const status = modelTestRecordState(record), label = m(MODEL_TEST_STATE_VIEW[status][1]);
+                    return el("button", {
+                      type: "button",
+                      class: "model-test-dot is-" + status + (modelTestModelDiffers(record) ? " is-model-diff" : ""),
+                      title:
+                        "#" + record.round + " · " + label + (record.result?.response_model ? " · " + record.result.response_model : ""),
+                      "aria-label": "#" + record.round + " " + label,
+                      onclick: () => revealModelTestRun(record)
+                    });
+                  })
+                )
+              ),
+              el(
+                "td",
+                {},
+                checked.length
+                  ? el("span", {
+                      class: "tag " + (passed === checked.length ? "ok" : passed ? "warn" : "bad"),
+                      text: m("ui.model_test_pass_count", { passed, total: checked.length })
+                    })
+                  : el("span", { class: "small muted", text: finished.length ? m("ui.model_test_manual") : "—" }),
+                failed ? el("div", { class: "small muted", text: m("ui.model_test_failure_count", { count: failed }) }) : null
+              ),
+              el(
+                "td",
+                {},
+                models.size
+                  ? el(
+                      "div",
+                      { class: "model-test-models" },
+                      [...models].map(([name, count]) =>
+                        el("span", {
+                          class: "tag " + (differs || models.size > 1 ? "warn" : "plain"),
+                          text: name + (count > 1 ? " ×" + count : "")
+                        })
+                      )
+                    )
+                  : el("span", { class: "small muted", text: "—" })
+              ),
+              el("td", { class: "num small", text: Number.isFinite(average) ? modelTestDuration(average) : "—" })
+            );
+          }
+        });
+      }
+
+      function revealModelTestRun(record) {
+        const state = modelTestState();
+        state.expanded.add(record.id);
+        $("model-test-run-account").value = "";
+        $("model-test-run-filter").value = "all";
+        renderModelTestResults();
+        document.querySelector('[data-run="' + record.id + '"]')?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+      }
+
+      function modelTestRunDetail(record) {
+        const result = record.result, checks = Array.isArray(result?.assertions) ? result.assertions : [];
+        const pending = ["waiting", "running", "stopped"].includes(record.phase);
+        const modelStatus =
+          {
+            matched: "ui.model_test_model_matched",
+            different: "ui.model_test_model_different",
+            conflicting: "ui.model_test_model_conflicting"
+          }[result?.response_model_status] || "ui.model_test_model_missing";
+        return el(
+          "div",
+          {},
+          el(
+            "div",
+            { class: "model-test-run-meta small" },
+            result ? el("span", { text: m("ui.model_test_requested_model", { model: result.requested_model || record.model }) }) : null,
+            result ? el("span", { text: m("ui.model_test_upstream_model", { model: result.upstream_model || record.model }) }) : null,
+            result
+              ? el("span", {
+                  text: m("ui.model_test_declared_model", { model: result.response_model || m("ui.model_test_model_unavailable") })
+                })
+              : null,
+            result ? el("span", { class: "tag " + (modelTestModelDiffers(record) ? "warn" : "plain"), text: m(modelStatus) }) : null,
+            record.proxy ? el("span", { class: "muted", text: modelTestProxyText(record.proxy) }) : null,
+            Number.isFinite(record.elapsed)
+              ? el("span", { class: "muted", text: m("ui.model_test_elapsed", { time: modelTestDuration(record.elapsed) }) })
+              : null
+          ),
+          record.error ? el("p", { class: "small", text: record.error }) : null,
+          result?.reason ? el("p", { class: "small", text: window.billingI18n.serverMessage(result.reason_message, result.reason) }) : null,
+          result?.lease_retained ? el("p", { class: "small muted", text: m("ui.model_test_lease_retained") }) : null,
+          checks.length
+            ? el(
+                "ul",
+                { class: "model-test-checks" },
+                checks.map((check) =>
+                  el("li", {
+                    text:
+                      m(check.passed ? "ui.model_test_check_pass" : "ui.model_test_check_fail", {
+                        name: modelTestAssertionLabel(check.name)
+                      }) + (check.expected ? " · " + m("ui.model_test_expected", { value: check.expected }) : "")
+                  })
+                )
+              )
+            : null,
+          result?.output_truncated ? el("p", { class: "small muted", text: m("ui.model_test_truncated") }) : null,
+          !pending && record.preset === "pelican" ? modelTestSVGBlock(result?.output) : null,
+          pending
+            ? el("p", { class: "small muted", text: m("ui.model_test_phase_" + record.phase) })
+            : el("pre", { text: result?.output || m("ui.model_test_no_output") }),
+          el("details", {}, el("summary", { text: m("ui.model_test_sent_prompt") }), el("pre", { text: record.prompt }))
+        );
+      }
+
+      function renderModelTestResults() {
+        const state = modelTestState(), target = $("model-test-results");
+        const accountSelect = $("model-test-run-account");
+        const groups = modelTestSummaryRows(state);
+        const optionsKey = JSON.stringify([groups.map((group) => [group.key, group.account]), locale()]);
+        if (accountSelect.dataset.options !== optionsKey) {
+          const current = accountSelect.value;
+          accountSelect.replaceChildren(
+            el("option", { value: "", text: m("ui.model_test_all_accounts") }),
+            ...groups.map((group) => el("option", { value: group.key, text: group.account }))
+          );
+          accountSelect.dataset.options = optionsKey;
+          accountSelect.value = groups.some((group) => group.key === current) ? current : "";
+        }
+        const account = accountSelect.value, filter = $("model-test-run-filter").value;
+        const records = state.results.filter(
+          (record) =>
+            (!account || record.key === account) &&
+            (filter === "all" || (filter === "problem" && ["failed", "incomplete", "not_passed"].includes(modelTestRecordState(record))) ||
+              (filter === "model" && modelTestModelDiffers(record)))
+        );
+        const top = target.scrollTop;
+        if (!records.length) {
+          target.replaceChildren(
+            el("div", { class: "empty", text: state.results.length ? m("ui.model_test_no_matching_runs") : m("ui.model_test_empty") })
+          );
+          return;
+        }
+        const rows = [];
+        for (const record of records) {
+          const open = state.expanded.has(record.id);
+          const toggle = () => {
+            if (state.expanded.has(record.id)) state.expanded.delete(record.id); else state.expanded.add(record.id);
+            renderModelTestResults();
+          };
+          rows.push(
+            el(
+              "tr",
+              {
+                class: "model-test-run" + (open ? " is-open" : ""),
+                "data-run": String(record.id),
+                tabindex: "0",
+                "aria-expanded": String(open),
+                onclick: toggle,
+                onkeydown: (event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  toggle();
+                }
+              },
+              el("td", { class: "small", text: "#" + record.round }),
+              el("td", { class: "small model-test-run-account", text: record.account }),
+              el("td", {}, modelTestStateTag(record)),
+              el(
+                "td",
+                { class: "small" },
+                record.result?.response_model
+                  ? el("span", { class: modelTestModelDiffers(record) ? "tag warn" : "", text: record.result.response_model })
+                  : el("span", { class: "muted", text: "—" })
+              ),
+              el("td", { class: "num small", text: Number.isFinite(record.elapsed) ? modelTestDuration(record.elapsed) : "" }),
+              el("td", { class: "small model-test-run-answer", text: modelTestAnswerLine(record) })
+            )
+          );
+          if (open) rows.push(el("tr", { class: "model-test-run-detail" }, el("td", { colspan: "6" }, modelTestRunDetail(record))));
+        }
+        target.replaceChildren(
+          el(
+            "div",
+            { class: "table-scroll" },
+            el(
+              "table",
+              { class: "model-test-runs" },
+              el(
+                "thead",
+                {},
+                el(
+                  "tr",
+                  {},
+                  el("th", { text: "#" }),
+                  el("th", { text: m("ui.capture_account_column") }),
+                  el("th", { text: m("ui.capture_status") }),
+                  el("th", { text: m("ui.model_test_declared_model_column") }),
+                  el("th", { class: "num", text: m("ui.model_test_time_column") }),
+                  el("th", { text: m("ui.model_test_answer_column") })
+                )
+              ),
+              el("tbody", {}, rows)
+            )
+          )
+        );
+        target.scrollTop = top;
+      }
+
+      function renderModelTestProgress() {
+        const state = modelTestState(), total = state.results.length;
+        const done = state.results.filter((record) => !["waiting", "running"].includes(record.phase)).length;
+        const running = state.results.filter((record) => record.phase === "running").length;
+        $("model-test-progress").classList.toggle("hidden", !total);
+        $("model-test-progress-fill").style.width = total ? Math.round((done / total) * 100) + "%" : "0";
+        setText(
+          $("model-test-running"),
+          total
+            ? m(state.running && state.stopRequested ? "ui.model_test_stopping" : "ui.model_test_progress_detail", { done, total, running })
+            : ""
+        );
+      }
+
+      function scheduleModelTestResults() {
+        const state = modelTestState();
+        if (state.renderQueued) return;
+        state.renderQueued = true;
+        requestAnimationFrame(() => {
+          state.renderQueued = false;
+          if (currentRole !== "admin" || activeTab(false) !== "model-tests" || adminUIState.modelTest !== state) return;
+          renderModelTestProgress();
+          renderModelTestSummary(state);
+          renderModelTestResults();
+        });
+      }
+
+      function modelTestPlan() {
+        const rounds = Math.min(MODEL_TEST_ROUND_LIMIT, Math.max(1, Math.trunc(Number($("model-test-rounds").value) || 1)));
+        const max = resources.admin.modelTests.value?.limits?.max_active || 4;
+        const concurrency = Math.min(max, Math.max(1, Math.trunc(Number($("model-test-concurrency").value) || 1)));
+        return { rounds, concurrency, max };
+      }
+
+      function renderModelTestAccounts(state) {
+        const filtered = filteredModelTestAccounts(), target = $("model-test-accounts"), top = target.scrollTop;
+        target.replaceChildren(
+          ...(filtered.length
+            ? filtered.map((account) => {
+                const identity = modelTestAccountKey(account), name = account.name || account.auth_index || account.credential_ref;
+                const checked = state.selected.has(identity);
+                return el(
+                  "label",
+                  { class: "model-test-account" + (checked ? " is-selected" : "") + (state.running ? " disabled" : "") },
+                  checkboxControl({
+                    input: el("input", {
+                      type: "checkbox",
+                      checked,
+                      disabled: state.running,
+                      "aria-label": m("ui.model_test_select_account", { account: name }),
+                      onchange: (event) => {
+                        if (event.target.checked && state.selected.size >= MODEL_TEST_BATCH_LIMIT) {
+                          event.target.checked = false;
+                          state.error = m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT });
+                        } else {
+                          if (event.target.checked) state.selected.add(identity); else state.selected.delete(identity);
+                          state.error = "";
+                        }
+                        renderModelTests();
+                      }
+                    })
+                  }),
+                  el(
+                    "span",
+                    { class: "model-test-account-text" },
+                    el("strong", { text: name, title: name }),
+                    el("small", {
+                      text: [account.provider || m("ui.model_test_provider_other"), account.auth_index].filter(Boolean).join(" · ")
+                    }),
+                    account.proxy || account.disabled
+                      ? el(
+                          "span",
+                          { class: "model-test-account-tags" },
+                          account.proxy
+                            ? el("span", {
+                                class: "tag ok",
+                                title: m("ui.model_test_proxy_account", { endpoint: account.proxy }),
+                                text: m("ui.model_test_proxy_tag", { endpoint: modelTestProxyHost(account.proxy) })
+                              })
+                            : null,
+                          account.disabled ? el("span", { class: "tag plain", text: m("backend.disabled") }) : null
+                        )
+                      : null
+                  )
+                );
+              })
+            : [el("div", { class: "empty", text: m("ui.model_test_no_matching_accounts") })])
+        );
+        target.scrollTop = top;
+        return filtered;
       }
 
       function renderModelTests() {
         const resource = resources.admin.modelTests, state = modelTestState(), catalog = resource.value;
         const accounts = modelTestAccounts();
-        const available = new Set(accounts.filter(modelTestAccountAvailable).map(modelTestAccountKey));
+        const available = new Set(accounts.map(modelTestAccountKey));
         for (const identity of state.selected) if (!available.has(identity)) state.selected.delete(identity);
-        const focused = selectedModelTestAccount() || accounts.find(modelTestAccountAvailable) || accounts[0];
-        state.focused = focused ? modelTestAccountKey(focused) : "";
-        const filtered = filteredModelTestAccounts(), top = $("model-test-accounts").scrollTop;
-        $("model-test-accounts").replaceChildren(
-          ...(filtered.length
-            ? filtered.map((account, index) => {
-                const identity = modelTestAccountKey(account), name = account.name || account.auth_index || account.credential_ref;
-                const available = modelTestAccountAvailable(account);
-                const reason = account.disabled
-                  ? m("backend.disabled")
-                  : !available
-                    ? window.billingI18n.serverMessage(account.reason_message, account.reason) || m("ui.model_test_unsupported")
-                    : "";
-                return el(
-                  "label",
-                  { class: "model-test-account-row" + (identity === state.focused ? " is-focused" : "") },
-                  el("input", {
-                    id: "model-test-choice-" + index,
-                    type: "checkbox",
-                    checked: state.selected.has(identity),
-                    disabled: state.running || !available,
-                    "aria-label": m("ui.model_test_select_account", { account: name }),
-                    onchange: (event) => {
-                      const focused = document.activeElement === event.target;
-                      if (event.target.checked && state.selected.size >= MODEL_TEST_BATCH_LIMIT) {
-                        state.error = m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT });
-                      } else {
-                        if (event.target.checked) state.selected.add(identity); else state.selected.delete(identity);
-                        state.focused = identity;
-                        state.error = "";
-                      }
-                      renderModelTests();
-                      if (focused) $("model-test-choice-" + index)?.focus({ preventScroll: true });
-                    }
-                  }),
-                  el(
-                    "span",
-                    { class: "model-test-account-info" },
-                    el("strong", { class: "model-test-account-name", text: name }),
-                    el("span", {
-                      class: "small muted model-test-account-detail",
-                      text: account.provider || m("ui.model_test_provider_other")
-                    }),
-                    reason ? el("span", { class: "small muted model-test-account-detail", text: reason }) : null
-                  )
-                );
-              })
-            : [el("p", { class: "small muted", text: m("ui.model_test_no_matching_accounts") })])
-        );
-        $("model-test-accounts").scrollTop = top;
+        const filtered = renderModelTestAccounts(state);
+        const proxied = accounts.filter((account) => account.proxy).length;
         setText(
           $("model-test-selection"),
           m("ui.model_test_selection_count", { selected: state.selected.size, visible: filtered.length, total: accounts.length })
         );
-        $("model-test-select-visible").disabled = state.running || !filtered.some(modelTestAccountAvailable);
+        setText(
+          $("model-test-global-proxy"),
+          catalog
+            ? m(catalog.global_proxy ? "ui.model_test_global_proxy" : "ui.model_test_global_direct", {
+                endpoint: catalog.global_proxy || "",
+                count: proxied
+              })
+            : ""
+        );
+        $("model-test-select-visible").disabled = state.running || !filtered.length;
         $("model-test-selection-clear").disabled = state.running || !state.selected.size;
         const presetID = $("model-test-preset").value || state.preset;
         const presets =
@@ -7810,8 +8322,23 @@
             el("option", { value: entry.id, selected: entry.id === presetID, text: m(modelTestPreset(entry.id).label) })
           )
         );
-        for (const id of ["model", "preset", "prompt"]) $("model-test-" + id).disabled = state.running || !catalog;
-        $("model-test-run").disabled = state.running || !state.selected.size || !catalog;
+        for (const id of ["model", "preset", "prompt", "rounds", "concurrency"]) $("model-test-" + id).disabled = state.running || !catalog;
+        const plan = modelTestPlan();
+        $("model-test-concurrency").max = String(plan.max);
+        setText($("model-test-concurrency-tag"), m("ui.model_test_concurrency_tag", { count: plan.concurrency }));
+        const total = state.selected.size * plan.rounds;
+        setText(
+          $("model-test-plan"),
+          state.selected.size
+            ? m(total > MODEL_TEST_RUN_LIMIT ? "ui.model_test_plan_too_large" : "ui.model_test_plan", {
+                accounts: state.selected.size,
+                rounds: plan.rounds,
+                total,
+                limit: MODEL_TEST_RUN_LIMIT
+              })
+            : m("ui.model_test_select_required")
+        );
+        $("model-test-run").disabled = state.running || !state.selected.size || !catalog || total > MODEL_TEST_RUN_LIMIT;
         $("model-test-stop").disabled = !state.running || state.stopRequested;
         $("model-test-clear").disabled = state.running || !state.results.length;
         const error =
@@ -7819,132 +8346,20 @@
           (catalog?.warnings || []).map(String).join(" ");
         $("model-test-status").className = error ? "notice err show" : "notice hidden";
         setText($("model-test-status"), error);
-        const done = state.results.filter((record) => !["waiting", "running"].includes(record.phase)).length;
-        setText(
-          $("model-test-running"),
-          state.results.length
-            ? m(state.running && state.stopRequested ? "ui.model_test_stopping" : "ui.model_test_batch_progress", {
-                done,
-                total: state.results.length
-              })
-            : ""
-        );
         if (!state.baselinePrompt && catalog) selectModelTestPreset();
-        if (!state.running && state.routeAccount !== state.focused) {
-          state.routeAccount = state.focused;
-          renderModelTestProxy(null);
+        // Model suggestions come from the first selected provider account.
+        const hint = accounts.find((account) => state.selected.has(modelTestAccountKey(account)) && account.source === "ai-providers");
+        const hintKey = hint ? modelTestAccountKey(hint) : "";
+        if (!state.running && state.hintAccount !== hintKey) {
+          state.hintAccount = hintKey;
           $("model-test-models").replaceChildren();
-          if (focused && modelTestAccountAvailable(focused)) void loadModelTestHints(focused);
+          if (hint) void loadModelTestHints(hint);
         }
-        setText($("model-test-model-hint"), focused ? m("ui.model_test_model_hint", { account: focused.name || focused.auth_index }) : "");
         renderModelTestPresetDetails();
         $("model-test-custom-note").classList.toggle("hidden", $("model-test-prompt").value === state.baselinePrompt);
-        $("model-test-results").replaceChildren(
-          ...(state.results.length
-            ? state.results.map((record) => {
-                const pending = record.phase === "waiting" || record.phase === "running" || record.phase === "stopped";
-                const assertions = Array.isArray(record.result?.assertions) ? record.result.assertions : [];
-                const passed = assertions.length && assertions.every((check) => check.passed === true);
-                const incomplete = record.result?.outcome === "incomplete";
-                const preview = !pending && record.preset === "pelican" ? modelTestSVGPreview(record.result?.output) : "";
-                return el(
-                  "article",
-                  { class: "model-test-result", "data-phase": record.phase, "data-auth-index": record.auth_index },
-                  el("h3", { text: record.account + " · " + record.model }),
-                  el(
-                    "div",
-                    { class: "row" },
-                    el("span", {
-                      class:
-                        "tag " +
-                        (pending
-                          ? "plain"
-                          : record.error || record.result?.outcome === "failed" || incomplete
-                            ? "warn"
-                            : assertions.length ? passed ? "ok" : "warn" : "plain"),
-                      text: pending
-                        ? m("ui.model_test_phase_" + record.phase)
-                        : record.error || record.result?.outcome === "failed"
-                          ? m("ui.model_test_failed")
-                          : incomplete
-                            ? m("ui.model_test_incomplete")
-                            : assertions.length
-                              ? passed ? m("ui.model_test_passed") : m("ui.model_test_assertion_failed")
-                              : m("ui.model_test_manual")
-                    }),
-                    el("span", { class: "small muted", text: m(modelTestPreset(record.preset).label) })
-                  ),
-                  record.result
-                    ? el(
-                        "div",
-                        { class: "small model-test-model-info" },
-                        el("p", { text: m("ui.model_test_requested_model", { model: record.result.requested_model || record.model }) }),
-                        el("p", { text: m("ui.model_test_upstream_model", { model: record.result.upstream_model || record.model }) }),
-                        el("p", {
-                          text: m("ui.model_test_declared_model", {
-                            model: record.result.response_model || m("ui.model_test_model_unavailable")
-                          })
-                        }),
-                        el("span", {
-                          class: "tag " + (["different", "conflicting"].includes(record.result.response_model_status) ? "warn" : "plain"),
-                          text: m(
-                            {
-                              matched: "ui.model_test_model_matched",
-                              different: "ui.model_test_model_different",
-                              conflicting: "ui.model_test_model_conflicting"
-                            }[record.result.response_model_status] || "ui.model_test_model_missing"
-                          )
-                        })
-                      )
-                    : null,
-                  record.proxy
-                    ? el("p", {
-                        class: "small muted",
-                        text: m(
-                          record.proxy.source === "account"
-                            ? "ui.model_test_proxy_account"
-                            : record.proxy.source === "global" ? "ui.model_test_proxy_global" : "ui.model_test_proxy_direct",
-                          { endpoint: record.proxy.endpoint || "" }
-                        )
-                      })
-                    : null,
-                  record.error ? el("p", { class: "small", text: record.error }) : null,
-                  record.result?.reason
-                    ? el("p", {
-                        class: "small",
-                        text: window.billingI18n.serverMessage(record.result.reason_message, record.result.reason)
-                      })
-                    : null,
-                  record.result?.lease_retained ? el("p", { class: "small muted", text: m("ui.model_test_lease_retained") }) : null,
-                  assertions.length
-                    ? el(
-                        "ul",
-                        { class: "model-test-checks" },
-                        assertions.map((check) =>
-                          el("li", {
-                            text: m(check.passed ? "ui.model_test_check_pass" : "ui.model_test_check_fail", {
-                              name: modelTestAssertionLabel(check.name)
-                            })
-                          })
-                        )
-                      )
-                    : null,
-                  record.result?.output_truncated ? el("p", { class: "small muted", text: m("ui.model_test_truncated") }) : null,
-                  preview
-                    ? el("img", { class: "model-test-svg-preview", src: preview, alt: m("ui.model_test_svg_preview"), loading: "lazy" })
-                    : null,
-                  preview ? el("p", { class: "small muted", text: m("ui.model_test_svg_review") }) : null,
-                  !pending ? el("pre", { text: record.result?.output || m("ui.model_test_no_output") }) : null,
-                  el(
-                    "details",
-                    {},
-                    el("summary", { class: "small", text: m("ui.model_test_sent_prompt") }),
-                    el("pre", { text: record.prompt })
-                  )
-                );
-              })
-            : [el("p", { class: "small muted", text: m("ui.model_test_empty") })])
-        );
+        renderModelTestProgress();
+        renderModelTestSummary(state);
+        renderModelTestResults();
       }
 
       async function readModelTestRoute(account, key, ensureCurrent = () => {}) {
@@ -7971,7 +8386,7 @@
       async function loadModelTestHints(account) {
         const owner = adminUIState, state = modelTestState(), generation = sessionGeneration, identity = modelTestAccountKey(account);
         const ensureCurrent = () => {
-          if (owner !== adminUIState || generation !== sessionGeneration || state.routeAccount !== identity) throw new StaleRequestError();
+          if (owner !== adminUIState || generation !== sessionGeneration || state.hintAccount !== identity) throw new StaleRequestError();
         };
         try {
           const route = await readModelTestRoute(account, authKey, ensureCurrent);
@@ -7986,7 +8401,7 @@
           $("model-test-models").replaceChildren(...[...choices].map(([value, label]) => el("option", { value, label })));
         } catch (error) {
           if (
-            owner !== adminUIState || generation !== sessionGeneration || state.routeAccount !== identity ||
+            owner !== adminUIState || generation !== sessionGeneration || state.hintAccount !== identity ||
             error instanceof StaleRequestError
           )
             return;
@@ -8646,60 +9061,88 @@
         if (currentRole === "admin" && activeTab(false) === "model-tests") renderModelTests();
       }
 
+      // Different accounts run in parallel up to the chosen concurrency; runs of
+      // one account stay sequential, so its per-account limit is never exceeded
+      // and its runs show consecutive behavior.
       async function runModelTest() {
         const owner = adminUIState, state = modelTestState();
         if (state.running) return;
-        const accounts = (resources.admin.modelTests.value?.accounts || []).filter(
-          (account) => state.selected.has(modelTestAccountKey(account)) && modelTestAccountAvailable(account)
-        );
+        const accounts = modelTestAccounts().filter((account) => state.selected.has(modelTestAccountKey(account)));
         if (!accounts.length) throw new UIError(m("ui.model_test_select_required"));
         if (accounts.length > MODEL_TEST_BATCH_LIMIT) throw new UIError(m("ui.model_test_batch_limit", { limit: MODEL_TEST_BATCH_LIMIT }));
         const prompt = $("model-test-prompt").value, model = $("model-test-model").value.trim();
         const limit = resources.admin.modelTests.value?.limits?.max_prompt_bytes || 8192;
         if (!model || !prompt.trim()) throw new UIError(m("ui.model_test_required"));
         if (new TextEncoder().encode(prompt).length > limit) throw new UIError(m("ui.model_test_prompt_limit", { limit }));
+        const { rounds, concurrency } = modelTestPlan();
+        if (accounts.length * rounds > MODEL_TEST_RUN_LIMIT)
+          throw new UIError(m("ui.model_test_plan_too_large", { total: accounts.length * rounds, limit: MODEL_TEST_RUN_LIMIT }));
         const preset = prompt === state.baselinePrompt ? state.preset : "free";
         const key = authKey, generation = sessionGeneration;
         const current = () => owner === adminUIState && generation === sessionGeneration && currentRole === "admin";
         const ensureCurrent = () => { if (!current() || state.stopRequested) throw new StaleRequestError(); };
-        state.results = accounts.map((account) => ({
-          account: account.name || account.auth_index,
-          auth_index: account.auth_index,
-          model,
-          prompt,
-          preset,
-          phase: "waiting",
-          error: "",
-          result: null,
-          proxy: null
-        }));
+        const byKey = new Map(accounts.map((account) => [modelTestAccountKey(account), account]));
+        const records = [];
+        for (let round = 1; round <= rounds; round++)
+          for (const account of accounts)
+            records.push({
+              id: records.length + 1,
+              round,
+              key: modelTestAccountKey(account),
+              account: account.name || account.auth_index,
+              accountProxy: account.proxy || "",
+              auth_index: account.auth_index,
+              model,
+              prompt,
+              preset,
+              phase: "waiting",
+              error: "",
+              result: null,
+              proxy: null
+            });
+        state.results = records;
+        state.expanded = new Set();
         state.running = true;
         state.stopRequested = false;
         state.error = "";
+        $("model-test-run-account").value = "";
         renderModelTests();
-        try {
-          for (let index = 0; index < accounts.length; index++) {
-            if (!current() || state.stopRequested) break;
-            const record = state.results[index];
+        const busy = new Set();
+        const waiters = [];
+        const wakeAll = () => { for (const resolve of waiters.splice(0)) resolve(); };
+        const nextRecord = () => records.find((record) => record.phase === "waiting" && !busy.has(record.key));
+        const worker = async () => {
+          for (;;) {
+            if (!current() || state.stopRequested) return;
+            const record = nextRecord();
+            if (!record) {
+              if (!records.some((item) => item.phase === "waiting")) return;
+              // Every waiting run belongs to an account that is already running.
+              await new Promise((resolve) => waiters.push(resolve));
+              continue;
+            }
+            busy.add(record.key);
             record.phase = "running";
-            renderModelTests();
-            await runModelTestAccount(accounts[index], record, { key, current, ensureCurrent });
-            if (current()) renderModelTests();
+            scheduleModelTestResults();
+            try { await runModelTestAccount(byKey.get(record.key), record, { key, current, ensureCurrent, onProxy: () => {} }); } finally {
+              busy.delete(record.key);
+              wakeAll();
+              if (current()) scheduleModelTestResults();
+            }
           }
-        } finally {
+        };
+        try { await Promise.all(Array.from({ length: Math.min(concurrency, accounts.length) }, worker)); } finally {
+          wakeAll();
           for (const record of state.results) if (record.phase === "waiting") record.phase = "stopped";
           state.running = false;
-          if (current()) {
-            renderModelTestProxy(null);
-            renderModelTests();
-          }
+          if (current()) renderModelTests();
         }
       }
 
       async function runModelTestAccount(
         account,
         record,
-        { key, current, ensureCurrent, onProxy = renderModelTestProxy, onAuthError = stopPendingModelTests }
+        { key, current, ensureCurrent, onProxy = () => {}, onAuthError = stopPendingModelTests }
       ) {
         let prepared = null, completion = null, started = false;
         try {
@@ -8731,12 +9174,14 @@
           if (!Number.isFinite(Date.parse(prepared.start_before)) || Date.now() >= Date.parse(prepared.start_before))
             throw new UIError(m("ui.model_test_prepare_expired"));
           started = true;
+          const sentAt = performance.now();
           const response = await api("POST", "/v0/management/api-call", prepared.api_call, {
             key,
             command: true,
             raw: true,
             timeoutMS: 65000
           });
+          record.elapsed = performance.now() - sentAt;
           if (!Number.isInteger(response?.status_code) || typeof response?.body !== "string")
             throw new UIError(m("ui.invalid_server_response"));
           completion = { test_id: prepared.test_id, status_code: response.status_code, body: response.body };
@@ -8764,7 +9209,7 @@
         }
       }
 
-      const STATE_QUALITY_PRESETS = ["json", "logic", "code", "pelican", "candy", "boolean", "tracking"];
+      const STATE_QUALITY_PRESETS = ["candy", "pelican"];
 
       function stateQualityPreset(id, state = adminUIState.stateQuality) {
         const preset = state?.catalog?.presets?.find((entry) => entry.id === id);
@@ -8794,7 +9239,7 @@
                 const checks = Array.isArray(record.result?.assertions) ? record.result.assertions : [];
                 const failed = !!record.error || !["completed", "incomplete"].includes(record.result?.outcome);
                 const incomplete = record.result?.outcome === "incomplete" || record.result?.output_truncated === true;
-                const manual = ["code", "pelican"].includes(record.preset) || !checks.length;
+                const manual = record.preset === "pelican" || !checks.length;
                 const passed = checks.length > 0 && checks.every((check) => check.passed === true);
                 const label = waiting
                   ? m("ui.model_test_phase_" + record.phase)
@@ -9045,7 +9490,7 @@
           error: "",
           catalog: null,
           selected,
-          presets: new Set(["json", "logic", "boolean"]),
+          presets: new Set(["candy"]),
           accounts: [],
           model: saved?.config?.models?.[0] || "",
           results: previous?.results || [],
@@ -14872,9 +15317,14 @@
         $("model-test-custom-note").classList.toggle("hidden", $("model-test-prompt").value === modelTestState().baselinePrompt);
       };
       $("model-test-run").onclick = () => guard(runModelTest);
+      $("model-test-rounds").oninput = renderModelTests;
+      $("model-test-concurrency").oninput = renderModelTests;
+      $("model-test-run-account").onchange = renderModelTestResults;
+      $("model-test-run-filter").onchange = renderModelTestResults;
       $("model-test-stop").onclick = stopPendingModelTests;
       $("model-test-clear").onclick = () => {
         modelTestState().results = [];
+        modelTestState().expanded.clear();
         modelTestState().error = "";
         renderModelTests();
       };

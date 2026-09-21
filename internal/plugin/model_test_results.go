@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
+	"regexp"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -170,23 +171,36 @@ func (a *App) completeModelTest(req ManagementRequest) ManagementResponse {
 	}
 	result.Output = output
 	if lease.Expected != "" {
-		preset := modelTestPresetByID(lease.Preset)
-		exactJSON := preset != nil && preset.Assertion == "Exact JSON object"
+		name := "Exact output"
+		if preset := modelTestPresetByID(lease.Preset); preset != nil && (preset.Assertion == "Exact JSON object" || preset.Assertion == "Final answer") {
+			name = preset.Assertion
+		}
 		passed := false
 		if !result.OutputTruncated {
-			if exactJSON {
+			switch name {
+			case "Exact JSON object":
 				passed = modelTestEqualJSON(output, lease.Expected)
-			} else {
+			case "Final answer":
+				passed = modelTestFinalAnswer(output) == lease.Expected
+			default:
 				passed = strings.TrimSpace(output) == strings.TrimSpace(lease.Expected)
 			}
-		}
-		name := "Exact output"
-		if exactJSON {
-			name = "Exact JSON object"
 		}
 		result.Assertions = append(result.Assertions, modelTestAssertion{Name: name, Passed: passed, Expected: lease.Expected})
 	}
 	return modelTestJSON(200, result)
+}
+
+var modelTestFinalAnswerPattern = regexp.MustCompile(`(?i)(?:最终答案|final answer)[*_\s]*[:：][*_\s]*(\d+)`)
+
+// modelTestFinalAnswer returns the number on the last answer line the prompt
+// asks for. A number merely mentioned in the reasoning never counts.
+func modelTestFinalAnswer(output string) string {
+	matches := modelTestFinalAnswerPattern.FindAllStringSubmatch(output, -1)
+	if len(matches) == 0 {
+		return ""
+	}
+	return strings.TrimLeft(matches[len(matches)-1][1], "0")
 }
 
 func modelTestEqualJSON(actual, expected string) bool {

@@ -135,7 +135,7 @@
     "key": "backend.model_test_state_expiring",
     "formats": []
   },
-  "At most four model tests may be active": {
+  "At most eight model tests may be active": {
     "key": "backend.model_test_global_concurrency_limit",
     "formats": []
   },

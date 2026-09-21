@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	modelTestMaxActive        = 4
+	modelTestMaxActive        = 8
 	modelTestPromptBytes      = 8192
 	modelTestLeaseDuration    = 90 * time.Second
 	modelTestSendWindow       = 10 * time.Second
@@ -48,6 +48,7 @@ type modelTestAccount struct {
 	Source         string           `json:"source"`
 	Disabled       bool             `json:"disabled"`
 	BaseURL        string           `json:"base_url,omitempty"`
+	Proxy          string           `json:"proxy,omitempty"`
 	Supported      bool             `json:"supported"`
 	Reason         string           `json:"reason,omitempty"`
 	ReasonMessage  messages.Message `json:"reason_message,omitzero"`
@@ -161,11 +162,31 @@ func (a *App) getModelTests(_ ManagementRequest) ManagementResponse {
 		if strings.EqualFold(file.Provider, integrationAuthType) || strings.EqualFold(file.Type, integrationAuthType) {
 			continue
 		}
-		accounts = append(accounts, modelTestAccountView(file))
+		account := modelTestAccountView(file)
+		if account.Supported && account.Source == billing.CredentialSourceAuthFiles {
+			account.Proxy = a.modelTestFileProxy(file.AuthIndex)
+		}
+		accounts = append(accounts, account)
 	}
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].Name < accounts[j].Name })
 	return modelTestJSON(200, map[string]any{"accounts": accounts, "presets": modelTestPresets, "usage_available": false,
 		"limits": map[string]int{"max_active": modelTestMaxActive, "max_prompt_bytes": modelTestPromptBytes, "lease_seconds": 90, "send_within_seconds": 10, "max_response_bytes": modelTestMaxResponseBytes}})
+}
+
+// modelTestFileProxy shows where an auth file's own proxy points, without
+// credentials; an unreadable file simply shows none.
+func (a *App) modelTestFileProxy(authIndex string) string {
+	raw, err := a.hostCaller(hostAuthGet, map[string]string{"auth_index": authIndex})
+	var response hostAuthGetResponse
+	var material map[string]any
+	if err != nil || json.Unmarshal(raw, &response) != nil || json.Unmarshal(response.JSON, &material) != nil {
+		return ""
+	}
+	proxy := strings.TrimSpace(credentialString(material, "proxy_url", "proxyUrl"))
+	if proxy == "" {
+		return ""
+	}
+	return modelTestProxyEndpoint(proxy)
 }
 
 func modelTestJSON(status int, value any) ManagementResponse {
@@ -342,7 +363,7 @@ func (a *App) prepareModelTest(req ManagementRequest) ManagementResponse {
 	defer a.modelTestsMu.Unlock()
 	a.pruneModelTestsLocked(now)
 	if len(a.modelTests) >= modelTestMaxActive {
-		return modelTestError(429, "At most four model tests may be active")
+		return modelTestError(429, "At most eight model tests may be active")
 	}
 	if !a.accountRuntime.acquire(account.CredentialRef, requestID) {
 		return modelTestError(429, "This account has reached its concurrency limit")
@@ -588,21 +609,21 @@ func (a *App) modelTestNativeRequest(file hostAuthFile, input modelTestPrepareIn
 }
 
 func modelTestProxyView(call modelTestAPICall) (string, string) {
-	source, proxy := call.proxySource, call.ProxyURL
+	return call.proxySource, modelTestProxyEndpoint(call.ProxyURL)
+}
+
+// modelTestProxyEndpoint keeps the scheme and host of a proxy and hides any
+// user information and path.
+func modelTestProxyEndpoint(proxy string) string {
 	if proxy == "direct" {
-		return source, "direct"
+		return "direct"
 	}
 	u, err := url.Parse(proxy)
-	if err != nil {
-		return source, "invalid"
+	if err != nil || u.Host == "" {
+		return "invalid"
 	}
 	if u.User != nil {
-		u.User = url.User("***")
+		return u.Scheme + "://***@" + u.Host
 	}
-	return source, u.Scheme + "://" + func() string {
-		if u.User != nil {
-			return "***@"
-		}
-		return ""
-	}() + u.Host
+	return u.Scheme + "://" + u.Host
 }
