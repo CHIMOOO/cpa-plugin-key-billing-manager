@@ -42,7 +42,7 @@ sudo journalctl -u cpa-state-collector -n 50 --no-pager
 
 ## Docker：独立容器
 
-请先切换到本次发布的源码标签 `v0.1.1`，确保构建内容与插件一致。源码仓库中的 `compose.state-collector.yaml` 是 Linux 主机网络示例。如果 CPA 端口发布在宿主的 8317，可直接使用 `http://127.0.0.1:8317`。采集器和 CPA 在不同容器网络时，`127.0.0.1` 不会指向 CPA；应加入 CPA 的现有 Docker 网络，移除 `network_mode: host`，使用对应服务名（例如 `http://cpa:8317`）。
+请先切换到本次发布的源码标签 `v0.1.2`，确保构建内容与插件一致。源码仓库中的 `compose.state-collector.yaml` 是 Linux 主机网络示例。如果 CPA 端口发布在宿主的 8317，可直接使用 `http://127.0.0.1:8317`。采集器和 CPA 在不同容器网络时，`127.0.0.1` 不会指向 CPA；应加入 CPA 的现有 Docker 网络，移除 `network_mode: host`，使用对应服务名（例如 `http://cpa:8317`）。
 
 容器以 UID/GID 65532 运行。准备一个位于仓库外的密码文件，例如 `/etc/cpa-state-collector/container-management-key`，使用编辑器写入管理密码，然后：
 
@@ -51,7 +51,7 @@ sudo chown 65532:65532 /etc/cpa-state-collector/container-management-key
 sudo chmod 0400 /etc/cpa-state-collector/container-management-key
 export CPA_MANAGEMENT_KEY_FILE=/etc/cpa-state-collector/container-management-key
 export CPA_URL=http://127.0.0.1:8317
-export CPA_COLLECTOR_VERSION=0.1.1
+export CPA_COLLECTOR_VERSION=0.1.2
 docker compose -f deploy/compose.state-collector.yaml up -d --build
 docker compose -f deploy/compose.state-collector.yaml logs --tail=50 state-collector
 ```
@@ -89,6 +89,6 @@ Install both the updated plugin and the standalone collector; v0.0.9 lacks the r
 
 Build with `CGO_ENABLED=0 go build -o cpa-state-collector ./cmd/cpa-state-collector`, then run with `--url` and `--management-key-file`. `--check` verifies the API without probing. `CPA_URL` and `CPA_MANAGEMENT_KEY` are supported environment alternatives. Never use an upstream OAuth token or a downstream API key in place of the management password.
 
-Use the included systemd unit for boot-time startup, or build the Docker Compose example from tag v0.1.1 with CPA_COLLECTOR_VERSION=0.1.1 for a sidecar container. systemd 247+ is required for `LoadCredential`; restart the unit after rotating its password file. The container runs as UID 65532, so its mounted password file must be readable by that UID. Set the CPA origin to an address reachable from the collector, and preserve normal HTTPS verification.
+Use the included systemd unit for boot-time startup, or build the Docker Compose example from tag v0.1.2 with CPA_COLLECTOR_VERSION=0.1.2 for a sidecar container. systemd 247+ is required for `LoadCredential`; restart the unit after rotating its password file. The container runs as UID 65532, so its mounted password file must be readable by that UID. Set the CPA origin to an address reachable from the collector, and preserve normal HTTPS verification.
 
 Starting the service alone does not enable collection. Click Start on the State page; afterward closing the browser does not stop it. Stop prevents new probes and lets one in-flight probe finish. Network/authentication failures retry, duplicate collectors wait for the lease, and persisted intent survives process restarts. The collector is a separate install from the plugin-store library.
