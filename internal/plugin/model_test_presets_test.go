@@ -92,19 +92,12 @@ func TestModelTestCandyChecksOnlyTheFinalAnswerLine(t *testing.T) {
 		name, output string
 		pass         bool
 	}{
-		{"final-line", "先按形状分析……
-最终答案：21", true},
-		{"bold-final-line", "推理略。
-
-**最终答案：** 21", true},
-		{"english-final-line", "Reasoning omitted.
-Final answer: 21", true},
-		{"corrected-final-line", "最终答案：18
-不对，重新检查。
-最终答案：21", true},
+		{"final-line", "先按形状分析……\n最终答案：21", true},
+		{"bold-final-line", "推理略。\n\n**最终答案：** 21", true},
+		{"english-final-line", "Reasoning omitted.\nFinal answer: 21", true},
+		{"corrected-final-line", "最终答案：18\n不对，重新检查。\n最终答案：21", true},
 		{"mentions-answer-only", "有人认为答案是 21，但我选择 30 个。", false},
-		{"wrong-final-line", "有人认为答案是 21。
-最终答案：30", false},
+		{"wrong-final-line", "有人认为答案是 21。\n最终答案：30", false},
 		{"longer-number", "最终答案：210", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

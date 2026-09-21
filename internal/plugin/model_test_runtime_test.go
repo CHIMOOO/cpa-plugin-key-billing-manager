@@ -210,8 +210,7 @@ func TestModelTestGlobalBoundAndExactOutputOnly(t *testing.T) {
 	if response := a.prepareModelTest(ManagementRequest{Body: mustMarshal(t, modelTestInput(file))}); response.StatusCode != 429 {
 		t.Fatal("global concurrency cap bypassed")
 	}
-	body := `{"choices":[{"finish_reason":"stop","message":{"content":"Reasoning omitted.
-Final answer: 21"}}],"usage":{"total_tokens":999999},"latency":999,"error":"dummy-private-error"}`
+	body := `{"choices":[{"finish_reason":"stop","message":{"content":"Reasoning omitted.\nFinal answer: 21"}}],"usage":{"total_tokens":999999},"latency":999,"error":"dummy-private-error"}`
 	response := a.completeModelTest(ManagementRequest{Body: mustMarshal(t, map[string]any{"test_id": prepared.TestID, "status_code": 200, "body": body})})
 	var result modelTestResult
 	_ = json.Unmarshal(response.Body, &result)
