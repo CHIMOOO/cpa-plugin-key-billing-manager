@@ -1658,14 +1658,17 @@ def team_integration(body):
         account["has_auth_cookie"] = True
     return team_response(account)
 
-CAPTURE = {"listener": None, "expires": 0, "seq": 0, "revision": 0, "entries": [], "hooks_wanted": False, "polls": 0}
+CAPTURE = {"listeners": [], "expires": 0, "seq": 0, "revision": 0, "entries": [], "hooks_wanted": False, "hooks_registered": False, "polls": 0}
 
 
 def capture_accounts():
-    return [
+    accounts = [
         {"auth_index": "idx-codex-1", "name": "codex-demo@example.com", "provider": "codex", "disabled": False},
         {"auth_index": "idx-claude-1", "name": "claude-demo@example.com", "provider": "claude", "disabled": False},
     ]
+    for number in range(2, 9):
+        accounts.append({"auth_index": "idx-codex-%d" % number, "name": "team-%d@example.com" % number, "provider": "codex", "disabled": number % 4 == 0})
+    return accounts
 
 
 def capture_touch(entry):
@@ -1674,13 +1677,23 @@ def capture_touch(entry):
 
 
 def capture_simulate():
-    listener = CAPTURE["listener"]
-    if listener and time.time() > CAPTURE["expires"]:
-        CAPTURE["listener"] = listener = None
+    if CAPTURE["listeners"] and time.time() > CAPTURE["expires"]:
+        CAPTURE["listeners"] = []
+    active = [item for item in CAPTURE["listeners"] if not item["paused"]]
+    listener = active[CAPTURE["polls"] % len(active)] if active else None
     CAPTURE["polls"] += 1
     for entry in CAPTURE["entries"]:
         if entry.get("completed_at") is None:
-            chunk = 'data: {"type":"response.output_text.delta","delta":"chunk %d "}\n\n' % (entry["chunks"] + 1)
+            if not entry["responded"]:
+                entry["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                entry["status_code"], entry["outcome"] = 200, "succeeded"
+                capture_touch(entry)
+                continue
+            if entry["chunks"] == 0:
+                chunk = 'event: response.created\ndata: {"type":"response.created","response":{"id":"resp_demo","model":"gpt-5.4-2026-09-01","instructions":"You are a demo assistant."}}\n\n'
+            else:
+                chunk = 'event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"chunk %d "}\n\n' % entry["chunks"]
+                entry["response_model"] = "gpt-5.4-2026-09-01"
             entry["response_body"]["text"] += chunk
             entry["response_body"]["size"] += len(chunk)
             entry["chunks"] += 1
@@ -1691,27 +1704,26 @@ def capture_simulate():
     if listener and CAPTURE["polls"] % 3 == 1:
         CAPTURE["seq"] += 1
         body = json.dumps({"model": "gpt-5.4", "stream": True, "input": [{"role": "user", "content": [{"type": "input_text", "text": "Hello from request %d <b>&amp;</b>" % CAPTURE["seq"]}]}]})
-        entry = {"seq": CAPTURE["seq"], "request_id": "req-demo-%d" % CAPTURE["seq"], "attempts": 1, "auth_id": "codex-demo.json", "auth_index": listener["auth_index"],
+        entry = {"seq": CAPTURE["seq"], "request_id": "req-demo-%d" % CAPTURE["seq"], "attempts": 1, "auth_id": "codex-demo.json", "auth_index": listener["auth_index"], "auth_name": listener["name"],
                  "path": "/v1/responses", "source_format": "openai-response", "to_format": "codex", "model": "gpt-5.4", "requested_model": "gpt-5.4", "stream": True,
                  "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "completed_at": None,
                  "request_headers": {"Authorization": ["Bearer [redacted]"], "Content-Type": ["application/json"], "Session_id": ["019a-demo"], "User-Agent": ["codex_cli_rs/0.50.0"]},
                  "request_body": {"text": body, "size": len(body)}, "upstream_body": {"text": body.replace("gpt-5.4", "gpt-5.4-codex"), "size": len(body) + 6},
                  "status_code": 0, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["up-%d" % CAPTURE["seq"]]},
-                 "response_body": {"text": "", "size": 0}, "responded": CAPTURE["hooks_wanted"], "chunks": 0, "outcome": ""}
+                 "response_body": {"text": "", "size": 0}, "responded": CAPTURE["hooks_registered"], "chunks": 0, "outcome": ""}
         CAPTURE["entries"].append(entry)
         capture_touch(entry)
 
 
 def capture_view(since, accounts=False):
-    listener = CAPTURE["listener"]
-    if listener:
+    if CAPTURE["listeners"]:
         CAPTURE["expires"] = time.time() + 45
     rows = []
     for entry in CAPTURE["entries"]:
         if entry["revision"] > since:
-            rows.append({key: entry[key] for key in ["seq", "revision", "request_id", "attempts", "path", "model", "requested_model", "stream", "started_at", "completed_at", "status_code", "outcome", "responded", "chunks"]} | {"request_size": entry["request_body"]["size"], "response_size": entry["response_body"]["size"]})
-    result = {"listener": {"active": True, **listener} if listener else {"active": False}, "revision": CAPTURE["revision"], "entries": rows,
-              "retained": [entry["seq"] for entry in CAPTURE["entries"]], "response_hooks": {"wanted": CAPTURE["hooks_wanted"], "registered": False},
+            rows.append({key: entry.get(key) for key in ["seq", "revision", "request_id", "attempts", "auth_index", "auth_name", "model", "requested_model", "response_model", "stream", "started_at", "completed_at", "status_code", "outcome", "responded", "chunks"]} | {"request_size": entry["request_body"]["size"], "response_size": entry["response_body"]["size"]})
+    result = {"listeners": CAPTURE["listeners"], "revision": CAPTURE["revision"], "entries": rows,
+              "retained": [entry["seq"] for entry in CAPTURE["entries"]], "response_hooks": {"wanted": CAPTURE["hooks_wanted"], "registered": CAPTURE["hooks_registered"]},
               "limits": {"max_entries": 100, "max_body_bytes": 2 << 20, "lease_seconds": 45}}
     if accounts:
         result["accounts"] = capture_accounts()
@@ -2001,20 +2013,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, TEAM_ACCOUNT_SETTINGS)
             return
         if route == ("POST", f"{API_BASE}/traffic-capture/watch"):
-            index = json.loads(request_body or b"{}").get("auth_index")
+            body = json.loads(request_body or b"{}")
+            index = body.get("auth_index")
             account = next((item for item in capture_accounts() if item["auth_index"] == index), None)
-            CAPTURE["listener"] = {"auth_index": index, "name": account["name"]} if account else None
+            if account:
+                existing = next((item for item in CAPTURE["listeners"] if item["auth_index"] == index), None)
+                if existing is None:
+                    existing = {"auth_index": index, "name": account["name"], "paused": False}
+                    CAPTURE["listeners"].append(existing)
+                existing["paused"] = bool(body.get("paused"))
             CAPTURE["expires"] = time.time() + 45
             self.send_json(200, capture_view(1 << 62))
             return
         if route == ("DELETE", f"{API_BASE}/traffic-capture/watch"):
-            CAPTURE["listener"] = None
+            index = (parse_qs(parsed.query).get("auth_index") or [""])[0]
+            CAPTURE["listeners"] = [item for item in CAPTURE["listeners"] if index and item["auth_index"] != index]
             self.send_json(200, capture_view(1 << 62))
             return
         if route == ("DELETE", f"{API_BASE}/traffic-capture"):
             CAPTURE["entries"] = []
             CAPTURE["revision"] += 1
             self.send_json(200, capture_view(1 << 62))
+            return
+        if route == ("PATCH", f"{API_BASE}/config"):
+            CAPTURE["hooks_registered"] = CAPTURE["hooks_wanted"]
+            self.send_json(200, {"status": "ok"})
             return
         if route == ("PUT", f"{API_BASE}/traffic-capture/settings"):
             CAPTURE["hooks_wanted"] = bool(json.loads(request_body or b"{}").get("response_hooks"))

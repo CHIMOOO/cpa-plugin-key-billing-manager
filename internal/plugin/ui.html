@@ -1563,12 +1563,30 @@
       .team-account-concurrency .field { flex: 1; margin: 0; min-width: 0; }
       .team-account-concurrency input { width: 100%; }
       #risk-events td { white-space: normal; overflow-wrap: anywhere; }
-      .capture-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; margin: 14px 0 8px; }
-      .capture-controls .field { min-width: 0; margin: 0; }
-      .capture-controls select { width: 100%; min-width: 0; }
-      .capture-actions { flex-wrap: nowrap; }
-      .capture-listener { margin: 8px 0 12px; overflow-wrap: anywhere; }
+      #capture-title { -webkit-user-select: none; user-select: none; }
+      .capture-accounts-head { margin-top: 14px; }
+      .capture-accounts-head h3 { margin: 0; font-size: 14px; }
+      .capture-accounts-head + .state-account-toolbar { margin-top: 10px; }
+      .capture-accounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; max-height: 310px; }
+      .capture-account {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+        padding: 6px 8px 6px 4px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+      }
+      .capture-account.is-listening { border-color: var(--primary-color); }
+      .selection-list .capture-account > label { flex: 1; min-width: 0; }
+      .capture-account-text { display: grid; min-width: 0; }
+      .capture-account-text small { color: var(--text-secondary); }
+      .capture-account > .tag, .capture-account > button { flex: none; }
+      .capture-listener { margin: 10px 0 12px; overflow-wrap: anywhere; }
+      .capture-hooks-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
       .capture-hooks { max-width: 100%; white-space: normal; }
+      .capture-list-actions, .capture-detail-actions { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+      .capture-detail-actions > .toggle-filter:not(.compact-toggle) { width: auto; white-space: nowrap; }
       .capture-layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: start; }
       .capture-layout > .card { min-width: 0; }
       .capture-list { max-height: 720px; overflow: auto; }
@@ -1576,7 +1594,11 @@
       .capture-list tr[data-seq]:hover td { background: var(--bg-hover); }
       .capture-list tr.is-selected td { background: var(--count-badge-bg); }
       .capture-list td { vertical-align: top; }
-      .capture-list .capture-cell-model { max-width: 180px; overflow-wrap: anywhere; white-space: normal; }
+      .capture-list .capture-cell-model, .capture-list .capture-cell-account {
+        max-width: 180px;
+        overflow-wrap: anywhere;
+        white-space: normal;
+      }
       .capture-list .capture-cell-size { white-space: nowrap; }
       .capture-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-bottom: 12px; overflow-wrap: anywhere; }
       .capture-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
@@ -1711,9 +1733,10 @@
       }
       @media (max-width: 640px) {
         .model-test-runbar-fields { grid-template-columns: minmax(0, 1fr); }
-        .capture-controls { grid-template-columns: minmax(0, 1fr); }
-        .capture-actions { flex-wrap: wrap; }
-        .capture-actions > button { flex: 1; }
+        .capture-accounts { grid-template-columns: minmax(0, 1fr); }
+        .capture-account { flex-wrap: wrap; }
+        .selection-list .capture-account > label { flex-basis: 100%; }
+        .capture-account > .tag { margin-left: auto; }
         .model-test-runbar-actions > button { flex: 1; }
       }
       .project-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; text-decoration: none; }
@@ -3156,15 +3179,14 @@
         </section>
         <section id="tab-traffic" class="hidden">
           <div class="card">
-            <div class="row spread settings-section-header"><div class="state-head-title"><h2 data-i18n="ui.capture_title">Traffic capture</h2><span class="tag plain" data-i18n="ui.capture_memory_only">Memory only</span></div></div>
-            <p class="access-help" data-i18n="ui.capture_intro">Choose an upstream account and watch the requests CPA routes to it in real time, with their headers, bodies and responses.</p>
+            <div class="row spread settings-section-header"><div class="state-head-title"><h2 id="capture-title" data-i18n="ui.capture_title">Traffic capture</h2><span class="tag plain" data-i18n="ui.capture_memory_only">Memory only</span></div></div>
+            <p class="access-help" data-i18n="ui.capture_intro">Select one or more upstream accounts and watch the requests CPA routes to them in real time, with their headers, bodies and responses.</p>
             <div id="capture-status" class="notice hidden" role="status"></div>
-            <div class="capture-controls">
-              <label class="field"><span data-i18n="ui.capture_account">Account to listen to</span><span class="native-select"><select id="capture-account" disabled></select></span></label>
-              <div class="row capture-actions"><button id="capture-start" class="primary" type="button" disabled data-i18n="ui.capture_start">Start listening</button><button id="capture-stop" type="button" disabled data-i18n="ui.capture_stop">Stop</button><button id="capture-clear" class="danger" type="button" disabled data-i18n="ui.capture_clear">Clear</button></div>
-            </div>
+            <div class="row spread capture-accounts-head"><h3 data-i18n="ui.capture_account">Accounts to listen to</h3><span id="capture-account-count" class="tag plain"></span></div>
+            <div class="state-account-toolbar"><input id="capture-account-search" type="search" autocomplete="off" placeholder="Search account name or index" data-i18n-placeholder="ui.capture_account_search" aria-label="Search account name or index" data-i18n-aria-label="ui.capture_account_search" /><span class="native-select"><select id="capture-account-filter" aria-label="Account display" data-i18n-aria-label="ui.state_account_filter"><option value="all" data-i18n="ui.chooser_every_status">All, including disabled</option><option value="enabled" data-i18n="ui.enabled_only">Enabled only</option><option value="listening" data-i18n="ui.capture_filter_listening">Listening only</option></select></span><button id="capture-pause-all" type="button" disabled data-i18n="ui.capture_pause_all">Pause all</button><button id="capture-resume-all" type="button" disabled data-i18n="ui.capture_resume_all">Resume all</button><button id="capture-stop-all" type="button" disabled data-i18n="ui.capture_stop_all">Stop all</button></div>
+            <div id="capture-accounts" class="selection-list capture-accounts"></div>
             <p id="capture-listener" class="small capture-listener" role="status"></p>
-            <label class="toggle-filter capture-hooks"><input id="capture-response-hooks" type="checkbox" role="switch" disabled /><span data-i18n="ui.capture_response_hooks">Register response hooks to capture responses</span></label>
+            <div class="capture-hooks-row"><label class="toggle-filter capture-hooks"><input id="capture-response-hooks" type="checkbox" role="switch" disabled /><span data-i18n="ui.capture_response_hooks">Register response hooks to capture responses</span></label><button id="capture-hooks-apply" class="small hidden" type="button" data-i18n="ui.capture_hooks_apply">Reload plugin to apply</button></div>
             <p id="capture-hooks-note" class="small muted" role="status"></p>
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
               <p data-i18n="ui.capture_help_scope">Requests are shown as this plugin's hooks see them after the account is chosen: the client path, headers and body, plus the body sent upstream after protocol conversion when response hooks are available. Credentials CPA adds inside the upstream executor are not visible here.</p>
@@ -3172,8 +3194,8 @@
             </details>
           </div>
           <div class="capture-layout">
-            <div class="card capture-list-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_requests">Captured requests</h3><span id="capture-count" class="small muted"></span></div><div id="capture-list" class="capture-list"></div></div>
-            <div class="card capture-detail-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_detail">Detail</h3><label class="toggle-filter"><input id="capture-pretty" type="checkbox" checked /><span data-i18n="ui.capture_pretty">Format JSON</span></label></div><div id="capture-detail"></div></div>
+            <div class="card capture-list-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_requests">Captured requests</h3><div class="row capture-list-actions"><span id="capture-count" class="small muted"></span><button id="capture-clear" class="small danger" type="button" disabled data-i18n="ui.capture_clear">Clear</button></div></div><div id="capture-list" class="capture-list"></div></div>
+            <div class="card capture-detail-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_detail">Detail</h3><div class="row capture-detail-actions"><label class="toggle-filter"><input id="capture-pretty" type="checkbox" checked /><span data-i18n="ui.capture_pretty">Format JSON</span></label><button id="capture-download-full" class="small" type="button" disabled data-i18n="ui.capture_download_full">Download full record</button></div></div><div id="capture-detail"></div></div>
           </div>
         </section>
         <section id="tab-integrations" class="hidden">
@@ -7976,6 +7998,39 @@
       // Traffic capture polls a revision cursor; bodies are fetched only for the
       // selected request, and only again after that request changes.
       const CAPTURE_POLL_MS = 1500;
+      const CAPTURE_MASK = "***";
+      // Masking keeps protocol structure and replaces every other string, so
+      // prompts, messages, tool text and outputs never reach the screen.
+      const CAPTURE_STRUCTURE_KEYS = new Set([
+        "type",
+        "role",
+        "id",
+        "object",
+        "event",
+        "status",
+        "model",
+        "modelVersion",
+        "name",
+        "call_id",
+        "item_id",
+        "response_id",
+        "previous_response_id",
+        "tool_choice",
+        "effort",
+        "verbosity",
+        "summary",
+        "service_tier",
+        "truncation",
+        "finish_reason",
+        "stop_reason",
+        "include",
+        "media_type",
+        "mime_type",
+        "mimeType",
+        "detail",
+        "phase",
+        "syntax"
+      ]);
       const captureState = {
         source: null,
         status: null,
@@ -7984,10 +8039,16 @@
         selected: 0,
         detail: null,
         shown: "",
+        accountsShown: "",
         token: 0,
         timer: 0,
         polling: false,
         busy: false,
+        applying: false,
+        applyFailed: false,
+        masked: true,
+        titleClicks: 0,
+        titleClickAt: 0,
         error: ""
       };
 
@@ -8014,6 +8075,8 @@
         }
       }
 
+      function captureListeners() { return captureState.status?.listeners || []; }
+
       function captureInflight() {
         for (const row of captureState.rows.values()) if (!row.completed_at && !row.moved_away) return true;
         return false;
@@ -8030,7 +8093,8 @@
         clearTimeout(captureState.timer);
         captureState.timer = 0;
         if (currentRole !== "admin" || activeTab(false) !== "traffic" || !captureState.status) return;
-        if (!captureState.status.listener?.active && !captureInflight() && delay) return;
+        // Paused listeners keep polling too: the poll is their lease.
+        if (!captureListeners().length && !captureInflight() && delay) return;
         const token = captureState.token;
         captureState.timer = setTimeout(() => { if (token === captureState.token) void pollCapture(); }, delay);
       }
@@ -8092,10 +8156,17 @@
         }
       }
 
-      async function startCapture() {
-        const index = $("capture-account").value;
-        if (!index) throw new UIError(m("ui.capture_select_account"));
-        await captureCommand("POST", "/traffic-capture/watch", { auth_index: index });
+      function watchCaptureAccount(authIndex, paused = false) {
+        return captureCommand("POST", "/traffic-capture/watch", { auth_index: authIndex, paused });
+      }
+
+      function unwatchCaptureAccount(authIndex) {
+        return captureCommand("DELETE", "/traffic-capture/watch?auth_index=" + encodeURIComponent(authIndex));
+      }
+
+      async function pauseAllCapture(paused) {
+        for (const listener of captureListeners().filter((item) => item.paused !== paused))
+          await watchCaptureAccount(listener.auth_index, paused);
       }
 
       async function clearCapture() {
@@ -8109,12 +8180,51 @@
 
       function confirmCaptureClear() { return openActionDialog(m("ui.capture_clear"), m("ui.capture_clear_warning")); }
 
+      function captureHooksSettled() {
+        const hooks = captureState.status?.response_hooks;
+        return !hooks || !!hooks.registered === (!!hooks.wanted || !!hooks.state);
+      }
+
       async function saveCaptureHooks() {
         const input = $("capture-response-hooks");
         try { await captureCommand("PUT", "/traffic-capture/settings", { response_hooks: input.checked }); } catch (error) {
           input.checked = !!captureState.status?.response_hooks?.wanted;
           throw error;
         }
+        if (!captureHooksSettled()) await applyCaptureHooks();
+      }
+
+      // CPA re-reads plugin capabilities only when it reconfigures the plugin.
+      // Saving the plugin's CPA config unchanged is what makes it do that now.
+      async function applyCaptureHooks() {
+        if (captureState.applying) return;
+        captureState.applying = true;
+        captureState.applyFailed = false;
+        renderTrafficCapture();
+        try {
+          await api("PATCH", PLUGIN_BASE + "/config", {}, { command: true });
+          const token = captureState.token;
+          for (let attempt = 0; attempt < 12; attempt++) {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            receiveCapture(await plugin("GET", "/traffic-capture?since=" + Number.MAX_SAFE_INTEGER), false);
+            if (captureHooksSettled()) break;
+          }
+          if (token === captureState.token) captureState.applyFailed = !captureHooksSettled();
+        } finally {
+          captureState.applying = false;
+          renderTrafficCapture();
+          resumeCapturePolling();
+        }
+      }
+
+      function countCaptureTitleClick() {
+        const now = Date.now();
+        captureState.titleClicks = now - captureState.titleClickAt > 1500 ? 1 : captureState.titleClicks + 1;
+        captureState.titleClickAt = now;
+        if (captureState.titleClicks < 10) return;
+        captureState.titleClicks = 0;
+        captureState.masked = !captureState.masked;
+        renderCaptureDetail();
       }
 
       async function selectCaptureRow(seq) {
@@ -8131,11 +8241,43 @@
           .flatMap((name) => (headers[name] || []).map((value) => name + ": " + value));
       }
 
+      function maskCaptureJSON(value, key = "", keep = false) {
+        if (typeof value === "string") return keep || !value || CAPTURE_STRUCTURE_KEYS.has(key) ? value : CAPTURE_MASK;
+        if (Array.isArray(value)) return value.map((item) => maskCaptureJSON(item, key, keep));
+        if (!value || typeof value !== "object") return value;
+        // Error objects are diagnostics, not conversation content.
+        return Object.fromEntries(
+          Object.entries(value).map(([name, item]) => [name, maskCaptureJSON(item, name, keep || name === "error")])
+        );
+      }
+
+      function maskCaptureStream(text) {
+        const lines = text.split("\n");
+        if (!lines.some((line) => /^data:/.test(line))) return text.trim() ? CAPTURE_MASK : text;
+        return lines.map((line) => {
+          const match = /^data:\s?(.*?)(\r?)$/.exec(line);
+          if (!match || !match[1] || match[1] === "[DONE]") return line;
+          try { return "data: " + JSON.stringify(maskCaptureJSON(JSON.parse(match[1]))) + match[2]; } catch (_) {
+            return "data: " + CAPTURE_MASK + match[2];
+          }
+        })
+          .join("\n");
+      }
+
       function captureBodyText(body, pretty) {
         if (!body?.size) return "";
         if (body.binary) return String(m("ui.capture_binary_body", { size: formatCaptureBytes(body.size) }));
-        let text = body.text || "";
-        if (pretty && !body.truncated && /^\s*[{[]/.test(text)) { try { text = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {} }
+        let text = body.text || "", parsed, json = false;
+        if (/^\s*[{[]/.test(text)) {
+          try {
+            parsed = JSON.parse(text);
+            json = true;
+          } catch (_) {}
+        }
+        if (json) {
+          if (captureState.masked) parsed = maskCaptureJSON(parsed);
+          if (pretty || captureState.masked) text = JSON.stringify(parsed, null, pretty ? 2 : 0);
+        } else if (captureState.masked) text = maskCaptureStream(text);
         if (body.truncated) {
           text +=
             "\n\n" +
@@ -8150,20 +8292,96 @@
         return lines.join("\n") + (text ? "\n\n" + text : "");
       }
 
-      function captureStatusTag(row) {
-        if (row.moved_away) return el("span", { class: "tag plain", text: m("ui.capture_moved_away") });
-        if (row.rejected)
-          return el("span", { class: "tag warn", text: m("ui.capture_rejected") + (row.status_code ? " " + row.status_code : "") });
-        if (!row.completed_at) return el("span", { class: "tag plain", text: m("ui.capture_pending") });
-        const failed = row.outcome && row.outcome !== "succeeded";
-        const code = Number(row.status_code || 0);
-        const label = code ? "HTTP " + code : row.outcome || m("ui.failed");
-        return el("span", { class: "tag " + (failed || code >= 400 ? "bad" : "ok"), text: label });
+      function captureRequestText(detail, pretty) {
+        return captureMessage(detail.path || String(m("ui.capture_path_unknown")), detail.request_headers, detail.request_body, pretty);
       }
 
-      function captureBlock(title, text) {
+      function captureResponseText(detail, pretty) {
+        let text;
+        if (detail.responded) {
+          text = captureMessage(
+            detail.status_code ? "HTTP " + detail.status_code : "HTTP",
+            detail.response_headers,
+            detail.response_body,
+            pretty
+          );
+        } else if (!detail.completed_at && !detail.moved_away) { text = String(m("ui.capture_waiting")); } else {
+          text = String(m("ui.capture_no_response"));
+        }
+        if (detail.error) text += "\n\n" + m("ui.capture_error", { error: detail.error });
+        return text;
+      }
+
+      function captureModelText(row) {
+        const requested = row.requested_model || "", model = row.model || "";
+        return requested && model && requested !== model ? requested + " → " + model : requested || model;
+      }
+
+      function captureStatusLabel(row) {
+        if (row.moved_away) return String(m("ui.capture_moved_away"));
+        if (row.rejected) return m("ui.capture_rejected") + (row.status_code ? " " + row.status_code : "");
+        if (!row.completed_at) return String(m("ui.capture_pending"));
+        const code = Number(row.status_code || 0);
+        return code ? "HTTP " + code : row.outcome || String(m("ui.failed"));
+      }
+
+      function captureStatusTag(row) {
+        const failed = row.completed_at && row.outcome && row.outcome !== "succeeded";
+        const tone = row.rejected
+          ? "warn"
+          : row.moved_away || !row.completed_at ? "plain" : failed || Number(row.status_code) >= 400 ? "bad" : "ok";
+        return el("span", { class: "tag " + tone, text: captureStatusLabel(row) });
+      }
+
+      function captureFileName(detail, part) {
+        const started = new Date(detail.started_at), pad = (value) => String(value).padStart(2, "0");
+        const stamp = Number.isNaN(started.getTime())
+          ? ""
+          : "-" + started.getFullYear() + pad(started.getMonth() + 1) + pad(started.getDate()) + "-" + pad(started.getHours()) +
+            pad(started.getMinutes()) +
+            pad(started.getSeconds());
+        return "traffic-" + detail.seq + stamp + "-" + part + ".txt";
+      }
+
+      function downloadCaptureText(filename, text) {
+        const url = URL.createObjectURL(new Blob([text.endsWith("\n") ? text : text + "\n"], { type: "text/plain;charset=utf-8" }));
+        const anchor = el("a", { href: url, download: filename });
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      }
+
+      function captureFullRecord(detail, row, pretty) {
+        const date = (value) => (value ? window.billingI18n.date(value, { dateStyle: "medium", timeStyle: "medium", hour12: false }) : "");
+        const section = (title) => "===== " + title + " =====";
+        const facts = [
+          [m("ui.capture_export_request_id"), detail.request_id],
+          [m("ui.capture_account_column"), detail.auth_name || detail.auth_index],
+          [m("ui.model"), captureModelText(detail)],
+          [m("ui.capture_response_model", { model: "" }), detail.response_model],
+          [m("ui.capture_status"), captureStatusLabel(row)],
+          [m("ui.capture_export_started"), date(detail.started_at)],
+          [m("ui.capture_export_completed"), date(detail.completed_at)]
+        ]
+          .filter(([, value]) => value)
+          .map(([label, value]) => String(label).replace(/[:：]\s*$/, "") + ": " + value);
+        const parts = [
+          String(m("ui.capture_export_title", { seq: detail.seq })),
+          ...facts,
+          "",
+          section(m("ui.capture_request")),
+          captureRequestText(detail, pretty)
+        ];
+        if (detail.upstream_body?.size)
+          parts.push("", section(m("ui.capture_upstream_body")), captureBodyText(detail.upstream_body, pretty));
+        parts.push("", section(m("ui.capture_response")), captureResponseText(detail, pretty));
+        return parts.join("\n");
+      }
+
+      function captureBlock(title, text, filename) {
         const pre = el("pre", { class: "capture-pre", tabindex: "0" }, text);
-        const button = el("button", {
+        const copy = el("button", {
           type: "button",
           class: "small",
           text: m("ui.capture_copy"),
@@ -8173,14 +8391,21 @@
               notify(m("ui.capture_copied"));
             })
         });
-        return [el("div", { class: "capture-block-head" }, el("h4", { text: title }), button), pre];
+        const download = el("button", {
+          type: "button",
+          class: "small",
+          text: m("ui.capture_download"),
+          onclick: () => downloadCaptureText(filename, text)
+        });
+        return [el("div", { class: "capture-block-head" }, el("h4", { text: title }), el("div", { class: "row" }, copy, download)), pre];
       }
 
       function renderCaptureDetail() {
         const target = $("capture-detail"), detail = captureState.detail;
         const row = captureState.rows.get(captureState.selected);
         const pretty = $("capture-pretty").checked;
-        const signature = row ? [row.seq, detail?.revision ?? "", pretty, locale()].join(":") : locale();
+        $("capture-download-full").disabled = !row || !detail;
+        const signature = row ? [row.seq, detail?.revision ?? "", pretty, captureState.masked, locale()].join(":") : locale();
         if (captureState.shown === signature && target.childElementCount) return;
         // Keep the reader's position while a streamed response grows.
         const positions = [...target.querySelectorAll(".capture-pre")].map((pre) => ({
@@ -8193,9 +8418,13 @@
         if (!detail) return void target.replaceChildren(el("div", { class: "empty", text: m("ui.loading") }));
         const meta = [
           el("span", { class: "mono small", text: detail.request_id || "" }),
+          detail.auth_name || detail.auth_index ? el("span", { class: "small", text: detail.auth_name || detail.auth_index }) : null,
           detail.model ? el("span", { class: "tag plain", text: detail.model }) : null,
           detail.requested_model && detail.requested_model !== detail.model
             ? el("span", { class: "small muted", text: detail.requested_model + " →" })
+            : null,
+          detail.response_model
+            ? el("span", { class: "tag ok", text: m("ui.capture_response_model", { model: detail.response_model }) })
             : null,
           detail.source_format
             ? el("span", { class: "small muted", text: detail.source_format + (detail.to_format ? " → " + detail.to_format : "") })
@@ -8205,34 +8434,108 @@
           detail.chunks ? el("span", { class: "small muted", text: m("ui.capture_chunks", { count: detail.chunks }) }) : null,
           captureStatusTag(row)
         ];
-        const requestText = captureMessage(
-          detail.path || String(m("ui.capture_path_unknown")),
-          detail.request_headers,
-          detail.request_body,
-          pretty
-        );
-        const blocks = [...captureBlock(m("ui.capture_request"), requestText)];
+        const blocks = [...captureBlock(m("ui.capture_request"), captureRequestText(detail, pretty), captureFileName(detail, "request"))];
         if (detail.upstream_body?.size)
-          blocks.push(...captureBlock(m("ui.capture_upstream_body"), captureBodyText(detail.upstream_body, pretty)));
-        let responseText;
-        if (detail.responded) {
-          responseText = captureMessage(
-            detail.status_code ? "HTTP " + detail.status_code : "HTTP",
-            detail.response_headers,
-            detail.response_body,
-            pretty
+          blocks.push(
+            ...captureBlock(
+              m("ui.capture_upstream_body"),
+              captureBodyText(detail.upstream_body, pretty),
+              captureFileName(detail, "upstream")
+            )
           );
-        } else if (!detail.completed_at && !detail.moved_away) { responseText = String(m("ui.capture_waiting")); } else {
-          responseText = String(m("ui.capture_no_response"));
-        }
-        if (detail.error) responseText += "\n\n" + m("ui.capture_error", { error: detail.error });
-        blocks.push(...captureBlock(m("ui.capture_response"), responseText));
+        blocks.push(...captureBlock(m("ui.capture_response"), captureResponseText(detail, pretty), captureFileName(detail, "response")));
         target.replaceChildren(el("div", { class: "capture-meta" }, meta), ...blocks);
         if (!sameRow) return;
         target.querySelectorAll(".capture-pre").forEach((pre, index) => {
           const position = positions[index];
           if (position) pre.scrollTop = position.bottom ? pre.scrollHeight : position.top;
         });
+      }
+
+      function downloadCaptureRecord() {
+        const detail = captureState.detail, row = captureState.rows.get(captureState.selected);
+        if (!detail || !row) return;
+        downloadCaptureText(captureFileName(detail, "full"), captureFullRecord(detail, row, $("capture-pretty").checked));
+      }
+
+      function filteredCaptureAccounts() {
+        const status = captureState.status, listening = new Map(captureListeners().map((item) => [item.auth_index, item]));
+        const accounts = [...(status?.accounts || [])];
+        // A listener whose account left the inventory stays visible so it can be stopped.
+        for (const listener of listening.values())
+          if (!accounts.some((account) => account.auth_index === listener.auth_index))
+            accounts.push({ auth_index: listener.auth_index, name: listener.name || listener.auth_index, provider: "" });
+        const term = $("capture-account-search").value.trim(), filter = $("capture-account-filter").value;
+        return accounts.filter(
+          (account) =>
+            matchesTerm([account.name, account.auth_index, account.provider].join(" "), term) &&
+            (filter === "listening" ? listening.has(account.auth_index) : filter !== "enabled" || !account.disabled)
+        )
+          .map((account) => ({ ...account, listener: listening.get(account.auth_index) }));
+      }
+
+      function renderCaptureAccounts() {
+        const status = captureState.status, busy = captureState.busy || !status, accounts = filteredCaptureAccounts();
+        const signature = JSON.stringify([
+          accounts.map((account) => [account.auth_index, account.name, account.provider, account.disabled, account.listener?.paused]),
+          busy,
+          !!(status?.accounts || []).length,
+          locale()
+        ]);
+        if (captureState.accountsShown === signature) return accounts.length;
+        captureState.accountsShown = signature;
+        const target = $("capture-accounts");
+        const empty = (status?.accounts || []).length ? m("ui.capture_no_matching_accounts") : m("ui.capture_no_accounts");
+        target.replaceChildren(
+          ...(accounts.length
+            ? accounts.map((account) => {
+                const listener = account.listener;
+                const name = account.name || account.auth_index;
+                return el(
+                  "div",
+                  { class: "capture-account" + (listener ? " is-listening" : "") },
+                  el(
+                    "label",
+                    { class: busy ? "disabled" : "" },
+                    checkboxControl({
+                      input: el("input", {
+                        type: "checkbox",
+                        checked: !!listener,
+                        disabled: busy,
+                        "aria-label": name,
+                        onchange: (event) =>
+                          guard(() =>
+                            event.target.checked ? watchCaptureAccount(account.auth_index) : unwatchCaptureAccount(account.auth_index)
+                          )
+                      })
+                    }),
+                    el(
+                      "span",
+                      { class: "capture-account-text" },
+                      el("span", { text: name, title: name }),
+                      el("small", { text: [account.provider, account.auth_index].filter(Boolean).join(" · ") })
+                    )
+                  ),
+                  listener
+                    ? el("span", {
+                        class: "tag " + (listener.paused ? "plain" : "ok"),
+                        text: m(listener.paused ? "ui.capture_state_paused" : "ui.capture_state_listening")
+                      })
+                    : account.disabled ? el("span", { class: "tag plain", text: m("backend.disabled") }) : null,
+                  listener
+                    ? el("button", {
+                        type: "button",
+                        class: "small",
+                        disabled: busy,
+                        text: m(listener.paused ? "ui.capture_resume" : "ui.capture_pause"),
+                        onclick: () => guard(() => watchCaptureAccount(account.auth_index, !listener.paused))
+                      })
+                    : null
+                );
+              })
+            : [el("div", { class: "empty", text: empty })])
+        );
+        return accounts.length;
       }
 
       function renderTrafficCapture() {
@@ -8245,30 +8548,13 @@
           receiveCapture(resource.value, true);
           resumeCapturePolling();
         }
-        const status = captureState.status, busy = captureState.busy, listener = status?.listener || {};
-        const accounts = status?.accounts || [];
-        const select = $("capture-account");
-        const current = select.value || listener.auth_index || "";
-        const optionsKey = JSON.stringify([accounts.map((account) => [account.auth_index, account.name, account.provider]), locale()]);
-        if (select.dataset.options !== optionsKey) {
-          select.replaceChildren(
-            el("option", { value: "", text: m(accounts.length ? "ui.capture_account_placeholder" : "ui.capture_no_accounts") }),
-            ...accounts.map((account) =>
-              el("option", { value: account.auth_index, text: account.name + (account.provider ? " · " + account.provider : "") })
-            )
-          );
-          select.dataset.options = optionsKey;
-          select.value = accounts.some((account) => account.auth_index === current) ? current : "";
-        }
-        if (listener.active && select.dataset.listener !== listener.auth_index) {
-          select.value = listener.auth_index;
-          select.dataset.listener = listener.auth_index;
-        } else if (!listener.active) delete select.dataset.listener;
-        select.disabled = !status || busy || !accounts.length;
-        const switching = listener.active && select.value && select.value !== listener.auth_index;
-        setText($("capture-start"), m(switching ? "ui.capture_switch" : "ui.capture_start"));
-        $("capture-start").disabled = !status || busy || !select.value || (listener.active && !switching);
-        $("capture-stop").disabled = !status || busy || !listener.active;
+        const status = captureState.status, busy = captureState.busy, listeners = captureListeners();
+        const paused = listeners.filter((item) => item.paused).length;
+        const matching = renderCaptureAccounts();
+        setText($("capture-account-count"), status ? m("ui.state_account_count", { selected: listeners.length, matching }) : "");
+        $("capture-pause-all").disabled = !status || busy || paused === listeners.length;
+        $("capture-resume-all").disabled = !status || busy || !paused;
+        $("capture-stop-all").disabled = !status || busy || !listeners.length;
         $("capture-clear").disabled = !status || busy || !captureState.rows.size;
         const notice = $("capture-status");
         const problem = captureState.error || resource.error || (status?.accounts_error ? m("ui.capture_accounts_failed") : "");
@@ -8277,18 +8563,21 @@
         const seconds = status?.limits?.lease_seconds || 45;
         setText(
           $("capture-listener"),
-          status
-            ? listener.active ? m("ui.capture_listening", { name: listener.name || listener.auth_index, seconds }) : m("ui.capture_idle")
-            : ""
+          status ? (listeners.length ? m("ui.capture_listening", { count: listeners.length, paused, seconds }) : m("ui.capture_idle")) : ""
         );
-        $("capture-listener").classList.toggle("muted", !listener.active);
+        $("capture-listener").classList.toggle("muted", !listeners.length);
         const hooks = status?.response_hooks || {};
         const hooksInput = $("capture-response-hooks");
-        if (!busy) hooksInput.checked = !!hooks.wanted;
-        hooksInput.disabled = !status || busy;
+        if (!busy && !captureState.applying) hooksInput.checked = !!hooks.wanted;
+        hooksInput.disabled = !status || busy || captureState.applying;
+        const apply = $("capture-hooks-apply");
+        apply.classList.toggle("hidden", !status || captureHooksSettled());
+        apply.disabled = busy || captureState.applying;
         let hooksNote = "";
         if (status) {
-          if (hooks.wanted) hooksNote = hooks.registered ? "ui.capture_hooks_active" : "ui.capture_hooks_pending";
+          if (captureState.applying) hooksNote = "ui.capture_hooks_applying";
+          else if (captureState.applyFailed && !captureHooksSettled()) hooksNote = "ui.capture_hooks_apply_failed";
+          else if (hooks.wanted) hooksNote = hooks.registered ? "ui.capture_hooks_active" : "ui.capture_hooks_pending";
           else if (hooks.registered) hooksNote = hooks.state ? "ui.capture_hooks_state" : "ui.capture_hooks_unregister";
           else hooksNote = "ui.capture_hooks_off";
         }
@@ -8304,7 +8593,13 @@
         const rows = [...captureState.rows.values()].sort((left, right) => right.seq - left.seq);
         setText($("capture-count"), rows.length ? m("ui.capture_count", { count: rows.length }) : "");
         renderCollection($("capture-list"), rows, {
-          headers: [m("ui.time"), m("ui.model"), m("ui.capture_path"), m("ui.capture_status"), { label: m("ui.capture_size"), num: true }],
+          headers: [
+            m("ui.time"),
+            m("ui.capture_account_column"),
+            m("ui.model"),
+            m("ui.capture_status"),
+            { label: m("ui.capture_size"), num: true }
+          ],
           empty: m("ui.capture_empty"),
           render: (row) =>
             el(
@@ -8322,8 +8617,15 @@
                 }
               },
               el("td", { text: window.billingI18n.date(row.started_at, { timeStyle: "medium", hour12: false }) }),
-              el("td", { class: "capture-cell-model", text: row.model || row.requested_model || "" }),
-              el("td", { class: "mono small", text: row.path || "" }),
+              el("td", { class: "capture-cell-account small", text: row.auth_name || row.auth_index || "" }),
+              el(
+                "td",
+                { class: "capture-cell-model" },
+                el("div", { text: captureModelText(row) }),
+                row.response_model
+                  ? el("div", { class: "small muted", text: m("ui.capture_upstream_model", { model: row.response_model }) })
+                  : null
+              ),
               el("td", {}, captureStatusTag(row), row.stream ? el("div", { class: "small muted", text: m("ui.capture_stream") }) : null),
               el(
                 "td",
@@ -14611,12 +14913,17 @@
       };
       $("team-runtime-bulk-save").onclick = () => guard(saveTeamAccountBatch);
       $("risk-save").onclick = () => guard(saveRiskCenter);
-      $("capture-start").onclick = () => guard(startCapture);
-      $("capture-stop").onclick = () => guard(() => captureCommand("DELETE", "/traffic-capture/watch"));
+      $("capture-title").onclick = countCaptureTitleClick;
+      $("capture-account-search").oninput = () => renderTrafficCapture();
+      $("capture-account-filter").onchange = () => renderTrafficCapture();
+      $("capture-pause-all").onclick = () => guard(() => pauseAllCapture(true));
+      $("capture-resume-all").onclick = () => guard(() => pauseAllCapture(false));
+      $("capture-stop-all").onclick = () => guard(() => captureCommand("DELETE", "/traffic-capture/watch"));
       $("capture-clear").onclick = () => guard(clearCapture);
       $("capture-response-hooks").onchange = () => guard(saveCaptureHooks);
-      $("capture-account").onchange = () => renderTrafficCapture();
+      $("capture-hooks-apply").onclick = () => guard(applyCaptureHooks);
       $("capture-pretty").onchange = () => renderCaptureDetail();
+      $("capture-download-full").onclick = downloadCaptureRecord;
       $("risk-clear-hashes").onclick = () => guard(() => clearRiskData("hashes"));
       $("risk-clear-events").onclick = () => guard(() => clearRiskData("events"));
       for (const field of RISK_FIELDS)

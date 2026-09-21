@@ -15,9 +15,9 @@ func armedCapture(t *testing.T) (*trafficCapture, *time.Time) {
 	now := time.Date(2026, 9, 21, 12, 0, 0, 0, time.UTC)
 	c := newTrafficCapture()
 	c.now = func() time.Time { return now }
-	c.authID, c.authIndex, c.label = "dummy-auth", "dummy-index", "dummy@example.invalid"
+	c.listeners = []*captureListener{{authID: "dummy-auth", AuthIndex: "dummy-index", Name: "dummy@example.invalid"}}
 	c.expires = now.Add(captureLease)
-	c.armed.Store(true)
+	c.rearmLocked()
 	return c, &now
 }
 
@@ -169,5 +169,66 @@ func TestTrafficCaptureSettingRegistersResponseHooksWithoutState(t *testing.T) {
 	}
 	if json.Unmarshal(status.Body, &view) != nil || !view.ResponseHooks.Wanted || !view.ResponseHooks.Registered {
 		t.Fatalf("status = %s", status.Body)
+	}
+}
+
+func TestTrafficCaptureListensToSeveralAccountsAndPausesOne(t *testing.T) {
+	c, _ := armedCapture(t)
+	c.listeners = append(c.listeners, &captureListener{authID: "second-auth", AuthIndex: "second-index", Name: "second@example.invalid"})
+	c.observeRequest(captureRequest("req-1", "dummy-auth"), RequestInterceptResponse{})
+	c.observeRequest(captureRequest("req-2", "second-auth"), RequestInterceptResponse{})
+	if len(c.entries) != 2 || c.entries[1].AuthName != "second@example.invalid" || c.entries[1].summary().AuthIndex != "second-index" {
+		t.Fatalf("entries = %+v", c.entries)
+	}
+
+	c.listeners[0].Paused = true
+	c.rearmLocked()
+	c.observeRequest(captureRequest("req-3", "dummy-auth"), RequestInterceptResponse{})
+	c.observeRequest(captureRequest("req-4", "second-auth"), RequestInterceptResponse{})
+	if len(c.entries) != 3 || c.entries[2].RequestID != "req-4" {
+		t.Fatalf("a paused account kept capturing: %+v", c.entries)
+	}
+
+	// A retry moving between two watched accounts starts a second entry.
+	c.observeRequest(captureRequest("req-4", "dummy-auth"), RequestInterceptResponse{})
+	c.listeners[0].Paused = false
+	c.rearmLocked()
+	c.observeRequest(captureRequest("req-5", "second-auth"), RequestInterceptResponse{})
+	c.observeRequest(captureRequest("req-5", "dummy-auth"), RequestInterceptResponse{})
+	last := c.entries[len(c.entries)-1]
+	if !c.entries[len(c.entries)-2].MovedAway || last.RequestID != "req-5" || last.AuthName != "dummy@example.invalid" {
+		t.Fatalf("retry entries = %+v", c.entries)
+	}
+
+	c.listeners[1].Paused = true
+	c.listeners[0].Paused = true
+	c.rearmLocked()
+	if c.armed.Load() {
+		t.Fatal("capture stayed armed with every listener paused")
+	}
+}
+
+func TestTrafficCaptureRecordsTheUpstreamResponseModel(t *testing.T) {
+	c, _ := armedCapture(t)
+	c.observeRequest(captureRequest("req-1", "dummy-auth"), RequestInterceptResponse{})
+	c.observeResponse(captureChunk(t, "req-1", 0, "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"\\\"model\\\":\\\"fake\\\"\"}\n\n"), true)
+	if c.entries[0].ResponseModel != "" {
+		t.Fatalf("a model named inside generated text was recorded: %q", c.entries[0].ResponseModel)
+	}
+	c.observeResponse(captureChunk(t, "req-1", 1, "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"model\":\"upstream-model\"}}\n\n"), true)
+	if got := c.entries[0].summary().ResponseModel; got != "upstream-model" {
+		t.Fatalf("response model = %q", got)
+	}
+
+	for _, tc := range []struct{ body, want string }{
+		{`{"model":"chat-model","choices":[]}`, "chat-model"},
+		{`{"modelVersion":"gemini-model"}`, "gemini-model"},
+		{"event: message_start\ndata: {\"message\":{\"model\":\"claude-model\"}}\n", "claude-model"},
+		{`{"model":"has space"}`, ""},
+	} {
+		body, want := tc.body, tc.want
+		if got := captureResponseModel([]byte(body)); got != want {
+			t.Fatalf("captureResponseModel(%q) = %q, want %q", body, got, want)
+		}
 	}
 }

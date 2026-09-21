@@ -1441,5 +1441,25 @@
   "Turn State is globally disabled; enable it before sending probes": {
     "key": "backend.turn_state_suspended",
     "formats": []
+  },
+  "A captured request number is required": {
+    "key": "backend.capture_seq_required",
+    "formats": []
+  },
+  "This captured request is no longer retained": {
+    "key": "backend.capture_not_retained",
+    "formats": []
+  },
+  "Select an account to listen to": {
+    "key": "backend.capture_select_account",
+    "formats": []
+  },
+  "The selected account no longer exists": {
+    "key": "backend.capture_account_missing",
+    "formats": []
+  },
+  "Too many accounts are being listened to": {
+    "key": "backend.capture_too_many",
+    "formats": []
   }
 }

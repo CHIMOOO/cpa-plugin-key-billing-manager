@@ -1,6 +1,7 @@
 package plugin
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -11,11 +12,12 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode"
 	"unicode/utf8"
 )
 
 // Traffic capture is an operator debugging view. It records what this plugin's
-// hooks observe for one selected upstream account, only in memory and only
+// hooks observe for the selected upstream accounts, only in memory and only
 // while the management page keeps polling. It never feeds billing, usage or
 // routing: usage.handle remains the only source of those values.
 const (
@@ -23,6 +25,7 @@ const (
 	captureMaxBodyBytes = 2 << 20
 	captureMaxTotal     = 48 << 20
 	captureLease        = 45 * time.Second
+	captureMaxListeners = 64
 	captureRedacted     = "[redacted]"
 )
 
@@ -55,11 +58,13 @@ type captureEntry struct {
 	Attempts        int         `json:"attempts"`
 	AuthID          string      `json:"auth_id"`
 	AuthIndex       string      `json:"auth_index,omitempty"`
+	AuthName        string      `json:"auth_name,omitempty"`
 	Path            string      `json:"path,omitempty"`
 	SourceFormat    string      `json:"source_format,omitempty"`
 	ToFormat        string      `json:"to_format,omitempty"`
 	Model           string      `json:"model,omitempty"`
 	RequestedModel  string      `json:"requested_model,omitempty"`
+	ResponseModel   string      `json:"response_model,omitempty"`
 	Stream          bool        `json:"stream"`
 	StartedAt       time.Time   `json:"started_at"`
 	CompletedAt     *time.Time  `json:"completed_at,omitempty"`
@@ -85,9 +90,11 @@ type captureSummary struct {
 	Revision       uint64     `json:"revision"`
 	RequestID      string     `json:"request_id"`
 	Attempts       int        `json:"attempts"`
-	Path           string     `json:"path,omitempty"`
+	AuthIndex      string     `json:"auth_index,omitempty"`
+	AuthName       string     `json:"auth_name,omitempty"`
 	Model          string     `json:"model,omitempty"`
 	RequestedModel string     `json:"requested_model,omitempty"`
+	ResponseModel  string     `json:"response_model,omitempty"`
 	Stream         bool       `json:"stream"`
 	StartedAt      time.Time  `json:"started_at"`
 	CompletedAt    *time.Time `json:"completed_at,omitempty"`
@@ -107,9 +114,11 @@ func (e *captureEntry) summary() captureSummary {
 		Revision:       e.Revision,
 		RequestID:      e.RequestID,
 		Attempts:       e.Attempts,
-		Path:           e.Path,
+		AuthIndex:      e.AuthIndex,
+		AuthName:       e.AuthName,
 		Model:          e.Model,
 		RequestedModel: e.RequestedModel,
+		ResponseModel:  e.ResponseModel,
 		Stream:         e.Stream,
 		StartedAt:      e.StartedAt,
 		CompletedAt:    e.CompletedAt,
@@ -124,14 +133,21 @@ func (e *captureEntry) summary() captureSummary {
 	}
 }
 
+// captureListener is one watched account; a paused listener keeps its place
+// in the list but records nothing new.
+type captureListener struct {
+	authID    string
+	AuthIndex string `json:"auth_index"`
+	Name      string `json:"name"`
+	Paused    bool   `json:"paused"`
+}
+
 type trafficCapture struct {
 	mu        sync.Mutex
 	now       func() time.Time
 	path      string
 	settings  captureSettings
-	authID    string
-	authIndex string
-	label     string
+	listeners []*captureListener
 	expires   time.Time
 	seq       uint64
 	revision  uint64
@@ -175,23 +191,104 @@ func (c *trafficCapture) responseHooksWanted() bool {
 	return c.settings.ResponseHooks
 }
 
-// activeLocked reports whether new requests are captured. Expiry is lazy: the
-// plugin runs no timers, so a closed page stops capture at the next request.
+// activeLocked reports whether any listener is still leased. Expiry is lazy:
+// the plugin runs no timers, so a closed page stops capture at the next request.
 func (c *trafficCapture) activeLocked(now time.Time) bool {
-	if c.authID == "" && c.authIndex == "" {
+	if len(c.listeners) == 0 {
 		return false
 	}
 	if now.After(c.expires) {
-		c.authID, c.authIndex, c.label = "", "", ""
+		c.listeners = nil
 		c.armed.Store(false)
 		return false
 	}
 	return true
 }
 
-func (c *trafficCapture) matchesLocked(metadata map[string]any) bool {
+func (c *trafficCapture) rearmLocked() {
+	armed := false
+	for _, listener := range c.listeners {
+		armed = armed || !listener.Paused
+	}
+	c.armed.Store(armed)
+}
+
+func (c *trafficCapture) listenerLocked(authIndex string) *captureListener {
+	for _, listener := range c.listeners {
+		if listener.AuthIndex == authIndex {
+			return listener
+		}
+	}
+	return nil
+}
+
+func (c *trafficCapture) matchLocked(metadata map[string]any) *captureListener {
 	id, index := metadataString(metadata, MetadataSelectedAuth), metadataString(metadata, MetadataSelectedIndex)
-	return c.authID != "" && id == c.authID || c.authIndex != "" && index == c.authIndex
+	for _, listener := range c.listeners {
+		if listener.Paused {
+			continue
+		}
+		if listener.authID != "" && id == listener.authID || index != "" && index == listener.AuthIndex {
+			return listener
+		}
+	}
+	return nil
+}
+
+func captureModelName(value any) string {
+	name, ok := value.(string)
+	if !ok || name == "" || len(name) > 256 || !utf8.ValidString(name) ||
+		strings.IndexFunc(name, func(r rune) bool { return unicode.IsControl(r) || unicode.IsSpace(r) }) >= 0 {
+		return ""
+	}
+	return name
+}
+
+type captureModelField struct {
+	Model any `json:"model"`
+}
+
+func captureDeclaredModel(data []byte) string {
+	var body struct {
+		Model        any               `json:"model"`
+		ModelVersion any               `json:"modelVersion"`
+		Response     captureModelField `json:"response"`
+		Message      captureModelField `json:"message"`
+	}
+	// A type mismatch in one field still fills the others.
+	var syntax *json.SyntaxError
+	if err := json.Unmarshal(data, &body); errors.As(err, &syntax) {
+		return ""
+	}
+	for _, value := range []any{body.Response.Model, body.Message.Model, body.Model, body.ModelVersion} {
+		if name := captureModelName(value); name != "" {
+			return name
+		}
+	}
+	return ""
+}
+
+// captureResponseModel reads the model a provider declares in a response body
+// or in the SSE events of one stream chunk. A model name inside generated text
+// is an escaped JSON string, so it never reads as a top-level key.
+func captureResponseModel(raw []byte) string {
+	if !bytes.Contains(raw, []byte(`"model`)) {
+		return ""
+	}
+	if trimmed := bytes.TrimSpace(raw); len(trimmed) > 0 && trimmed[0] == '{' {
+		return captureDeclaredModel(trimmed)
+	}
+	model := ""
+	for _, line := range bytes.Split(raw, []byte("\n")) {
+		data, ok := bytes.CutPrefix(bytes.TrimSpace(line), []byte("data:"))
+		if !ok {
+			continue
+		}
+		if name := captureDeclaredModel(bytes.TrimSpace(data)); name != "" {
+			model = name
+		}
+	}
+	return model
 }
 
 func captureBodyOf(raw []byte) captureBody {
@@ -320,16 +417,23 @@ func (c *trafficCapture) observeRequest(req RequestInterceptRequest, response Re
 	requestID := strings.TrimSpace(req.RequestID)
 	entry := c.inflight[requestID]
 	if entry != nil && metadataString(req.Metadata, MetadataSelectedAuth) != entry.AuthID {
-		// A retry that leaves the watched account takes its response along.
+		// A retry that leaves the account takes its response along; when the
+		// new account is watched too, the retry starts an entry of its own.
 		entry.MovedAway = true
 		delete(c.inflight, requestID)
 		c.touchLocked(entry, 0)
-		return
+		entry = nil
 	}
-	if entry == nil && (!c.activeLocked(now) || !c.matchesLocked(req.Metadata)) {
-		return
-	}
+	name := ""
 	if entry == nil {
+		if !c.activeLocked(now) {
+			return
+		}
+		listener := c.matchLocked(req.Metadata)
+		if listener == nil {
+			return
+		}
+		name = listener.Name
 		c.seq++
 		entry = &captureEntry{Seq: c.seq, RequestID: requestID}
 		c.entries = append(c.entries, entry)
@@ -338,6 +442,9 @@ func (c *trafficCapture) observeRequest(req RequestInterceptRequest, response Re
 		}
 	}
 	previous := entry.bytes
+	if name == "" {
+		name = entry.AuthName
+	}
 	*entry = captureEntry{
 		Seq:            entry.Seq,
 		RequestID:      requestID,
@@ -345,6 +452,7 @@ func (c *trafficCapture) observeRequest(req RequestInterceptRequest, response Re
 		StartedAt:      now,
 		AuthID:         metadataString(req.Metadata, MetadataSelectedAuth),
 		AuthIndex:      metadataString(req.Metadata, MetadataSelectedIndex),
+		AuthName:       name,
 		Path:           metadataString(req.Metadata, MetadataRequestPath),
 		SourceFormat:   req.SourceFormat,
 		ToFormat:       req.ToFormat,
@@ -384,6 +492,7 @@ func (c *trafficCapture) observeResponse(raw []byte, stream bool) {
 	if json.Unmarshal(raw, &req) != nil {
 		return
 	}
+	model := captureResponseModel(req.Body)
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry := c.inflight[strings.TrimSpace(req.RequestID)]
@@ -402,6 +511,9 @@ func (c *trafficCapture) observeResponse(raw []byte, stream bool) {
 		entry.ResponseHeaders = redactHeaders(req.ResponseHeaders)
 	}
 	entry.Responded = true
+	if model != "" {
+		entry.ResponseModel = model
+	}
 	if !stream {
 		if req.StatusCode != 0 {
 			entry.StatusCode = req.StatusCode
@@ -489,18 +601,22 @@ func (a *App) captureStatusLocked(since uint64, renew bool) map[string]any {
 	for _, entry := range c.entries {
 		seqs = append(seqs, entry.Seq)
 	}
-	listener := map[string]any{"active": active}
-	if active {
-		listener["auth_index"], listener["name"], listener["expires_at"] = c.authIndex, c.label, c.expires
+	listeners := []captureListener{}
+	for _, listener := range c.listeners {
+		listeners = append(listeners, *listener)
 	}
-	return map[string]any{
-		"listener":       listener,
+	result := map[string]any{
+		"listeners":      listeners,
 		"revision":       c.revision,
 		"entries":        rows,
 		"retained":       seqs,
 		"response_hooks": map[string]bool{"wanted": c.settings.ResponseHooks, "registered": a.responseHooks.Load(), "state": a.stateHooks.Load()},
 		"limits":         map[string]int{"max_entries": captureMaxEntries, "max_body_bytes": captureMaxBodyBytes, "lease_seconds": int(captureLease / time.Second)},
 	}
+	if active {
+		result["expires_at"] = c.expires
+	}
+	return result
 }
 
 func (a *App) getTrafficCapture(req ManagementRequest) ManagementResponse {
@@ -539,9 +655,12 @@ func (a *App) getTrafficCaptureEntry(req ManagementRequest) ManagementResponse {
 	return JSONError(http.StatusNotFound, "capture_not_found", "This captured request is no longer retained")
 }
 
+// watchTrafficCapture adds an account to the listeners, or pauses and resumes
+// one already listed. Every listener shares the page's polling lease.
 func (a *App) watchTrafficCapture(req ManagementRequest) ManagementResponse {
 	var input struct {
 		AuthIndex string `json:"auth_index"`
+		Paused    bool   `json:"paused"`
 	}
 	if err := decodeStrict(req.Body, &input); err != nil {
 		return errorResponse(err)
@@ -567,18 +686,41 @@ func (a *App) watchTrafficCapture(req ManagementRequest) ManagementResponse {
 	c := a.capture
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.authID, c.authIndex, c.label = file.ID, file.AuthIndex, label
-	c.expires = c.now().Add(captureLease)
-	c.armed.Store(true)
+	now := c.now()
+	c.activeLocked(now)
+	listener := c.listenerLocked(file.AuthIndex)
+	if listener == nil {
+		if len(c.listeners) >= captureMaxListeners {
+			return JSONError(http.StatusBadRequest, "invalid_capture", "Too many accounts are being listened to")
+		}
+		listener = &captureListener{AuthIndex: file.AuthIndex}
+		c.listeners = append(c.listeners, listener)
+	}
+	listener.authID, listener.Name, listener.Paused = file.ID, label, input.Paused
+	c.expires = now.Add(captureLease)
+	c.rearmLocked()
 	return captureJSON(http.StatusOK, a.captureStatusLocked(^uint64(0), false))
 }
 
-func (a *App) stopTrafficCapture(_ ManagementRequest) ManagementResponse {
+// stopTrafficCapture removes one listener, or all of them without auth_index.
+func (a *App) stopTrafficCapture(req ManagementRequest) ManagementResponse {
+	authIndex := strings.TrimSpace(req.Query.Get("auth_index"))
 	c := a.capture
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.authID, c.authIndex, c.label = "", "", ""
-	c.armed.Store(false)
+	if authIndex == "" {
+		c.listeners = nil
+	} else {
+		kept := c.listeners[:0]
+		for _, listener := range c.listeners {
+			if listener.AuthIndex != authIndex {
+				kept = append(kept, listener)
+			}
+		}
+		clear(c.listeners[len(kept):])
+		c.listeners = kept
+	}
+	c.rearmLocked()
 	return captureJSON(http.StatusOK, a.captureStatusLocked(^uint64(0), false))
 }
 

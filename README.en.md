@@ -26,7 +26,7 @@ This independent fork of [haowang02/cpa-plugin-key-billing](https://github.com/h
 | Codex Turn State | Account/model-specific collection, renewal, injection, and valid-bucket protection; static/rotating proxies, ten concurrent connectivity checks, optional automatic removal |
 | Model Tests | Single-request diagnostics, original prompt presets, response comparison, explicit proxy routing, and no execution of generated code |
 | Risk Center | Local keyword/model rules, observe/pre-block modes, and hash memory without persisting prompt text |
-| Traffic Capture | Watch one upstream account's requests live with headers, bodies, and responses; memory only, with credential headers redacted |
+| Traffic Capture | Watch several upstream accounts at once, pausing each on its own, with live headers, bodies, responses and the upstream response model; memory only, credentials and body text masked by default, downloadable as text |
 | Analysis / Request Events / Error Events | Host-reported usage, cost, latency, and failures; billing is never inferred from raw response bodies |
 | Settings | Routing, prices, long-context tiers, logs, and persistence risk diagnostics |
 
@@ -248,13 +248,13 @@ Optional hash memory recognizes the same normalized text after an earlier match.
 
 ## Traffic capture
 
-Traffic capture shows what one upstream account actually receives. After you choose an account and start listening, the page polls every 1.5 seconds and lists the requests scheduled to that account. Open one to see its path, headers, body, and the response headers and body; streamed responses grow chunk by chunk. Requests retried on another account are marked, and that account's response is never attached.
+Traffic capture shows what upstream accounts actually receive. Search the account list and tick one or more accounts to start listening; each account can be paused, resumed or stopped on its own. The page polls every 1.5 seconds and lists the requests scheduled to those accounts with the account, the requested model and the model declared in the upstream response. Open one to see its path, headers, body, and the response headers and body; streamed responses grow chunk by chunk. The request, the upstream body and the response can each be copied or downloaded as `.txt`, and a full record downloads all of them together. Requests retried on another account are marked; when that account is watched too, the retry becomes an entry of its own.
 
 - **Memory only:** nothing is written to disk or logs. Up to 100 requests are kept, each body is truncated at 2 MiB, and the oldest entries are evicted beyond 48 MiB in total. A CPA restart or Clear removes them.
 - **Stops by itself:** capture continues while the page stays open and stops about 45 seconds after you leave it. The plugin runs no background timers.
-- **Redaction:** values of `Authorization`, `Cookie`, `X-Api-Key`, and headers whose names contain key, token, secret, password, or signature become `[redacted]`. Bodies are shown as received and may contain conversation content; enable capture only while troubleshooting.
+- **Redaction:** values of `Authorization`, `Cookie`, `X-Api-Key`, and headers whose names contain key, token, secret, password, or signature become `[redacted]`. On the page, request and response bodies keep only their protocol structure (types, roles, models, IDs and similar) by default, and user input, output, prompts and tool text show as `***`; downloads are masked the same way. Plugin memory still holds the original text, so enable capture only while troubleshooting.
 - **Scope:** entries show what the plugin hooks see after the account is chosen: the client path, headers, and body, plus the body sent upstream after protocol conversion when response hooks are registered. Upstream credentials and the final HTTP message built inside CPA's executor do not pass through the plugin.
-- **Responses need response hooks:** request-only capture adds no hooks. After you enable "Register response hooks to capture responses", restart CPA or reload the plugin configuration; every streamed chunk then passes through the plugin, which returns after one quick check when nothing is being captured. When Codex Turn State is on, the response hooks are already registered. The switch is stored in `<state_file>.traffic-capture.json`.
+- **Responses need response hooks:** request-only capture adds no hooks. CPA reads hook declarations only when it loads or reconfigures the plugin, so switching "Register response hooks to capture responses" makes the page save the plugin configuration unchanged, which has CPA re-register the plugin (the same as saving it in the management center). If that does not take effect, use "Reload plugin to apply" or restart CPA. While it is on, every streamed chunk then passes through the plugin, which returns after one quick check when nothing is being captured. When Codex Turn State is on, the response hooks are already registered. The switch is stored in `<state_file>.traffic-capture.json`.
 
 ## Codex Turn State
 
