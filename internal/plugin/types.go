@@ -97,6 +97,7 @@ type ConfigField struct {
 }
 
 type Capabilities struct {
+	ModelRouter            bool `json:"model_router"`
 	RequestInterceptor     bool `json:"request_interceptor"`
 	RequestLifecyclePlugin bool `json:"request_lifecycle_plugin"`
 	ResponseInterceptor    bool `json:"response_interceptor"`

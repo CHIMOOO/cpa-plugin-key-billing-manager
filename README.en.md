@@ -247,6 +247,8 @@ Optional hash memory recognizes the same normalized text after an earlier match.
 
 ## Codex Turn State
 
+The **Force Astra** switch on the State page adapts `ccodex-rotate`'s forced-model feature. Save to route explicit GPT/Codex text model requests through Codex accounts to `gpt-6-astra`, preserving reasoning effort. The setting survives restarts; disabling it restores normal host routing. It works independently of State injection and observation mode. To inject State as well, collect an Astra template for each account in use. Custom aliases, other providers, image/audio requests, collection and quality probes retain their original routes. Requires CLIProxyAPI v7.3.4-compatible provider model routing; billing follows host usage records.
+
 Automatic collection requires both the updated plugin and the standalone [server collector](deploy/README.state-collector.md), managed by systemd or Docker. v0.0.9 uses browser scheduling and does not gain background collection by installing only the collector. Upgrading the plugin without installing the collector shows an offline state; the browser does not silently fall back to probing.
 
 Configure the module in its own **Codex Turn State** tab. It is adapted from [arden-aaai/cpa-plugin-codex-turn-state](https://github.com/arden-aaai/cpa-plugin-codex-turn-state), MIT License, Copyright © 2026 boooot. The account/model template algorithm, injection modes, and proxy retry policy are adapted to this plugin's synchronous execution and separate state store. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for the reference revision and full license.

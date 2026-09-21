@@ -2691,6 +2691,10 @@
               <p data-i18n="ui.state_guide_pruning">Automatic proxy removal is off by default. If enabled and saved, it immediately saves each removal while keeping at least the configured total across both pools (default 10). The separate Remove failed proxies action after a connectivity test edits the text boxes and needs Save all settings.</p>
             </details>
           </div>
+          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_force_astra_title">Force Astra</h3><button data-state-save="force-astra" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>
+            <label class="toggle-filter"><input id="turn-state-force-astra" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_force_astra">Route GPT/Codex text requests to gpt-6-astra</span></label>
+            <p class="access-help" data-i18n="ui.state_force_astra_help">Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.</p>
+          </div>
           <div class="card team-gate-card"><label class="toggle-filter"><input id="team-require-state" type="checkbox" role="switch" disabled /><span data-i18n="ui.team_require_state">Require valid Turn State for selected accounts</span></label><p class="access-help" data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected collection account needs a usable template for its requested model. Disabled injection, observation mode or a replace-only skip blocks that attempt. This switch is saved immediately.</p><div id="team-require-state-status" class="small muted" role="status"></div></div>
           <div class="card turn-state-console" id="turn-state-card">
             <div class="row spread settings-section-header"><h3 data-i18n="ui.state_probe_console">Probe console</h3><div class="row"><button id="turn-state-probe-start" class="primary" type="button" disabled data-i18n="ui.fork_start_probing">Start probing</button><button id="turn-state-probe-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-refresh" type="button" disabled data-i18n="ui.fork_refresh_status">Refresh status</button></div></div>
@@ -9512,6 +9516,7 @@
       }
 
       const TURN_STATE_FIELDS = [
+        "force-astra",
         "enabled",
         "dry-run",
         "learn-responses",
@@ -10484,6 +10489,7 @@
         const signature = JSON.stringify(config);
         if (adminUIState.turnStateShown === undefined || (!adminUIState.turnStateDirty && adminUIState.turnStateShown !== signature)) {
           for (const [field, value] of [
+            ["force-astra", config.force_astra],
             ["enabled", config.enabled],
             ["dry-run", config.dry_run],
             ["learn-responses", config.learn_responses],
@@ -10691,6 +10697,7 @@
         )
           return;
         const payload = {
+          force_astra: $("turn-state-force-astra").checked,
           enabled: $("turn-state-enabled").checked,
           dry_run: $("turn-state-dry-run").checked,
           learn_responses: $("turn-state-learn-responses").checked,

@@ -1,4 +1,7 @@
 {
+  "ui.state_force_astra_title": "Force Astra",
+  "ui.state_force_astra": "Route GPT/Codex text requests to gpt-6-astra",
+  "ui.state_force_astra_help": "Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.",
   "backend.model_test_unknown_preset": "Unknown model test preset",
   "backend.model_test_invalid_prompt": "The model test prompt must contain 1–8192 UTF-8 bytes",
   "backend.model_test_token_placeholder": "The host token placeholder cannot be used inside a test prompt",

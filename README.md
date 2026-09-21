@@ -294,6 +294,8 @@ flowchart TB
 
 ## Codex Turn State
 
+State 页的「强制 Astra」开关参考 `ccodex-rotate` 的强制模型功能，保存后将显式 GPT/Codex 文本模型请求通过 Codex 账号路由到 `gpt-6-astra`，保留推理强度，重启后保留设置。关闭后恢复宿主原有路由。该开关独立于 State 注入和观察模式；要同时注入 State，需为实际使用的账号采集 Astra 模板。自定义别名、其他提供商、图片/音频请求以及采集、质量测试不改写。需要 CLIProxyAPI v7.3.4 兼容的提供商模型路由能力；计费以宿主用量记录为准。
+
 相关项目 [NanSsye/ccodex-sleep-state](https://github.com/NanSsye/ccodex-sleep-state)（原名 `ccodex-sleep-state-r14`）是 gylive 项目的分支。来源关系、近期更新和本插件的适用性评估见 [State 相关项目审查](docs/state-upstream-review-2026-09-20.md)。
 
 自动采集需要同时安装新版插件和独立的[服务器采集器](deploy/README.state-collector.md)，支持 systemd 与 Docker 常驻。v0.0.9 的页面驱动模式不会自动升级成后台任务；只更新插件库而没有安装采集器时，页面会显示离线，不会用浏览器兜底探测。

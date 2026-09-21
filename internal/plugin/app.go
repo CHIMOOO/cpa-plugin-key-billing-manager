@@ -84,6 +84,8 @@ func (a *App) HandleMethod(method string, request []byte) (response []byte, err 
 
 func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 	switch method {
+	case "model.route":
+		return a.routeForceAstra(request)
 	case MethodPluginRegister, MethodPluginReconfigure:
 		if errConfigure := a.configure(request); errConfigure != nil {
 			a.store.AddPluginLog(billing.PluginLogError, "Failed to apply plugin configuration: %v", errConfigure)
@@ -209,6 +211,7 @@ func registration() Registration {
 			},
 		},
 		Capabilities: Capabilities{
+			ModelRouter:            true,
 			RequestInterceptor:     true,
 			RequestLifecyclePlugin: true,
 			ResponseInterceptor:    true,

@@ -24,6 +24,7 @@ import (
 const Header = "X-Codex-Turn-State"
 
 type Config struct {
+	ForceAstra                   bool     `json:"force_astra"`
 	Enabled                      bool     `json:"enabled"`
 	InjectMode                   string   `json:"inject_mode"`
 	DryRun                       bool     `json:"dry_run"`
@@ -478,6 +479,13 @@ func (m *Manager) Enabled() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.state.Config.Enabled
+}
+
+// ForceAstraEnabled is independent of template injection and observation mode.
+func (m *Manager) ForceAstraEnabled() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.state.Config.ForceAstra
 }
 
 func cloneConfig(cfg Config) Config {
