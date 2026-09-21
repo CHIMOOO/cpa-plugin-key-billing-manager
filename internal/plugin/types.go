@@ -140,6 +140,7 @@ type RequestInterceptRequest struct {
 	ToFormat       string         `json:"ToFormat"`
 	Model          string         `json:"Model"`
 	RequestedModel string         `json:"RequestedModel"`
+	Stream         bool           `json:"Stream"`
 	Headers        http.Header    `json:"Headers"`
 	Body           []byte         `json:"Body"`
 	Metadata       map[string]any `json:"Metadata"`

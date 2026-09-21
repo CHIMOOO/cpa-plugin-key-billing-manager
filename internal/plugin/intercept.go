@@ -194,6 +194,9 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 	if response.Terminate && a != nil && a.accountRuntime != nil {
 		a.accountRuntime.release(req.RequestID)
 	}
+	if a != nil {
+		a.capture.observeRequest(req, response)
+	}
 	return OKEnvelope(response)
 }
 
@@ -218,6 +221,7 @@ func (a *App) completeRequest(raw []byte) ([]byte, error) {
 			}
 		}()
 		a.finishRouteLog(completion)
+		a.capture.observeCompletion(completion)
 	}
 	return OKEnvelope(struct{}{})
 }

@@ -95,7 +95,7 @@ func TestTurnStateSuspendBypassesEveryPathAndKeepsSettings(t *testing.T) {
 	if got := turnStateAfterAuth(t, app, "resumed", "dummy-auth", "gpt-6-astra", nil); !got.Terminate {
 		t.Fatal("resuming must restore the protected-account gate")
 	}
-	if !registrationForHost(0, app.turnState.Active()).Capabilities.StreamChunkInterceptor {
+	if !registrationForHost(0, app.turnState.Active(), app.turnState.Active()).Capabilities.StreamChunkInterceptor {
 		t.Fatal("resumed State must register its hooks again")
 	}
 }

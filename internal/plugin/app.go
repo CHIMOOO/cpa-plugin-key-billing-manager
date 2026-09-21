@@ -20,8 +20,10 @@ type App struct {
 	turnStateRunner       *turnStateRunner
 	accountRuntime        *accountRuntime
 	risk                  *riskControl
+	capture               *trafficCapture
 	hostSchema            atomic.Uint32
 	stateHooks            atomic.Bool // State hooks declared in the last host registration.
+	responseHooks         atomic.Bool // Response hooks declared in the last host registration.
 	hostCaller            HostCaller
 	integrationsMu        sync.Mutex
 	integrationLogins     map[string]*integrationLogin
@@ -55,6 +57,7 @@ func newApp(store *billing.Store) *App {
 		turnStateRunner:       newTurnStateRunner(),
 		accountRuntime:        newAccountRuntime(),
 		risk:                  newRiskControl(),
+		capture:               newTrafficCapture(),
 		admissions:            make(map[string]*requestAdmission),
 		credentials:           make(map[string]credentialView),
 		credentialsByRawID:    make(map[string]string),
@@ -95,8 +98,10 @@ func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 		// The host re-reads capabilities only on register/reconfigure, so a
 		// suspended State stays fully unhooked until CPA next reloads the plugin.
 		hooks := a.turnState.Active()
+		responses := hooks || a.capture.responseHooksWanted()
 		a.stateHooks.Store(hooks)
-		return OKEnvelope(registrationForHost(a.hostSchema.Load(), hooks))
+		a.responseHooks.Store(responses)
+		return OKEnvelope(registrationForHost(a.hostSchema.Load(), hooks, responses))
 	case MethodRequestInterceptBefore:
 		return a.interceptBeforeAuth(request)
 	case MethodRequestInterceptAfter:
@@ -104,8 +109,10 @@ func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 	case MethodRequestComplete:
 		return a.completeRequest(request)
 	case MethodResponseInterceptAfter:
+		a.capture.observeResponse(request, false)
 		return a.handleTurnStateResponse(request, false)
 	case MethodResponseStreamChunk:
+		a.capture.observeResponse(request, true)
 		return a.handleTurnStateResponse(request, true)
 	case MethodSchedulerPick:
 		return a.pickCredential(request)
@@ -148,6 +155,11 @@ func (a *App) configure(raw []byte) error {
 	if errRisk != nil {
 		return errRisk
 	}
+	capturePath := cfg.StateFile + ".traffic-capture.json"
+	captureConfig, errCapture := loadCaptureSettings(capturePath)
+	if errCapture != nil {
+		return errCapture
+	}
 	runner := a.turnStateRunner
 	errInstall := func() error {
 		runner.gate.Lock()
@@ -183,6 +195,7 @@ func (a *App) configure(raw []byte) error {
 	a.accountRuntime.path, a.accountRuntime.settings = runtimePath, runtimeSettings
 	a.accountRuntime.mu.Unlock()
 	a.risk.install(riskPath, riskState)
+	a.capture.install(capturePath, captureConfig)
 	a.hostSchema.Store(req.SchemaVersion)
 	// Refresh records its result; a download failure does not disable custom prices.
 	_, _ = a.store.EnsureReferencePrices()
@@ -230,12 +243,15 @@ func registration() Registration {
 
 // Schema 5 only removes per-payload history that this plugin never reads.
 // Keep the original schema for older hosts, which reject a newer declaration.
-func registrationForHost(hostSchema uint32, stateHooks bool) Registration {
+func registrationForHost(hostSchema uint32, stateHooks, responseHooks bool) Registration {
 	result := registration()
 	if !stateHooks {
-		// These three hooks serve only Force Astra and response learning. The
-		// request interceptor and scheduler stay registered for billing.
+		// The router serves only Force Astra. The request interceptor and
+		// scheduler stay registered for billing.
 		result.Capabilities.ModelRouter = false
+	}
+	if !responseHooks {
+		// Response hooks serve State learning and opt-in traffic capture only.
 		result.Capabilities.ResponseInterceptor = false
 		result.Capabilities.StreamChunkInterceptor = false
 	}

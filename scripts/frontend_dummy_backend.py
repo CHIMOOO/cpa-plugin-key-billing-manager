@@ -1658,7 +1658,73 @@ def team_integration(body):
         account["has_auth_cookie"] = True
     return team_response(account)
 
+CAPTURE = {"listener": None, "expires": 0, "seq": 0, "revision": 0, "entries": [], "hooks_wanted": False, "polls": 0}
+
+
+def capture_accounts():
+    return [
+        {"auth_index": "idx-codex-1", "name": "codex-demo@example.com", "provider": "codex", "disabled": False},
+        {"auth_index": "idx-claude-1", "name": "claude-demo@example.com", "provider": "claude", "disabled": False},
+    ]
+
+
+def capture_touch(entry):
+    CAPTURE["revision"] += 1
+    entry["revision"] = CAPTURE["revision"]
+
+
+def capture_simulate():
+    listener = CAPTURE["listener"]
+    if listener and time.time() > CAPTURE["expires"]:
+        CAPTURE["listener"] = listener = None
+    CAPTURE["polls"] += 1
+    for entry in CAPTURE["entries"]:
+        if entry.get("completed_at") is None:
+            chunk = 'data: {"type":"response.output_text.delta","delta":"chunk %d "}\n\n' % (entry["chunks"] + 1)
+            entry["response_body"]["text"] += chunk
+            entry["response_body"]["size"] += len(chunk)
+            entry["chunks"] += 1
+            if entry["chunks"] >= 4:
+                entry["completed_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                entry["status_code"], entry["outcome"] = 200, "succeeded"
+            capture_touch(entry)
+    if listener and CAPTURE["polls"] % 3 == 1:
+        CAPTURE["seq"] += 1
+        body = json.dumps({"model": "gpt-5.4", "stream": True, "input": [{"role": "user", "content": [{"type": "input_text", "text": "Hello from request %d <b>&amp;</b>" % CAPTURE["seq"]}]}]})
+        entry = {"seq": CAPTURE["seq"], "request_id": "req-demo-%d" % CAPTURE["seq"], "attempts": 1, "auth_id": "codex-demo.json", "auth_index": listener["auth_index"],
+                 "path": "/v1/responses", "source_format": "openai-response", "to_format": "codex", "model": "gpt-5.4", "requested_model": "gpt-5.4", "stream": True,
+                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "completed_at": None,
+                 "request_headers": {"Authorization": ["Bearer [redacted]"], "Content-Type": ["application/json"], "Session_id": ["019a-demo"], "User-Agent": ["codex_cli_rs/0.50.0"]},
+                 "request_body": {"text": body, "size": len(body)}, "upstream_body": {"text": body.replace("gpt-5.4", "gpt-5.4-codex"), "size": len(body) + 6},
+                 "status_code": 0, "response_headers": {"Content-Type": ["text/event-stream"], "X-Request-Id": ["up-%d" % CAPTURE["seq"]]},
+                 "response_body": {"text": "", "size": 0}, "responded": CAPTURE["hooks_wanted"], "chunks": 0, "outcome": ""}
+        CAPTURE["entries"].append(entry)
+        capture_touch(entry)
+
+
+def capture_view(since, accounts=False):
+    listener = CAPTURE["listener"]
+    if listener:
+        CAPTURE["expires"] = time.time() + 45
+    rows = []
+    for entry in CAPTURE["entries"]:
+        if entry["revision"] > since:
+            rows.append({key: entry[key] for key in ["seq", "revision", "request_id", "attempts", "path", "model", "requested_model", "stream", "started_at", "completed_at", "status_code", "outcome", "responded", "chunks"]} | {"request_size": entry["request_body"]["size"], "response_size": entry["response_body"]["size"]})
+    result = {"listener": {"active": True, **listener} if listener else {"active": False}, "revision": CAPTURE["revision"], "entries": rows,
+              "retained": [entry["seq"] for entry in CAPTURE["entries"]], "response_hooks": {"wanted": CAPTURE["hooks_wanted"], "registered": False},
+              "limits": {"max_entries": 100, "max_body_bytes": 2 << 20, "lease_seconds": 45}}
+    if accounts:
+        result["accounts"] = capture_accounts()
+    return result
+
+
 def payload_for(path, query):
+    if path == f"{API_BASE}/traffic-capture":
+        capture_simulate()
+        return capture_view(int((query.get("since") or ["0"])[0]), (query.get("accounts") or [""])[0] == "1")
+    if path == f"{API_BASE}/traffic-capture/entry":
+        seq = int((query.get("seq") or ["0"])[0])
+        return next((entry for entry in CAPTURE["entries"] if entry["seq"] == seq), {"error": "gone"})
     if path == f"{API_BASE}/model-tests":
         return model_test_catalog()
     if path == "/v0/management/proxy-url":
@@ -1933,6 +1999,26 @@ class Handler(BaseHTTPRequestHandler):
             if "require_turn_state" in body:
                 TEAM_ACCOUNT_SETTINGS["require_turn_state"] = body["require_turn_state"]
             self.send_json(200, TEAM_ACCOUNT_SETTINGS)
+            return
+        if route == ("POST", f"{API_BASE}/traffic-capture/watch"):
+            index = json.loads(request_body or b"{}").get("auth_index")
+            account = next((item for item in capture_accounts() if item["auth_index"] == index), None)
+            CAPTURE["listener"] = {"auth_index": index, "name": account["name"]} if account else None
+            CAPTURE["expires"] = time.time() + 45
+            self.send_json(200, capture_view(1 << 62))
+            return
+        if route == ("DELETE", f"{API_BASE}/traffic-capture/watch"):
+            CAPTURE["listener"] = None
+            self.send_json(200, capture_view(1 << 62))
+            return
+        if route == ("DELETE", f"{API_BASE}/traffic-capture"):
+            CAPTURE["entries"] = []
+            CAPTURE["revision"] += 1
+            self.send_json(200, capture_view(1 << 62))
+            return
+        if route == ("PUT", f"{API_BASE}/traffic-capture/settings"):
+            CAPTURE["hooks_wanted"] = bool(json.loads(request_body or b"{}").get("response_hooks"))
+            self.send_json(200, capture_view(1 << 62))
             return
         if route == ("PUT", f"{API_BASE}/risk-center/config"):
             TEAM_RISK["config"].update(json.loads(request_body or b"{}"))

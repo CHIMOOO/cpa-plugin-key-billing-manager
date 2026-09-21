@@ -1563,6 +1563,39 @@
       .team-account-concurrency .field { flex: 1; margin: 0; min-width: 0; }
       .team-account-concurrency input { width: 100%; }
       #risk-events td { white-space: normal; overflow-wrap: anywhere; }
+      .capture-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; margin: 14px 0 8px; }
+      .capture-controls .field { min-width: 0; margin: 0; }
+      .capture-controls select { width: 100%; min-width: 0; }
+      .capture-actions { flex-wrap: nowrap; }
+      .capture-listener { margin: 8px 0 12px; overflow-wrap: anywhere; }
+      .capture-hooks { max-width: 100%; white-space: normal; }
+      .capture-layout { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: start; }
+      .capture-layout > .card { min-width: 0; }
+      .capture-list { max-height: 720px; overflow: auto; }
+      .capture-list tr[data-seq] { cursor: pointer; }
+      .capture-list tr[data-seq]:hover td { background: var(--bg-hover); }
+      .capture-list tr.is-selected td { background: var(--count-badge-bg); }
+      .capture-list td { vertical-align: top; }
+      .capture-list .capture-cell-model { max-width: 180px; overflow-wrap: anywhere; white-space: normal; }
+      .capture-list .capture-cell-size { white-space: nowrap; }
+      .capture-meta { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; margin-bottom: 12px; overflow-wrap: anywhere; }
+      .capture-block-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+      .capture-block-head h4 { margin: 0; font-size: 14px; }
+      .capture-pre {
+        margin: 6px 0 0;
+        max-height: 520px;
+        overflow: auto;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        color: var(--text-primary);
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.55;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
       .team-group-accounts { display: grid; gap: 8px; width: 100%; }
       .team-group-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; }
       .team-group-account-note { grid-column: 1 / -1; min-width: 0; white-space: normal; }
@@ -1672,10 +1705,15 @@
       @media (max-width: 980px) {
         .model-test-layout { grid-template-columns: minmax(0, 1fr); }
         .model-test-account-list { max-height: 320px; }
+        .capture-layout { grid-template-columns: minmax(0, 1fr); }
+        .capture-list { max-height: 360px; }
         .model-test-runbar { position: static; }
       }
       @media (max-width: 640px) {
         .model-test-runbar-fields { grid-template-columns: minmax(0, 1fr); }
+        .capture-controls { grid-template-columns: minmax(0, 1fr); }
+        .capture-actions { flex-wrap: wrap; }
+        .capture-actions > button { flex: 1; }
         .model-test-runbar-actions > button { flex: 1; }
       }
       .project-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; text-decoration: none; }
@@ -2595,6 +2633,7 @@
               <button data-tab="model-tests" data-i18n="ui.model_tests">Model tests</button>
               <button data-tab="integrations" data-i18n="ui.team_integrations">Integrations</button>
               <button data-tab="risk" data-i18n="ui.team_risk_center">Risk center</button>
+              <button data-tab="traffic" data-i18n="ui.capture_title">Traffic capture</button>
               <button data-tab="turn-state">Codex Turn State</button>
               <button data-tab="settings" data-i18n="ui.settings">Settings</button>
             </div>
@@ -3115,6 +3154,28 @@
           </div>
           <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.team_risk_events">Inspection events</h3><div class="row"><button id="risk-clear-hashes" type="button" data-i18n="ui.team_risk_clear_hashes">Clear remembered hashes</button><button id="risk-clear-events" class="danger" type="button" data-i18n="ui.clear_logs">Clear logs</button></div></div><div id="risk-events"></div></div>
         </section>
+        <section id="tab-traffic" class="hidden">
+          <div class="card">
+            <div class="row spread settings-section-header"><div class="state-head-title"><h2 data-i18n="ui.capture_title">Traffic capture</h2><span class="tag plain" data-i18n="ui.capture_memory_only">Memory only</span></div></div>
+            <p class="access-help" data-i18n="ui.capture_intro">Choose an upstream account and watch the requests CPA routes to it in real time, with their headers, bodies and responses.</p>
+            <div id="capture-status" class="notice hidden" role="status"></div>
+            <div class="capture-controls">
+              <label class="field"><span data-i18n="ui.capture_account">Account to listen to</span><span class="native-select"><select id="capture-account" disabled></select></span></label>
+              <div class="row capture-actions"><button id="capture-start" class="primary" type="button" disabled data-i18n="ui.capture_start">Start listening</button><button id="capture-stop" type="button" disabled data-i18n="ui.capture_stop">Stop</button><button id="capture-clear" class="danger" type="button" disabled data-i18n="ui.capture_clear">Clear</button></div>
+            </div>
+            <p id="capture-listener" class="small capture-listener" role="status"></p>
+            <label class="toggle-filter capture-hooks"><input id="capture-response-hooks" type="checkbox" role="switch" disabled /><span data-i18n="ui.capture_response_hooks">Register response hooks to capture responses</span></label>
+            <p id="capture-hooks-note" class="small muted" role="status"></p>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.capture_help_scope">Requests are shown as this plugin's hooks see them after the account is chosen: the client path, headers and body, plus the body sent upstream after protocol conversion when response hooks are available. Credentials CPA adds inside the upstream executor are not visible here.</p>
+              <p id="capture-help-privacy"></p>
+            </details>
+          </div>
+          <div class="capture-layout">
+            <div class="card capture-list-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_requests">Captured requests</h3><span id="capture-count" class="small muted"></span></div><div id="capture-list" class="capture-list"></div></div>
+            <div class="card capture-detail-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.capture_detail">Detail</h3><label class="toggle-filter"><input id="capture-pretty" type="checkbox" checked /><span data-i18n="ui.capture_pretty">Format JSON</span></label></div><div id="capture-detail"></div></div>
+          </div>
+        </section>
         <section id="tab-integrations" class="hidden">
           <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.team_integrations">Integrations</h2><button id="integration-new" class="primary" type="button" disabled data-i18n="ui.team_integration_add">Add account</button></div>
             <p class="access-help" data-i18n="ui.team_integration_help">Connect OpenCode Go / Zen, CommandCode and Cline Pass accounts. Account credentials are stored by CPA; this page can create their dedicated upstream channel and query supported subscription quotas.</p>
@@ -3413,6 +3474,7 @@
         "plans",
         "integrations",
         "risk",
+        "traffic",
         "settings"
       ];
       const ACCOUNT_TAB_IDS = ["subscription", "analysis", "request-events", "errors", "auth-files"];
@@ -3614,6 +3676,7 @@
           authFiles: m("ui.auth_files"),
           accountRuntime: m("ui.team_account_runtime"),
           riskCenter: m("ui.team_risk_center"),
+          trafficCapture: m("ui.capture_title"),
           integrations: m("ui.team_integrations"),
           modelTests: m("ui.model_tests")
         }),
@@ -3671,6 +3734,7 @@
           authFiles: { names: ["authFiles"] },
           accountRuntime: { names: ["accountRuntime"], after: "configuration" },
           riskCenter: { names: ["riskCenter"] },
+          trafficCapture: { names: ["trafficCapture"] },
           integrations: { names: ["integrations"] },
           modelTests: { names: ["modelTests"] }
         },
@@ -5122,6 +5186,8 @@
             await read("accountRuntime", () => fetchGroupAccountRuntime());
           } else if (name === "riskCenter") {
             await read("riskCenter", () => plugin("GET", "/risk-center"));
+          } else if (name === "trafficCapture") {
+            await read("trafficCapture", () => plugin("GET", "/traffic-capture?accounts=1"));
           } else if (name === "modelTests") { await read("modelTests", fetchModelTestCatalog); } else if (name === "integrations") {
             await read("integrations", () => plugin("GET", "/integrations"));
           } else { await read("authFiles", () => fetchAuthFiles(false)); }
@@ -5231,6 +5297,7 @@
           result["turn-state"] = { sections: [section(["turnState", "accountRuntime"], renderTurnState)] };
           result["auth-files"] = { sections: [section(["authFiles", "accountRuntime"], () => renderAuthFiles(false))] };
           result.risk = { sections: [section(["riskCenter"], renderRiskCenter)] };
+          result.traffic = { sections: [section(["trafficCapture"], renderTrafficCapture)] };
           result["model-tests"] = { sections: [section(["modelTests"], renderModelTests)] };
           result.integrations = { sections: [section(["integrations"], renderIntegrations)] };
           result.plans = { editors: ["plan"], sections: [keyedSection(["plans", "keys"], renderPlans)] };
@@ -7904,6 +7971,369 @@
           state.error = error.message || m("ui.model_test_route_unverified");
           renderModelTests();
         }
+      }
+
+      // Traffic capture polls a revision cursor; bodies are fetched only for the
+      // selected request, and only again after that request changes.
+      const CAPTURE_POLL_MS = 1500;
+      const captureState = {
+        source: null,
+        status: null,
+        rows: new Map(),
+        revision: 0,
+        selected: 0,
+        detail: null,
+        shown: "",
+        token: 0,
+        timer: 0,
+        polling: false,
+        busy: false,
+        error: ""
+      };
+
+      function formatCaptureBytes(size) {
+        const value = Number(size || 0);
+        if (value < 1024) return value + " B";
+        if (value < 1024 * 1024) return (value / 1024).toFixed(1) + " KB";
+        return (value / 1024 / 1024).toFixed(1) + " MB";
+      }
+
+      function receiveCapture(result, withRows) {
+        if (!result || typeof result !== "object") return;
+        const retained = new Set(result.retained || []);
+        for (const seq of [...captureState.rows.keys()]) if (!retained.has(seq)) captureState.rows.delete(seq);
+        if (withRows) {
+          for (const row of result.entries || []) captureState.rows.set(row.seq, row);
+          captureState.revision = Math.max(captureState.revision, Number(result.revision || 0));
+        }
+        const { entries, retained: _, ...status } = result;
+        captureState.status = { ...captureState.status, ...status };
+        if (captureState.selected && !captureState.rows.has(captureState.selected)) {
+          captureState.selected = 0;
+          captureState.detail = null;
+        }
+      }
+
+      function captureInflight() {
+        for (const row of captureState.rows.values()) if (!row.completed_at && !row.moved_away) return true;
+        return false;
+      }
+
+      function stopCapturePolling() {
+        captureState.token++;
+        clearTimeout(captureState.timer);
+        captureState.timer = 0;
+        captureState.polling = false;
+      }
+
+      function scheduleCapturePoll(delay = CAPTURE_POLL_MS) {
+        clearTimeout(captureState.timer);
+        captureState.timer = 0;
+        if (currentRole !== "admin" || activeTab(false) !== "traffic" || !captureState.status) return;
+        if (!captureState.status.listener?.active && !captureInflight() && delay) return;
+        const token = captureState.token;
+        captureState.timer = setTimeout(() => { if (token === captureState.token) void pollCapture(); }, delay);
+      }
+
+      function resumeCapturePolling() {
+        stopCapturePolling();
+        scheduleCapturePoll(0);
+      }
+
+      async function refreshCaptureDetail(token) {
+        const row = captureState.rows.get(captureState.selected);
+        if (!row || (captureState.detail?.seq === row.seq && captureState.detail.revision === row.revision)) return;
+        const detail = await plugin("GET", "/traffic-capture/entry?seq=" + row.seq);
+        if (token === captureState.token && captureState.selected === row.seq) captureState.detail = detail;
+      }
+
+      async function pollCapture() {
+        if (captureState.polling) return;
+        const token = captureState.token;
+        captureState.polling = true;
+        try {
+          const result = await plugin("GET", "/traffic-capture?since=" + captureState.revision);
+          if (token !== captureState.token) return;
+          if (Number(result.revision || 0) < captureState.revision) {
+            // CPA restarted: the cursor belongs to a previous plugin process.
+            captureState.rows.clear();
+            captureState.revision = 0;
+            captureState.token++;
+            captureState.polling = false;
+            return void pollCapture();
+          }
+          receiveCapture(result, true);
+          await refreshCaptureDetail(token);
+          captureState.error = "";
+        } catch (error) {
+          if (error instanceof StaleRequestError) return;
+          if (error instanceof AuthError) return void (await fail(error));
+          if (token === captureState.token) captureState.error = error.message || String(error);
+        } finally {
+          if (token === captureState.token) {
+            captureState.polling = false;
+            renderTrafficCapture();
+            scheduleCapturePoll();
+          }
+        }
+      }
+
+      async function captureCommand(method, path, body) {
+        captureState.busy = true;
+        renderTrafficCapture();
+        try {
+          const result = await plugin(method, path, body, { command: true });
+          receiveCapture(result, false);
+          captureState.error = "";
+        } finally {
+          captureState.busy = false;
+          renderTrafficCapture();
+          resumeCapturePolling();
+        }
+      }
+
+      async function startCapture() {
+        const index = $("capture-account").value;
+        if (!index) throw new UIError(m("ui.capture_select_account"));
+        await captureCommand("POST", "/traffic-capture/watch", { auth_index: index });
+      }
+
+      async function clearCapture() {
+        if (!(await confirmCaptureClear())) return;
+        await captureCommand("DELETE", "/traffic-capture");
+        captureState.rows.clear();
+        captureState.selected = 0;
+        captureState.detail = null;
+        renderTrafficCapture();
+      }
+
+      function confirmCaptureClear() { return openActionDialog(m("ui.capture_clear"), m("ui.capture_clear_warning")); }
+
+      async function saveCaptureHooks() {
+        const input = $("capture-response-hooks");
+        try { await captureCommand("PUT", "/traffic-capture/settings", { response_hooks: input.checked }); } catch (error) {
+          input.checked = !!captureState.status?.response_hooks?.wanted;
+          throw error;
+        }
+      }
+
+      async function selectCaptureRow(seq) {
+        if (captureState.selected === seq) return;
+        captureState.selected = seq;
+        captureState.detail = null;
+        renderTrafficCapture();
+        await refreshCaptureDetail(captureState.token);
+        renderTrafficCapture();
+      }
+
+      function captureHeaderLines(headers) {
+        return Object.keys(headers || {}).sort((left, right) => left.localeCompare(right))
+          .flatMap((name) => (headers[name] || []).map((value) => name + ": " + value));
+      }
+
+      function captureBodyText(body, pretty) {
+        if (!body?.size) return "";
+        if (body.binary) return String(m("ui.capture_binary_body", { size: formatCaptureBytes(body.size) }));
+        let text = body.text || "";
+        if (pretty && !body.truncated && /^\s*[{[]/.test(text)) { try { text = JSON.stringify(JSON.parse(text), null, 2); } catch (_) {} }
+        if (body.truncated) {
+          text +=
+            "\n\n" +
+            m("ui.capture_truncated", { shown: formatCaptureBytes(new Blob([body.text || ""]).size), size: formatCaptureBytes(body.size) });
+        }
+        return text;
+      }
+
+      function captureMessage(head, headers, body, pretty) {
+        const lines = [head, ...captureHeaderLines(headers)];
+        const text = captureBodyText(body, pretty);
+        return lines.join("\n") + (text ? "\n\n" + text : "");
+      }
+
+      function captureStatusTag(row) {
+        if (row.moved_away) return el("span", { class: "tag plain", text: m("ui.capture_moved_away") });
+        if (row.rejected)
+          return el("span", { class: "tag warn", text: m("ui.capture_rejected") + (row.status_code ? " " + row.status_code : "") });
+        if (!row.completed_at) return el("span", { class: "tag plain", text: m("ui.capture_pending") });
+        const failed = row.outcome && row.outcome !== "succeeded";
+        const code = Number(row.status_code || 0);
+        const label = code ? "HTTP " + code : row.outcome || m("ui.failed");
+        return el("span", { class: "tag " + (failed || code >= 400 ? "bad" : "ok"), text: label });
+      }
+
+      function captureBlock(title, text) {
+        const pre = el("pre", { class: "capture-pre", tabindex: "0" }, text);
+        const button = el("button", {
+          type: "button",
+          class: "small",
+          text: m("ui.capture_copy"),
+          onclick: () =>
+            guard(async () => {
+              await copyText(text);
+              notify(m("ui.capture_copied"));
+            })
+        });
+        return [el("div", { class: "capture-block-head" }, el("h4", { text: title }), button), pre];
+      }
+
+      function renderCaptureDetail() {
+        const target = $("capture-detail"), detail = captureState.detail;
+        const row = captureState.rows.get(captureState.selected);
+        const pretty = $("capture-pretty").checked;
+        const signature = row ? [row.seq, detail?.revision ?? "", pretty, locale()].join(":") : locale();
+        if (captureState.shown === signature && target.childElementCount) return;
+        // Keep the reader's position while a streamed response grows.
+        const positions = [...target.querySelectorAll(".capture-pre")].map((pre) => ({
+          top: pre.scrollTop,
+          bottom: pre.scrollHeight - pre.scrollTop - pre.clientHeight < 24
+        }));
+        const sameRow = captureState.shown.split(":")[0] === String(row?.seq ?? "");
+        captureState.shown = signature;
+        if (!row) return void target.replaceChildren(el("div", { class: "empty", text: m("ui.capture_select_hint") }));
+        if (!detail) return void target.replaceChildren(el("div", { class: "empty", text: m("ui.loading") }));
+        const meta = [
+          el("span", { class: "mono small", text: detail.request_id || "" }),
+          detail.model ? el("span", { class: "tag plain", text: detail.model }) : null,
+          detail.requested_model && detail.requested_model !== detail.model
+            ? el("span", { class: "small muted", text: detail.requested_model + " →" })
+            : null,
+          detail.source_format
+            ? el("span", { class: "small muted", text: detail.source_format + (detail.to_format ? " → " + detail.to_format : "") })
+            : null,
+          detail.stream ? el("span", { class: "tag plain", text: m("ui.capture_stream") }) : null,
+          detail.attempts > 1 ? el("span", { class: "tag warn", text: m("ui.capture_attempts", { count: detail.attempts }) }) : null,
+          detail.chunks ? el("span", { class: "small muted", text: m("ui.capture_chunks", { count: detail.chunks }) }) : null,
+          captureStatusTag(row)
+        ];
+        const requestText = captureMessage(
+          detail.path || String(m("ui.capture_path_unknown")),
+          detail.request_headers,
+          detail.request_body,
+          pretty
+        );
+        const blocks = [...captureBlock(m("ui.capture_request"), requestText)];
+        if (detail.upstream_body?.size)
+          blocks.push(...captureBlock(m("ui.capture_upstream_body"), captureBodyText(detail.upstream_body, pretty)));
+        let responseText;
+        if (detail.responded) {
+          responseText = captureMessage(
+            detail.status_code ? "HTTP " + detail.status_code : "HTTP",
+            detail.response_headers,
+            detail.response_body,
+            pretty
+          );
+        } else if (!detail.completed_at && !detail.moved_away) { responseText = String(m("ui.capture_waiting")); } else {
+          responseText = String(m("ui.capture_no_response"));
+        }
+        if (detail.error) responseText += "\n\n" + m("ui.capture_error", { error: detail.error });
+        blocks.push(...captureBlock(m("ui.capture_response"), responseText));
+        target.replaceChildren(el("div", { class: "capture-meta" }, meta), ...blocks);
+        if (!sameRow) return;
+        target.querySelectorAll(".capture-pre").forEach((pre, index) => {
+          const position = positions[index];
+          if (position) pre.scrollTop = position.bottom ? pre.scrollHeight : position.top;
+        });
+      }
+
+      function renderTrafficCapture() {
+        const resource = resources.admin.trafficCapture;
+        if (resource.value && resource.value !== captureState.source) {
+          captureState.source = resource.value;
+          captureState.rows.clear();
+          captureState.revision = 0;
+          captureState.status = null;
+          receiveCapture(resource.value, true);
+          resumeCapturePolling();
+        }
+        const status = captureState.status, busy = captureState.busy, listener = status?.listener || {};
+        const accounts = status?.accounts || [];
+        const select = $("capture-account");
+        const current = select.value || listener.auth_index || "";
+        const optionsKey = JSON.stringify([accounts.map((account) => [account.auth_index, account.name, account.provider]), locale()]);
+        if (select.dataset.options !== optionsKey) {
+          select.replaceChildren(
+            el("option", { value: "", text: m(accounts.length ? "ui.capture_account_placeholder" : "ui.capture_no_accounts") }),
+            ...accounts.map((account) =>
+              el("option", { value: account.auth_index, text: account.name + (account.provider ? " · " + account.provider : "") })
+            )
+          );
+          select.dataset.options = optionsKey;
+          select.value = accounts.some((account) => account.auth_index === current) ? current : "";
+        }
+        if (listener.active && select.dataset.listener !== listener.auth_index) {
+          select.value = listener.auth_index;
+          select.dataset.listener = listener.auth_index;
+        } else if (!listener.active) delete select.dataset.listener;
+        select.disabled = !status || busy || !accounts.length;
+        const switching = listener.active && select.value && select.value !== listener.auth_index;
+        setText($("capture-start"), m(switching ? "ui.capture_switch" : "ui.capture_start"));
+        $("capture-start").disabled = !status || busy || !select.value || (listener.active && !switching);
+        $("capture-stop").disabled = !status || busy || !listener.active;
+        $("capture-clear").disabled = !status || busy || !captureState.rows.size;
+        const notice = $("capture-status");
+        const problem = captureState.error || resource.error || (status?.accounts_error ? m("ui.capture_accounts_failed") : "");
+        notice.className = problem ? "notice err show" : "notice hidden";
+        setText(notice, problem || "");
+        const seconds = status?.limits?.lease_seconds || 45;
+        setText(
+          $("capture-listener"),
+          status
+            ? listener.active ? m("ui.capture_listening", { name: listener.name || listener.auth_index, seconds }) : m("ui.capture_idle")
+            : ""
+        );
+        $("capture-listener").classList.toggle("muted", !listener.active);
+        const hooks = status?.response_hooks || {};
+        const hooksInput = $("capture-response-hooks");
+        if (!busy) hooksInput.checked = !!hooks.wanted;
+        hooksInput.disabled = !status || busy;
+        let hooksNote = "";
+        if (status) {
+          if (hooks.wanted) hooksNote = hooks.registered ? "ui.capture_hooks_active" : "ui.capture_hooks_pending";
+          else if (hooks.registered) hooksNote = hooks.state ? "ui.capture_hooks_state" : "ui.capture_hooks_unregister";
+          else hooksNote = "ui.capture_hooks_off";
+        }
+        setText($("capture-hooks-note"), hooksNote ? m(hooksNote) : "");
+        const limits = status?.limits || {};
+        setText(
+          $("capture-help-privacy"),
+          m("ui.capture_help_privacy", {
+            entries: limits.max_entries || 100,
+            size: formatCaptureBytes(limits.max_body_bytes || 2 * 1024 * 1024)
+          })
+        );
+        const rows = [...captureState.rows.values()].sort((left, right) => right.seq - left.seq);
+        setText($("capture-count"), rows.length ? m("ui.capture_count", { count: rows.length }) : "");
+        renderCollection($("capture-list"), rows, {
+          headers: [m("ui.time"), m("ui.model"), m("ui.capture_path"), m("ui.capture_status"), { label: m("ui.capture_size"), num: true }],
+          empty: m("ui.capture_empty"),
+          render: (row) =>
+            el(
+              "tr",
+              {
+                "data-seq": String(row.seq),
+                class: row.seq === captureState.selected ? "is-selected" : "",
+                tabindex: "0",
+                "aria-selected": String(row.seq === captureState.selected),
+                onclick: () => guard(() => selectCaptureRow(row.seq)),
+                onkeydown: (event) => {
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  event.preventDefault();
+                  void guard(() => selectCaptureRow(row.seq));
+                }
+              },
+              el("td", { text: window.billingI18n.date(row.started_at, { timeStyle: "medium", hour12: false }) }),
+              el("td", { class: "capture-cell-model", text: row.model || row.requested_model || "" }),
+              el("td", { class: "mono small", text: row.path || "" }),
+              el("td", {}, captureStatusTag(row), row.stream ? el("div", { class: "small muted", text: m("ui.capture_stream") }) : null),
+              el(
+                "td",
+                { class: "num small capture-cell-size" },
+                el("div", { text: "↑ " + formatCaptureBytes(row.request_size) }),
+                el("div", { text: "↓ " + formatCaptureBytes(row.response_size) })
+              )
+            )
+        });
+        renderCaptureDetail();
       }
 
       function stopPendingModelTests() {
@@ -14045,6 +14475,7 @@
         const selected = ADMIN_TAB_IDS.includes(name) ? name : "keys";
         if (selected !== "turn-state") stopTurnStateWork();
         if (selected !== "model-tests") stopPendingModelTests();
+        if (selected === "traffic") resumeCapturePolling(); else stopCapturePolling();
         if (selected !== "keys") $("route-picker").close();
         writePageRoute("admin", selected);
         for (const tab of TABS) {
@@ -14067,6 +14498,7 @@
           "model-tests",
           "integrations",
           "risk",
+          "traffic",
           "plugin-logs",
           "persistence"
         ]) { $("tab-" + section).classList.toggle("hidden", !visible.has(section)); }
@@ -14179,6 +14611,12 @@
       };
       $("team-runtime-bulk-save").onclick = () => guard(saveTeamAccountBatch);
       $("risk-save").onclick = () => guard(saveRiskCenter);
+      $("capture-start").onclick = () => guard(startCapture);
+      $("capture-stop").onclick = () => guard(() => captureCommand("DELETE", "/traffic-capture/watch"));
+      $("capture-clear").onclick = () => guard(clearCapture);
+      $("capture-response-hooks").onchange = () => guard(saveCaptureHooks);
+      $("capture-account").onchange = () => renderTrafficCapture();
+      $("capture-pretty").onchange = () => renderCaptureDetail();
       $("risk-clear-hashes").onclick = () => guard(() => clearRiskData("hashes"));
       $("risk-clear-events").onclick = () => guard(() => clearRiskData("events"));
       for (const field of RISK_FIELDS)
