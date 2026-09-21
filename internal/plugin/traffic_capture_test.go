@@ -139,12 +139,18 @@ func TestTrafficCaptureSettingRegistersResponseHooksWithoutState(t *testing.T) {
 		decodeResult(t, raw, &reg)
 		return reg
 	}
-	app := newTestApp(t)
-	t.Cleanup(app.Shutdown)
+	// A fresh App stands in for a CPA restart that reloads persisted settings.
+	restart := func() *App {
+		app := newTestApp(t)
+		t.Cleanup(app.Shutdown)
+		return app
+	}
+	app := restart()
 	register(app)
 	if err := app.turnState.Update([]byte(`{"suspended":true}`)); err != nil {
 		t.Fatal(err)
 	}
+	app = restart()
 	if caps := register(app).Capabilities; caps.ResponseInterceptor || caps.StreamChunkInterceptor {
 		t.Fatalf("response hooks registered without State or capture: %+v", caps)
 	}
@@ -152,6 +158,7 @@ func TestTrafficCaptureSettingRegistersResponseHooksWithoutState(t *testing.T) {
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("settings status = %d body=%s", response.StatusCode, response.Body)
 	}
+	app = restart()
 	caps := register(app).Capabilities
 	if !caps.ResponseInterceptor || !caps.StreamChunkInterceptor || caps.ModelRouter {
 		t.Fatalf("capture must register only the response hooks: %+v", caps)

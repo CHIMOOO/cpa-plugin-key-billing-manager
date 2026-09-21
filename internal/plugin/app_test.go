@@ -99,6 +99,8 @@ func TestManagementRegistrationExposesOnlyCurrentEndpoints(t *testing.T) {
 		"GET /model-tests", "POST /model-tests/prepare", "POST /model-tests/complete",
 		"GET /account-runtime", "GET /account-runtime/settings", "PUT /account-runtime/settings",
 		"GET /risk-center", "PUT /risk-center/config", "DELETE /risk-center/events", "DELETE /risk-center/hashes",
+		"GET /traffic-capture", "GET /traffic-capture/entry", "POST /traffic-capture/watch", "DELETE /traffic-capture/watch",
+		"DELETE /traffic-capture", "PUT /traffic-capture/settings",
 		"GET /integrations", "POST /integrations", "DELETE /integrations", "POST /integrations/query", "POST /integrations/channel",
 		"POST /integrations/cline/device", "POST /integrations/cline/poll", "POST /integrations/refresh",
 		"POST /integrations/commit", "POST /integrations/cline/cancel",
