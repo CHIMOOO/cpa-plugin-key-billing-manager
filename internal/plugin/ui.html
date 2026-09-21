@@ -3052,7 +3052,7 @@
           <div id="model-test-status" class="notice hidden" role="status"></div>
           <div class="card model-test-runbar">
             <div class="model-test-runbar-fields">
-              <label class="field"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" autocomplete="off" disabled /><datalist id="model-test-models"></datalist></label>
+              <label class="field"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" value="gpt-6-astra" autocomplete="off" disabled /><datalist id="model-test-models"></datalist></label>
               <label class="field"><span data-i18n="ui.model_test_preset">Prompt preset</span><span class="native-select"><select id="model-test-preset"><option value="json" data-i18n="ui.model_test_preset_json">Instruction following · exact JSON</option><option value="logic" data-i18n="ui.model_test_preset_logic">Reasoning · constraint puzzle</option><option value="code" data-i18n="ui.model_test_preset_code">Coding · review the response</option><option value="free" data-i18n="ui.model_test_preset_free">Open question · custom prompt</option></select></span></label>
               <div class="row model-test-runbar-actions"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Test selected accounts</button><button id="model-test-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button></div>
             </div>
@@ -4102,7 +4102,7 @@
           $("turn-state-proxies").value = "";
           $("turn-state-rotating").value = "";
           $("model-test-prompt").value = "";
-          $("model-test-model").value = "";
+          $("model-test-model").value = "gpt-6-astra";
           $("model-test-provider").value = "all";
           $("model-test-search").value = "";
           $("model-test-preset").value = "json";
