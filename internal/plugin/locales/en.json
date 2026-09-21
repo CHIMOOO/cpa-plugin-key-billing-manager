@@ -1582,5 +1582,6 @@
   "ui.state_section_renewal": "Renewal and limits",
   "ui.state_section_advanced": "Advanced",
   "ui.state_applies_now": "Applies immediately",
-  "ui.state_save_hint": "Changes are saved together from the bar at the bottom."
+  "ui.state_save_hint": "Changes are saved together from the bar at the bottom.",
+  "ui.model_test_setup": "Test content"
 }

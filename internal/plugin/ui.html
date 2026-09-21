@@ -1602,11 +1602,25 @@
         .state-quality-layout { grid-template-columns: minmax(0, 1fr); }
         .state-quality-dialog .model-test-account-list { max-height: 240px; }
       }
+      .model-test-head { margin-bottom: 16px; }
+      .model-test-runbar { position: sticky; top: 8px; z-index: 3; }
+      .model-test-runbar-fields { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.4fr) auto; gap: 12px; align-items: end; }
+      .model-test-runbar-fields .field { min-width: 0; margin: 0; }
+      .model-test-runbar-fields input, .model-test-runbar-fields select { width: 100%; min-width: 0; }
+      .model-test-runbar-actions { flex-wrap: nowrap; }
+      .model-test-runbar-status { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 10px; overflow-wrap: anywhere; }
+      .model-test-runbar-status > :empty { display: none; }
+      .model-test-filters { display: grid; gap: 10px; margin: 12px 0; }
+      .model-test-criteria { margin-top: 14px; }
+      .model-test-criteria p { margin: 4px 0 0; }
+      .model-test-prompt-panel { margin-top: 14px; }
+      .model-test-prompt-panel > summary { cursor: pointer; font-weight: 600; }
+      .model-test-prompt-panel textarea { display: block; width: 100%; min-width: 0; margin: 10px 0 6px; resize: vertical; }
       .model-test-layout { display: grid; grid-template-columns: minmax(250px, 310px) minmax(0, 1fr); gap: 16px; align-items: start; }
       .model-test-layout > *, .model-test-workspace { min-width: 0; }
-      .model-test-accounts .field { margin: 12px 0; }
+      .model-test-accounts .field { margin: 0; }
       .model-test-accounts input[type="search"], .model-test-accounts select { width: 100%; min-width: 0; }
-      .model-test-account-list { display: grid; gap: 8px; max-height: 640px; overflow: auto; margin-top: 12px; }
+      .model-test-account-list { display: grid; gap: 8px; max-height: 560px; overflow: auto; margin-top: 12px; }
       .model-test-account-row {
         display: grid;
         grid-template-columns: auto minmax(0, 1fr);
@@ -1623,10 +1637,6 @@
       .model-test-account-info { min-width: 0; }
       .model-test-account-name { display: block; overflow-wrap: anywhere; }
       .model-test-account-detail { display: block; margin-top: 4px; overflow-wrap: anywhere; }
-      .model-test-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 16px 0; }
-      .model-test-fields .field { min-width: 0; margin: 0; }
-      .model-test-fields input, .model-test-fields select, .model-test-fields textarea { width: 100%; min-width: 0; }
-      .model-test-wide { grid-column: 1 / -1; }
       .model-test-route {
         padding: 10px 12px;
         background: var(--bg-secondary);
@@ -1662,9 +1672,11 @@
       @media (max-width: 980px) {
         .model-test-layout { grid-template-columns: minmax(0, 1fr); }
         .model-test-account-list { max-height: 320px; }
+        .model-test-runbar { position: static; }
       }
       @media (max-width: 640px) {
-        .model-test-fields { grid-template-columns: minmax(0, 1fr); }
+        .model-test-runbar-fields { grid-template-columns: minmax(0, 1fr); }
+        .model-test-runbar-actions > button { flex: 1; }
       }
       .project-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; text-decoration: none; }
       .project-link svg { flex: none; width: 16px; height: 16px; fill: currentColor; }
@@ -3034,32 +3046,46 @@
         </section>
 
         <section id="tab-model-tests" class="hidden">
+          <div class="turn-state-page-head model-test-head">
+            <div class="state-head-title"><h2 data-i18n="ui.model_tests">Model tests</h2><span class="tag plain" data-i18n="ui.model_test_single_request">One request at a time</span></div>
+          </div>
+          <div id="model-test-status" class="notice hidden" role="status"></div>
+          <div class="card model-test-runbar">
+            <div class="model-test-runbar-fields">
+              <label class="field"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" autocomplete="off" disabled /><datalist id="model-test-models"></datalist></label>
+              <label class="field"><span data-i18n="ui.model_test_preset">Prompt preset</span><span class="native-select"><select id="model-test-preset"><option value="json" data-i18n="ui.model_test_preset_json">Instruction following · exact JSON</option><option value="logic" data-i18n="ui.model_test_preset_logic">Reasoning · constraint puzzle</option><option value="code" data-i18n="ui.model_test_preset_code">Coding · review the response</option><option value="free" data-i18n="ui.model_test_preset_free">Open question · custom prompt</option></select></span></label>
+              <div class="row model-test-runbar-actions"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Test selected accounts</button><button id="model-test-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button></div>
+            </div>
+            <div class="model-test-runbar-status"><span id="model-test-selection" class="small" role="status"></span><span id="model-test-running" class="small muted" role="status"></span><span id="model-test-model-hint" class="small muted"></span></div>
+          </div>
           <div class="model-test-layout">
           <aside class="card model-test-accounts" aria-labelledby="model-test-account-heading">
-            <h2 id="model-test-account-heading" data-i18n="ui.model_test_accounts">Test accounts</h2>
-                <label class="field"><span data-i18n="ui.model_test_provider">Provider category</span><span class="native-select"><select id="model-test-provider"><option value="all" data-i18n="ui.model_test_provider_all">All providers</option><option value="codex" data-i18n="ui.model_test_provider_codex">Codex</option><option value="claude" data-i18n="ui.model_test_provider_claude">Claude</option><option value="gemini" data-i18n="ui.model_test_provider_gemini">Gemini</option><option value="openai" data-i18n="ui.model_test_provider_openai">OpenAI compatible</option><option value="other" data-i18n="ui.model_test_provider_other">Other</option></select></span></label>
-            <label class="field"><span data-i18n="ui.model_test_search">Search accounts</span><input id="model-test-search" type="search" autocomplete="off" /></label>
+            <h3 id="model-test-account-heading" data-i18n="ui.model_test_accounts">Test accounts</h3>
+            <div class="model-test-filters">
+              <label class="field"><span data-i18n="ui.model_test_provider">Provider category</span><span class="native-select"><select id="model-test-provider"><option value="all" data-i18n="ui.model_test_provider_all">All providers</option><option value="codex" data-i18n="ui.model_test_provider_codex">Codex</option><option value="claude" data-i18n="ui.model_test_provider_claude">Claude</option><option value="gemini" data-i18n="ui.model_test_provider_gemini">Gemini</option><option value="openai" data-i18n="ui.model_test_provider_openai">OpenAI compatible</option><option value="other" data-i18n="ui.model_test_provider_other">Other</option></select></span></label>
+              <label class="field"><span data-i18n="ui.model_test_search">Search accounts</span><input id="model-test-search" type="search" autocomplete="off" /></label>
+            </div>
             <div class="row"><button id="model-test-select-visible" type="button" data-i18n="ui.model_test_select_visible">Select matching accounts</button><button id="model-test-selection-clear" type="button" data-i18n="ui.model_test_selection_clear">Clear selection</button></div>
-            <p id="model-test-selection" class="small muted" role="status"></p>
             <div id="model-test-accounts" class="model-test-account-list"></div>
           </aside>
           <div class="model-test-workspace">
           <div class="card">
-            <div class="row spread settings-section-header"><h2 data-i18n="ui.model_tests">Model tests</h2><span class="tag plain" data-i18n="ui.model_test_single_request">One request at a time</span></div>
-            <p class="access-help" data-i18n="ui.model_test_intro">Compare responses to the same prompt across accounts or models. Tests consume upstream quota. Checks assess this task only, not overall intelligence or the model’s true identity.</p>
-            <p class="small muted" data-i18n="ui.model_test_billing">This is a diagnostic request through CPA’s management API. It consumes upstream quota but does not create downstream billing or usage records.</p>
-            <div id="model-test-status" class="notice hidden" role="status"></div>
-            <div class="model-test-fields">
-              <label class="field model-test-wide"><span data-i18n="ui.model_test_model">Upstream model ID</span><input id="model-test-model" list="model-test-models" autocomplete="off" disabled /><datalist id="model-test-models"></datalist><span id="model-test-model-hint" class="small muted"></span></label>
-              <div id="model-test-proxy" class="model-test-route model-test-wide" role="status"></div>
-              <label class="field"><span data-i18n="ui.model_test_preset">Prompt preset</span><span class="native-select"><select id="model-test-preset"><option value="json" data-i18n="ui.model_test_preset_json">Instruction following · exact JSON</option><option value="logic" data-i18n="ui.model_test_preset_logic">Reasoning · constraint puzzle</option><option value="code" data-i18n="ui.model_test_preset_code">Coding · review the response</option><option value="free" data-i18n="ui.model_test_preset_free">Open question · custom prompt</option></select></span></label>
-              <div class="field"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p><div id="model-test-sources" class="small muted"></div></div>
-              <label class="field model-test-wide"><span data-i18n="ui.model_test_prompt">Prompt (editable)</span><textarea id="model-test-prompt" rows="7" maxlength="16000" spellcheck="false"></textarea><span id="model-test-custom-note" class="small muted hidden" data-i18n="ui.model_test_custom_note">This prompt was edited. Preset assertions are disabled; review the response against your own criteria.</span></label>
-            </div>
-            <p class="small muted" data-i18n="ui.model_test_batch_help">Click anywhere on an account card to select it. Only accounts with a supported test protocol are shown; disabled accounts can be tested without enabling them for traffic. Select up to 50 accounts. Each receives the same model and prompt once, sequentially. Failures are not retried. Stopping or leaving this tab skips pending accounts and lets the current request finish.</p>
-            <div class="row"><button id="model-test-run" class="primary" type="button" disabled data-i18n="ui.model_test_run">Test selected accounts</button><button id="model-test-stop" type="button" disabled data-i18n="ui.model_test_stop">Stop pending tests</button><span id="model-test-running" class="small muted" role="status"></span></div>
+            <h3 data-i18n="ui.model_test_setup">Test content</h3>
+            <div id="model-test-proxy" class="model-test-route" role="status"></div>
+            <div class="model-test-criteria"><strong data-i18n="ui.model_test_criteria">Acceptance criteria</strong><p id="model-test-criteria" class="small muted"></p><div id="model-test-sources" class="small muted"></div></div>
+            <details id="model-test-prompt-panel" class="model-test-prompt-panel"><summary data-i18n="ui.model_test_prompt">Prompt (editable)</summary><textarea id="model-test-prompt" rows="7" maxlength="16000" spellcheck="false" aria-label="Prompt (editable)" data-i18n-aria-label="ui.model_test_prompt"></textarea><span id="model-test-custom-note" class="small muted hidden" data-i18n="ui.model_test_custom_note">This prompt was edited. Preset assertions are disabled; review the response against your own criteria.</span></details>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.model_test_intro">Compare responses to the same prompt across accounts or models. Tests consume upstream quota. Checks assess this task only, not overall intelligence or the model’s true identity.</p>
+              <p data-i18n="ui.model_test_billing">This is a diagnostic request through CPA’s management API. It consumes upstream quota but does not create downstream billing or usage records.</p>
+              <p data-i18n="ui.model_test_batch_help">Click anywhere on an account card to select it. Only accounts with a supported test protocol are shown; disabled accounts can be tested without enabling them for traffic. Select up to 50 accounts. Each receives the same model and prompt once, sequentially. Failures are not retried. Stopping or leaving this tab skips pending accounts and lets the current request finish.</p>
+            </details>
           </div>
-          <div class="card"><div class="row spread settings-section-header"><h2 data-i18n="ui.model_test_comparison">Response comparison</h2><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div><p class="access-help" data-i18n="ui.model_test_memory">The current batch (up to 50 results) stays in this page’s memory only; starting another batch replaces it. Response code is never executed. SVG previews are static images.</p><p class="access-help" data-i18n="ui.model_test_model_declaration_help">The response model is declared by the upstream for this test. A different name may reflect an alias or model version; matching names do not prove model identity or answer quality. It does not change billing or routing.</p><div id="model-test-results" class="model-test-results"></div></div>
+          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.model_test_comparison">Response comparison</h3><button id="model-test-clear" type="button" data-i18n="ui.clear">Clear</button></div><div id="model-test-results" class="model-test-results"></div>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.model_test_memory">The current batch (up to 50 results) stays in this page’s memory only; starting another batch replaces it. Response code is never executed. SVG previews are static images.</p>
+              <p data-i18n="ui.model_test_model_declaration_help">The response model is declared by the upstream for this test. A different name may reflect an alias or model version; matching names do not prove model identity or answer quality. It does not change billing or routing.</p>
+            </details>
+          </div>
           </div>
           </div>
         </section>
@@ -7543,6 +7569,7 @@
         $("model-test-prompt").value = state.baselinePrompt;
         renderModelTestPresetDetails();
         $("model-test-custom-note").classList.add("hidden");
+        if (id === "free") $("model-test-prompt-panel").open = true;
       }
 
       function renderModelTestProxy(proxy, accountName) {

@@ -1582,5 +1582,6 @@
   "ui.state_section_renewal": "续期与限额",
   "ui.state_section_advanced": "高级",
   "ui.state_applies_now": "立即生效",
-  "ui.state_save_hint": "修改会通过底部的保存栏统一保存。"
+  "ui.state_save_hint": "修改会通过底部的保存栏统一保存。",
+  "ui.model_test_setup": "测试内容"
 }
