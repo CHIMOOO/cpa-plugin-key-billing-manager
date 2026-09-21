@@ -309,13 +309,13 @@ func (a *App) prepareModelTest(req ManagementRequest) ManagementResponse {
 	if blocked := a.risk.inspect(RequestInterceptRequest{RequestID: requestID, Model: actualModel, Body: []byte(call.Data)}); blocked.Terminate {
 		return modelTestError(blocked.StatusCode, "The configured content risk policy blocked this model test")
 	}
-	if account.Provider == "codex" {
+	if account.Provider == "codex" && a.turnState.Active() {
 		headers := http.Header{}
 		for k, v := range prepared.APICall.Header {
 			headers.Set(k, v)
 		}
 		var updates http.Header
-		if a.accountRuntime.requiresTurnState() {
+		if a.turnStateGate() {
 			var reason string
 			updates, _, reason = a.turnState.BeforeRequired(requestID, file.ID, actualModel, headers)
 			if reason != "" {

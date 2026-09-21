@@ -1562,7 +1562,6 @@
       .team-account-concurrency { display: flex; gap: 10px; align-items: flex-end; margin: 14px 0 8px; }
       .team-account-concurrency .field { flex: 1; margin: 0; min-width: 0; }
       .team-account-concurrency input { width: 100%; }
-      .team-gate-card { margin-bottom: 16px; }
       #risk-events td { white-space: normal; overflow-wrap: anywhere; }
       .team-group-accounts { display: grid; gap: 8px; width: 100%; }
       .team-group-account-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: 8px; }
@@ -1672,7 +1671,7 @@
       #app > .app-header .app-title { flex-direction: column; align-items: flex-start; gap: 0; }
       .state-save-bar {
         position: sticky;
-        top: 8px;
+        bottom: 12px;
         z-index: 4;
         display: flex;
         align-items: center;
@@ -1681,14 +1680,15 @@
         background: var(--bg-primary);
         border: 1px solid var(--border-color);
         border-radius: 12px;
-        padding: 14px 16px;
-        margin-bottom: 16px;
-        box-shadow: 0 4px 16px #0000000a;
+        padding: 12px 16px;
+        margin: 16px 0;
+        box-shadow: 0 8px 24px #0000001f;
       }
+      .state-save-bar:not(.has-changes) { display: none; }
       .state-save-bar.has-changes { border-color: var(--primary-color); }
-      .state-save-bar p { margin: 4px 0 0; }
-      .state-guide h3 { margin: 0 0 6px; }
-      .state-guide > p { margin: 0; }
+      .state-save-bar p { margin: 0; }
+      .state-guide > summary, .state-advanced > summary { cursor: pointer; font-size: 15px; font-weight: 600; color: var(--text-primary); }
+      .state-guide > p { margin: 12px 0 0; }
       .state-guide-steps {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1704,12 +1704,28 @@
       .state-guide details p { margin: 10px 0 0; font-size: 12px; line-height: 1.65; color: var(--text-secondary); }
       .state-bucket-exit { min-width: 150px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin-top: 5px; }
       @media (max-width: 640px) {
-        .state-save-bar { position: static; flex-direction: column; align-items: stretch; gap: 10px; }
+        .state-save-bar { flex-direction: column; align-items: stretch; gap: 10px; }
         .state-save-bar > .row { justify-content: flex-end; }
         .state-guide-steps { grid-template-columns: minmax(0, 1fr); gap: 10px; }
       }
-      .turn-state-page-head { display: flex; gap: 16px; align-items: center; justify-content: space-between; margin-bottom: 18px; }
-      .turn-state-page-head h2, .turn-state-page-head p { margin: 0 0 4px; }
+      .turn-state-page-head { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center; justify-content: space-between; }
+      .turn-state-page-head h2 { margin: 0; }
+      .state-head-title { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-width: 0; }
+      .state-master-status { margin: 8px 0 16px; }
+      .state-master-status:empty { display: none; }
+      .state-collector-card .state-metrics { margin: 14px 0 0; }
+      .state-nav { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 16px; position: sticky; top: 8px; z-index: 3; }
+      .state-nav button { white-space: normal; line-height: 1.3; }
+      .state-setting-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 14px 0; }
+      .state-setting-row > span { font-weight: 600; }
+      .state-mode { grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(420px, 100%); margin: 0; }
+      .state-toggle-list { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin: 14px 0; }
+      .state-toggle-list .toggle-filter { max-width: 100%; white-space: normal; min-height: 35px; }
+      .state-gate { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+      .state-help { margin-top: 14px; border-top: 1px solid var(--border-color); padding-top: 10px; }
+      .state-help > summary { cursor: pointer; width: fit-content; font-size: 12px; color: var(--text-secondary); }
+      .state-help > p { margin: 10px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+      #turn-state-observations > summary > span { display: inline; }
       .state-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
       .state-metric { padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 10px; }
       .state-metric strong { display: block; font-size: 25px; margin-top: 6px; font-variant-numeric: tabular-nums; }
@@ -1763,6 +1779,8 @@
           min-width: 0;
         }
         .turn-state-page-head { align-items: flex-start; }
+        .state-nav button { min-height: 44px; padding: 4px; font-size: 13px; }
+        .state-mode { width: 100%; }
       }
       .chooser-rule-help { margin: 8px 0; font-size: 12px; }
       .chooser-rule-help > summary { cursor: pointer; color: var(--text-secondary); }
@@ -2672,11 +2690,26 @@
         </section>
 
         <section id="tab-turn-state" class="hidden">
-          <div class="turn-state-page-head"><div><h2>Codex Turn State</h2><p class="muted small" data-i18n="ui.state_intro">Collect, inspect and renew account-specific model templates.</p></div><span id="turn-state-mode-badge" class="tag plain"></span></div>
-          <div class="state-save-bar"><div><strong data-i18n="ui.state_apply_heading">Apply collection settings</strong><p id="turn-state-draft-status" class="small muted" role="status"></p></div><div class="row"><button id="turn-state-discard" type="button" data-i18n="ui.state_discard">Discard changes</button><button id="turn-state-save" class="primary" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
+          <div class="turn-state-page-head">
+            <div class="state-head-title"><h2>Codex Turn State</h2><span id="turn-state-mode-badge" class="tag plain"></span></div>
+            <label class="toggle-filter state-master-toggle"><input id="turn-state-master" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_master">Enable Turn State globally</span></label>
+          </div>
+          <p id="turn-state-master-status" class="small muted state-master-status" role="status"></p>
           <div id="turn-state-status" class="notice hidden" role="status"></div>
-          <div class="card state-guide" aria-labelledby="turn-state-guide-title">
-            <h3 id="turn-state-guide-title" data-i18n="ui.state_guide_title">Set up and verify Turn State</h3>
+          <div class="card state-collector-card" id="turn-state-card">
+            <div class="row spread settings-section-header"><h3 data-i18n="ui.state_collector_title">Server collection</h3><div class="row"><button id="turn-state-probe-start" class="primary" type="button" disabled data-i18n="ui.fork_start_probing">Start probing</button><button id="turn-state-probe-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-refresh" type="button" disabled data-i18n="ui.fork_refresh_status">Refresh status</button></div></div>
+            <div id="turn-state-session-status" class="notice hidden" role="status"></div>
+            <div id="turn-state-probe-status" class="state-probe-status" role="status"></div>
+            <div id="turn-state-metrics" class="state-metrics"></div>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.state_runner_help">Probes consume account quota. Install the collector on your CPA server, save the collection scope, then click Start. The collector keeps working when this page closes; Stop prevents further requests after the current probe finishes.</p>
+              <p data-i18n="ui.state_server_install">Install cpa-state-collector from this plugin release as a systemd service or Docker sidecar on the CPA server. Configure its CPA URL and management credential. This page only observes and controls that service.</p>
+              <p data-i18n="ui.state_guide_session">The server keeps collection intent and recent logs. Refreshing, leaving this tab, closing the browser or signing out does not stop collection. Stop saves a server-side stop command. If the collector or CPA restarts, the service reconnects and resumes enabled collection.</p>
+              <p><a href="https://github.com/CHIMOOO/cpa-plugin-key-billing-manager/blob/main/deploy/README.state-collector.md" target="_blank" rel="noopener noreferrer" data-i18n="ui.state_server_install_link">Collector installation guide (systemd / Docker)</a></p>
+            </details>
+          </div>
+          <details class="card state-guide" id="turn-state-guide">
+            <summary data-i18n="ui.state_guide_title">Set up and verify Turn State</summary>
             <p class="small muted" data-i18n="ui.state_guide_host">Use CLIProxyAPI 7.3.4 or a compatible host. Selected accounts use upstream HTTP/SSE; downstream WebSocket clients can use CPA's bridge.</p>
             <ol class="state-guide-steps">
               <li><strong data-i18n="ui.state_guide_account_title">Choose accounts and models</strong><p data-i18n="ui.state_guide_account">Select valid Codex accounts with available quota and enter the exact upstream model IDs used by your requests. A template belongs to one account and model.</p></li>
@@ -2685,101 +2718,136 @@
               <li><strong data-i18n="ui.state_guide_verify_title">Save, collect and verify</strong><p data-i18n="ui.state_guide_verify">Install the server collector, save all settings to verify upstream HTTP/SSE, then start collection. Confirm the collector is online and inspect bucket validity and injection counters. Finally verify a complete business response; a collected header alone does not prove stability.</p></li>
             </ol>
             <details><summary data-i18n="ui.state_guide_more">Results, page refresh and automatic proxy removal</summary>
+              <p data-i18n="ui.state_master_help">Master switch for this page. When off, Force Astra, State injection, response learning, the valid-State requirement, server collection and manual probes all stop, and business requests pass through unchanged. Saved settings, templates and cooldowns are kept and resume when you turn it back on. Applies immediately.</p>
               <p data-i18n="ui.state_guide_results">Length 312 (or your configured degraded length) is not a successful collection. Waiting for renewal, an account pause, an exit cooldown or the hourly budget does not stop an enabled collector. State does not restore exhausted account quota or guarantee response quality.</p>
-              <p data-i18n="ui.state_guide_cooldowns">HTTP 401, 403 or 429, or unreadable OAuth credentials, can pause an account across models and exits. Defaults: a 10-minute account pause, 55 minutes for a failed static exit per bucket, and 10 rotating attempts per bucket in a 10-minute window. Under Cooldowns and retries, 0 removes each limit; a zero rotating window also disables its attempt cap. Remove cooldown and attempt limits prepares a draft with all four settings and the hourly limit at 0; save to apply it. Fresh templates still wait for renewal and collection remains serial. The next check in logs is a scheduler check, not a promise to send a request then.</p>
-              <p data-i18n="ui.state_guide_session">The server keeps collection intent and recent logs. Refreshing, leaving this tab, closing the browser or signing out does not stop collection. Stop saves a server-side stop command. If the collector or CPA restarts, the service reconnects and resumes enabled collection.</p>
-              <p data-i18n="ui.state_guide_pruning">Automatic proxy removal is off by default. If enabled and saved, it immediately saves each removal while keeping at least the configured total across both pools (default 10). The separate Remove failed proxies action after a connectivity test edits the text boxes and needs Save all settings.</p>
             </details>
+          </details>
+          <div class="access-switch state-nav" role="tablist" aria-label="Turn State views" data-i18n-aria-label="ui.state_views"><button type="button" role="tab" aria-selected="false" data-state-view="overview" data-i18n="ui.state_view_overview">Status</button><button type="button" role="tab" aria-selected="false" data-state-view="scope" data-i18n="ui.state_scope">Collection scope</button><button type="button" role="tab" aria-selected="false" data-state-view="proxies" data-i18n="ui.state_proxy_pools">Proxy pools</button><button type="button" role="tab" aria-selected="false" data-state-view="settings" data-i18n="ui.state_view_settings">Settings</button></div>
+          <div class="state-view" data-view="overview">
+            <div class="card">
+              <div class="row spread settings-section-header"><div><h3 data-i18n="ui.state_readiness">Bucket readiness</h3><p id="turn-state-template-summary" class="small muted"></p></div><div class="row"><button id="turn-state-clear-cooldowns" type="button" data-i18n="ui.state_clear_cooldowns">Clear cooldowns</button><button id="turn-state-clear-templates" class="danger" type="button" disabled data-i18n="ui.fork_clear_templates">Clear templates</button></div></div>
+              <div id="turn-state-templates" class="turn-state-table"></div>
+              <p id="turn-state-persistence-status" class="small muted" role="status"></p>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.state_readiness_help">Each cell is one account × model. Use Actions to collect, test, clear cooldowns, clear a template or discard that exact State. Clearing allows relearning; discarding blocks the same State until one hour after issue. Remaining validity is shown in minutes.</p>
+              <p data-i18n="ui.state_renewal_continuity">Early renewal does not reset the current template's expiry. A successful new template replaces it; a failed attempt keeps the old template until its original expiry. Buckets may wait for other accounts or cooldowns, and persistent upstream failures can still leave a gap.</p>
+            </details>
+            </div>
+            <div class="card">
+              <h3 data-i18n="ui.state_activity">Activity</h3>
+              <div class="state-observation-grid"><div><h4 data-i18n="ui.state_probe_totals">Probe results</h4><div id="turn-state-probe-counters" class="state-counter-list"></div></div><div><h4 data-i18n="ui.state_decisions">Request decisions</h4><div id="turn-state-decision-counters" class="state-counter-list"></div></div></div>
+              <p id="turn-state-summary" class="small muted"></p>
+              <details class="state-logs" open><summary data-i18n="ui.state_recent_log">Recent collection log</summary><pre id="turn-state-probe-log" class="small turn-state-probe-log"></pre></details>
+              <details class="state-logs" id="turn-state-observations">
+                <summary><span data-i18n="ui.state_observations">Response State observations</span> <span id="turn-state-observation-since" class="small muted"></span></summary>
+                <p class="access-help" data-i18n="ui.state_observation_help">Observes response header lengths for the exact account and model, separated by whether this plugin actually injected State. These are not success rates or model quality scores; no returned header does not prove acceptance. The last 24 hours use the current UTC hour and the preceding 23 hours. Up to 256 buckets and 100 events stay in memory and reset on restart; active collection is excluded.</p>
+                <div id="turn-state-observation-buckets" class="turn-state-table state-response-table"></div>
+                <details class="state-logs"><summary data-i18n="ui.state_observation_events">Recent response State events</summary><div id="turn-state-observation-events" class="turn-state-table state-response-table"></div></details>
+              </details>
+            </div>
           </div>
-          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_force_astra_title">Force Astra</h3><button data-state-save="force-astra" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>
-            <label class="toggle-filter"><input id="turn-state-force-astra" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_force_astra">Route GPT/Codex text requests to gpt-6-astra</span></label>
-            <p class="access-help" data-i18n="ui.state_force_astra_help">Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.</p>
+          <div class="state-view hidden" data-view="scope">
+            <div class="card state-scope-card">
+              <div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button id="turn-state-quality-test" type="button" data-i18n="ui.state_quality_open">Check model quality</button></div></div>
+              <div id="turn-state-transport-status" class="small muted" role="status"></div>
+              <div class="state-account-toolbar"><input id="turn-state-account-search" type="search" placeholder="Search account name or ID" data-i18n-placeholder="ui.state_account_search" /><span class="native-select"><select id="turn-state-account-filter" aria-label="Account display" data-i18n-aria-label="ui.state_account_filter"><option value="all" data-i18n="ui.chooser_every_status">All, including disabled</option><option value="enabled" data-i18n="ui.enabled_only">Enabled only</option><option value="selected" data-i18n="ui.chooser_selected">Selected only</option></select></span><button id="turn-state-account-all" type="button" data-i18n="ui.state_select_matching">Select matching</button><button id="turn-state-account-none" type="button" data-i18n="ui.state_clear_matching">Deselect matching</button></div>
+              <div id="turn-state-accounts" class="selection-list turn-state-accounts"></div>
+              <div class="turn-state-fields"><label class="field turn-state-wide"><span data-i18n="ui.fork_probe_models_one_per_line">Probe models (one per line)</span><textarea id="turn-state-models" rows="2" placeholder="For example: gpt-6-astra, gpt-5.6-sol" data-i18n-placeholder="ui.probe_models_example" disabled></textarea></label></div>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.fork_select_accounts_for_active_probing_including_disabled_codex_accounts_probi">Select accounts for active probing, including disabled Codex accounts. Probing does not change account enablement. No selection means no active probes; learning from normal responses follows the switch above.</p>
+              <p data-i18n="ui.state_upstream_http_help">Saving or starting collection turns off upstream WebSocket for the selected accounts and verifies HTTP/SSE routing. Clients may still connect to CPA through WebSocket. Existing sessions may need one reconnect; removing an account from collection does not turn its upstream WebSocket back on.</p>
+            </details>
+            </div>
           </div>
-          <div class="card team-gate-card"><label class="toggle-filter"><input id="team-require-state" type="checkbox" role="switch" disabled /><span data-i18n="ui.team_require_state">Require valid Turn State for selected accounts</span></label><p class="access-help" data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected collection account needs a usable template for its requested model. Disabled injection, observation mode or a replace-only skip blocks that attempt. This switch is saved immediately.</p><div id="team-require-state-status" class="small muted" role="status"></div></div>
-          <div class="card turn-state-console" id="turn-state-card">
-            <div class="row spread settings-section-header"><h3 data-i18n="ui.state_probe_console">Probe console</h3><div class="row"><button id="turn-state-probe-start" class="primary" type="button" disabled data-i18n="ui.fork_start_probing">Start probing</button><button id="turn-state-probe-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-refresh" type="button" disabled data-i18n="ui.fork_refresh_status">Refresh status</button></div></div>
-            <div id="turn-state-session-status" class="notice hidden" role="status"></div>
-            <p class="access-help" data-i18n="ui.state_runner_help">Probes consume account quota. Install the collector on your CPA server, save the collection scope, then click Start. The collector keeps working when this page closes; Stop prevents further requests after the current probe finishes.</p>
-            <p class="access-help" data-i18n="ui.state_server_install">Install cpa-state-collector from this plugin release as a systemd service or Docker sidecar on the CPA server. Configure its CPA URL and management credential. This page only observes and controls that service.</p>
-            <p class="access-help"><a href="https://github.com/CHIMOOO/cpa-plugin-key-billing-manager/blob/main/deploy/README.state-collector.md" target="_blank" rel="noopener noreferrer" data-i18n="ui.state_server_install_link">Collector installation guide (systemd / Docker)</a></p>
-            <div id="turn-state-probe-status" class="state-probe-status" role="status"></div>
-            <div id="turn-state-metrics" class="state-metrics"></div>
-            <div class="state-observation-grid"><div><h4 data-i18n="ui.state_probe_totals">Probe results</h4><div id="turn-state-probe-counters" class="state-counter-list"></div></div><div><h4 data-i18n="ui.state_decisions">Request decisions</h4><div id="turn-state-decision-counters" class="state-counter-list"></div></div></div>
-            <p id="turn-state-summary" class="small muted"></p>
-            <details class="state-logs" open><summary data-i18n="ui.state_recent_log">Recent collection log</summary><pre id="turn-state-probe-log" class="small turn-state-probe-log"></pre></details>
-          </div>
-          <div class="card">
-            <div class="row spread settings-section-header"><div><h3 data-i18n="ui.state_readiness">Bucket readiness</h3><p id="turn-state-template-summary" class="small muted"></p></div><div class="row"><button id="turn-state-clear-cooldowns" type="button" data-i18n="ui.state_clear_cooldowns">Clear cooldowns</button><button id="turn-state-clear-templates" class="danger" type="button" disabled data-i18n="ui.fork_clear_templates">Clear templates</button></div></div>
-            <p class="access-help" data-i18n="ui.state_readiness_help">Each cell is one account × model. Use Actions to collect, test, clear cooldowns, clear a template or discard that exact State. Clearing allows relearning; discarding blocks the same State until one hour after issue. Remaining validity is shown in minutes.</p>
-            <p class="access-help" data-i18n="ui.state_renewal_continuity">Early renewal does not reset the current template's expiry. A successful new template replaces it; a failed attempt keeps the old template until its original expiry. Buckets may wait for other accounts or cooldowns, and persistent upstream failures can still leave a gap.</p>
-            <p id="turn-state-persistence-status" class="small muted" role="status"></p>
-            <div id="turn-state-templates" class="turn-state-table"></div>
-          </div>
-          <div class="card" id="turn-state-observations">
-            <div class="row spread settings-section-header"><h3 data-i18n="ui.state_observations">Response State observations</h3><span id="turn-state-observation-since" class="small muted"></span></div>
-            <p class="access-help" data-i18n="ui.state_observation_help">Observes response header lengths for the exact account and model, separated by whether this plugin actually injected State. These are not success rates or model quality scores; no returned header does not prove acceptance. The last 24 hours use the current UTC hour and the preceding 23 hours. Up to 256 buckets and 100 events stay in memory and reset on restart; active collection is excluded.</p>
-            <div id="turn-state-observation-buckets" class="turn-state-table state-response-table"></div>
-            <details class="state-logs"><summary data-i18n="ui.state_observation_events">Recent response State events</summary><div id="turn-state-observation-events" class="turn-state-table state-response-table"></div></details>
-          </div>
-          <div class="card state-scope-card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_scope">Collection scope</h3><div class="row"><span id="turn-state-account-count" class="tag plain"></span><button id="turn-state-quality-test" type="button" data-i18n="ui.state_quality_open">Check model quality</button><button data-state-save="scope" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
-            <p class="access-help" data-i18n="ui.fork_select_accounts_for_active_probing_including_disabled_codex_accounts_probi">Select accounts for active probing, including disabled Codex accounts. Probing does not change account enablement. No selection means no active probes; learning from normal responses follows the switch above.</p>
-            <p class="access-help" data-i18n="ui.state_upstream_http_help">Saving or starting collection turns off upstream WebSocket for the selected accounts and verifies HTTP/SSE routing. Clients may still connect to CPA through WebSocket. Existing sessions may need one reconnect; removing an account from collection does not turn its upstream WebSocket back on.</p>
-            <div id="turn-state-transport-status" class="small muted" role="status"></div>
-            <div class="state-account-toolbar"><input id="turn-state-account-search" type="search" placeholder="Search account name or ID" data-i18n-placeholder="ui.state_account_search" /><span class="native-select"><select id="turn-state-account-filter" aria-label="Account display" data-i18n-aria-label="ui.state_account_filter"><option value="all" data-i18n="ui.chooser_every_status">All, including disabled</option><option value="enabled" data-i18n="ui.enabled_only">Enabled only</option><option value="selected" data-i18n="ui.chooser_selected">Selected only</option></select></span><button id="turn-state-account-all" type="button" data-i18n="ui.state_select_matching">Select matching</button><button id="turn-state-account-none" type="button" data-i18n="ui.state_clear_matching">Deselect matching</button></div>
-            <div id="turn-state-accounts" class="selection-list turn-state-accounts"></div>
-            <div class="turn-state-fields">              <label class="field turn-state-wide"><span data-i18n="ui.fork_probe_models_one_per_line">Probe models (one per line)</span><textarea id="turn-state-models" rows="2" placeholder="For example: gpt-6-astra, gpt-5.6-sol" data-i18n-placeholder="ui.probe_models_example" disabled></textarea></label></div>
-          </div>
-          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_proxy_pools">Proxy pools</h3><button data-state-save="proxies" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>
-            <p class="access-help" data-i18n="ui.turn_state_proxy_check_help">Tests only the TCP connection from CPA to the proxy gateway, with a 5-second timeout and up to 10 checks at once. Sends no account or proxy credentials and does not contact OpenAI. Proxy authentication, exit IPs and collection are not tested. Gateway IP is not the exit IP. A failed result describes this attempt only; removal edits the draft and requires saving.</p>
-            <div class="turn-state-fields">
+          <div class="state-view hidden" data-view="proxies">
+            <div class="card">
+              <h3 data-i18n="ui.state_proxy_pools">Proxy pools</h3>
+              <div class="turn-state-fields">
                 <div class="field"><label for="turn-state-proxies" data-i18n="ui.fork_static_proxies_one_per_line">Static proxies (one per line)</label><textarea id="turn-state-proxies" rows="6" placeholder="http://username:password@host:port" data-i18n-placeholder="ui.fork_http_username_password_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-proxy-count" class="small muted"></span><div class="row"><button id="turn-state-static-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-static-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-static-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-static-test-status" class="small muted" role="status"></div><div id="turn-state-static-results" class="turn-state-table turn-state-proxy-results"></div></div>
                 <div class="field"><label for="turn-state-rotating" data-i18n="ui.fork_rotating_proxies_one_per_line">Rotating proxies (one per line)</label><textarea id="turn-state-rotating" rows="6" placeholder="http://username:password@rotating-host:port" data-i18n-placeholder="ui.fork_http_username_password_rotating_host_port" spellcheck="false" autocomplete="off" disabled></textarea><span id="turn-state-rotating-count" class="small muted"></span><div class="row"><button id="turn-state-rotating-test" type="button" disabled data-i18n="ui.turn_state_test_proxies">Test connectivity</button><button id="turn-state-rotating-stop" type="button" disabled data-i18n="ui.fork_stop">Stop</button><button id="turn-state-rotating-remove" class="danger" type="button" disabled data-i18n="ui.turn_state_remove_failed">Remove failed proxies</button></div><div id="turn-state-rotating-test-status" class="small muted" role="status"></div><div id="turn-state-rotating-results" class="turn-state-table turn-state-proxy-results"></div></div>
               </div>
               <div id="turn-state-proxy-load-status" class="small muted" role="status"></div><button id="turn-state-proxy-reload" type="button" class="hidden" data-i18n="ui.turn_state_reload_proxies">Reload saved proxies (replace proxy drafts)</button>
-              <p class="access-help" data-i18n="ui.turn_state_pool_limits">Each pool supports up to 20,000 proxies; total settings size is limited to 16 MiB. Failed uploads keep the previous settings.</p>
-              <p class="access-help" data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. By default, failed static exits cool down for 55 minutes; each account/model rotating pool shares 10 attempts per 10-minute window across all URLs. Change or remove these limits under Cooldowns and retries. Buckets take turns so failed accounts do not prevent renewal. Connectivity checks and manual removal use the editor and require saving. Reachability does not guarantee collection; rotating exits may change. A successful collection restarts the budget at its next scheduled renewal. Probes advance through both pools across accounts and models, continuing after success and wrapping at the end; cooling entries are skipped. Collection logs show complete configured proxy URLs, including usernames and passwords. A gateway URL is not the actual exit IP.</p>
-              <h4 data-i18n="ui.state_proxy_pruning">Automatic proxy removal during collection</h4>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.turn_state_proxy_check_help">Tests only the TCP connection from CPA to the proxy gateway, with a 5-second timeout and up to 10 checks at once. Sends no account or proxy credentials and does not contact OpenAI. Proxy authentication, exit IPs and collection are not tested. Gateway IP is not the exit IP. A failed result describes this attempt only; removal edits the draft and requires saving.</p>
+              <p data-i18n="ui.turn_state_proxy_help">Saved proxy URLs are shown in plain text. Saving an empty editor clears that pool. Supports HTTP, HTTPS, SOCKS5 and SOCKS5H. By default, failed static exits cool down for 55 minutes; each account/model rotating pool shares 10 attempts per 10-minute window across all URLs. Change or remove these limits under Cooldowns and retries. Buckets take turns so failed accounts do not prevent renewal. Connectivity checks and manual removal use the editor and require saving. Reachability does not guarantee collection; rotating exits may change. A successful collection restarts the budget at its next scheduled renewal. Probes advance through both pools across accounts and models, continuing after success and wrapping at the end; cooling entries are skipped. Collection logs show complete configured proxy URLs, including usernames and passwords. A gateway URL is not the actual exit IP.</p>
+              <p data-i18n="ui.turn_state_pool_limits">Each pool supports up to 20,000 proxies; total settings size is limited to 16 MiB. Failed uploads keep the previous settings.</p>
+            </details>
+            </div>
+            <div class="card">
+              <h3 data-i18n="ui.state_proxy_pruning">Automatic proxy removal during collection</h3>
               <div class="access-controls">
                 <label class="toggle-filter"><input id="turn-state-drop-failed" type="checkbox" disabled /><span data-i18n="ui.state_drop_failed">Discard failed proxies</span></label>
                 <label class="toggle-filter"><input id="turn-state-drop-degraded" type="checkbox" disabled /><span data-i18n="ui.state_drop_degraded">Discard proxies returning degraded states</span></label>
               </div>
               <div id="turn-state-min-proxies-field" class="turn-state-fields hidden"><label class="field"><span data-i18n="ui.state_min_proxies">Minimum entries to keep (both pools combined)</span><input id="turn-state-min-proxies" type="number" min="1" max="40000" step="1" value="10" required disabled /></label></div>
-              <p class="access-help" data-i18n="ui.state_proxy_pruning_help">Both options are off by default and take effect after saving. Failed means a proxy connection or authentication failure; degraded means a returned state has the degraded length. Account HTTP 401, 403 and 429 responses do not remove proxies. Removal deletes the exact configured URL from its pool, including rotating entries; a gateway URL is not one permanent exit IP. Automatic removal stops at the combined minimum.</p>
-</div>
-          <div class="card" id="turn-state-cooldown-settings">
-            <div class="row spread settings-section-header"><h3 data-i18n="ui.state_cooldowns">Cooldowns and retries</h3><div class="row"><button id="turn-state-remove-limits" type="button" disabled data-i18n="ui.state_remove_limits">Remove cooldown and attempt limits</button><button data-state-save="cooldowns" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
-            <div class="turn-state-fields">
-              <label class="field"><span data-i18n="ui.state_static_cooldown">Static exit cooldown (minutes; 0 = off)</span><input id="turn-state-static-cooldown" type="number" min="0" max="1440" step="1" required disabled /><span class="small muted" data-i18n="ui.state_static_cooldown_help">Default: 55. After failure, the same account, model and exit wait before retrying. Direct connections follow this rule too. With 0, failures do not cool down and existing waits for these exits are ignored.</span></label>
-              <label class="field"><span data-i18n="ui.state_rotating_cooldown">Rotating pool window (minutes; 0 = off)</span><input id="turn-state-rotating-cooldown" type="number" min="0" max="1440" step="1" required disabled /><span class="small muted" data-i18n="ui.state_rotating_cooldown_help">Default: 10. Rotating URLs share a window per account and model. With 0, the window is disabled and its attempt limit is not enforced, even when the attempt limit below is positive.</span></label>
-              <label class="field"><span data-i18n="ui.state_rotating_max_attempts">Rotating attempts per window (0 = unlimited)</span><input id="turn-state-rotating-max-attempts" type="number" min="0" max="100" step="1" required disabled /><span class="small muted" data-i18n="ui.state_rotating_max_attempts_help">Default: 10. Shared across rotating URLs for the same account and model. With 0, attempts are unlimited. A positive limit keeps attempts already used in the current window.</span></label>
-              <label class="field"><span data-i18n="ui.state_account_cooldown">Account pause (minutes; 0 = off)</span><input id="turn-state-account-cooldown" type="number" min="0" max="1440" step="1" required disabled /><span class="small muted" data-i18n="ui.state_account_cooldown_help">Default: 10. HTTP 401, 403 or 429, or unreadable OAuth credentials, pause all models and exits for that account. With 0, these failures and existing account waits do not cause a long pause.</span></label>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.state_proxy_pruning_help">Both options are off by default and take effect after saving. Failed means a proxy connection or authentication failure; degraded means a returned state has the degraded length. Account HTTP 401, 403 and 429 responses do not remove proxies. Removal deletes the exact configured URL from its pool, including rotating entries; a gateway URL is not one permanent exit IP. Automatic removal stops at the combined minimum.</p>
+              <p data-i18n="ui.state_guide_pruning">Automatic proxy removal is off by default. If enabled and saved, it immediately saves each removal while keeping at least the configured total across both pools (default 10). The separate Remove failed proxies action after a connectivity test edits the text boxes and needs Save all settings.</p>
+            </details>
             </div>
-            <p class="access-help" data-i18n="ui.state_cooldown_bounds_help">Use whole minutes from 0 to 1440 and 0 to 100 attempts. Collection still runs serially with its normal 2-second scheduling interval and request timeout. Valid templates wait until renewal; a positive hourly limit still applies. Automatic proxy removal remains independent.</p>
-            <p class="access-help" data-i18n="ui.state_remove_limits_help">Remove cooldown and attempt limits fills these four settings and the hourly limit with 0 in your draft. Save all settings to apply it; this does not start collection or change proxy lists and automatic removal options.</p>
-            <p class="access-help" data-i18n="ui.state_cooldown_save_help">After saving, zero settings bypass the corresponding existing failure waits on the next collector heartbeat. Positive durations preserve existing deadlines; positive attempt limits preserve the count already used. Clear cooldowns can reset those waits explicitly. A stopped collector stays stopped.</p>
           </div>
-          <div class="card"><div class="row spread settings-section-header"><h3 data-i18n="ui.state_strategy">Injection and renewal</h3><button data-state-save="strategy" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div>            <div class="access-controls">
-              <label class="toggle-filter"><input id="turn-state-enabled" type="checkbox" role="switch" disabled /><span data-i18n="ui.group_enabled_state">enabled</span></label>
-              <label class="toggle-filter"><input id="turn-state-dry-run" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_observe_only_do_not_modify_requests">Observe only; do not modify requests</span></label>
-              <label class="toggle-filter"><input id="turn-state-learn-responses" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_learn_from_upstream_responses">Learn from upstream responses</span></label>
-              <label class="toggle-filter"><input id="turn-state-verify-completion" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_verify_completion">Verify completed probe responses</span></label>
+          <div class="state-view hidden" data-view="settings">
+            <div class="card">
+              <h3 data-i18n="ui.state_section_requests">Request handling</h3>
+              <div class="state-setting-row"><span data-i18n="ui.state_mode_label">State injection</span><div class="access-switch state-mode" role="radiogroup" aria-label="State injection" data-i18n-aria-label="ui.state_mode_label"><button type="button" role="radio" aria-checked="false" data-state-mode="off" data-i18n="ui.state_mode_off">Off</button><button type="button" role="radio" aria-checked="false" data-state-mode="observe" data-i18n="ui.state_mode_observe">Observe only</button><button type="button" role="radio" aria-checked="false" data-state-mode="inject" data-i18n="ui.state_mode_inject">Inject</button></div></div>
+              <div class="hidden"><label class="toggle-filter"><input id="turn-state-enabled" type="checkbox" role="switch" disabled /><span data-i18n="ui.group_enabled_state">enabled</span></label><label class="toggle-filter"><input id="turn-state-dry-run" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_observe_only_do_not_modify_requests">Observe only; do not modify requests</span></label></div>
+              <div class="turn-state-fields"><label class="field"><span data-i18n="ui.fork_injection_mode">Injection mode</span><span class="native-select"><select id="turn-state-inject-mode" disabled><option value="replace-only" data-i18n="ui.fork_replace_only_replace_states_of_the_specified_length">replace-only: replace states of the specified length</option><option value="always" data-i18n="ui.fork_always_inject_whenever_a_valid_template_exists">always: inject whenever a valid template exists</option></select></span></label></div>
+              <div class="state-toggle-list">
+                <label class="toggle-filter"><input id="turn-state-learn-responses" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_learn_from_upstream_responses">Learn from upstream responses</span></label>
+                <label class="toggle-filter"><input id="turn-state-force-astra" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_force_astra">Route GPT/Codex text requests to gpt-6-astra</span></label>
+                <div class="state-gate"><label class="toggle-filter"><input id="team-require-state" type="checkbox" role="switch" disabled /><span data-i18n="ui.team_require_state">Require valid Turn State for selected accounts</span></label><span class="tag plain" data-i18n="ui.state_applies_now">Applies immediately</span></div>
+                <div id="team-require-state-status" class="small muted" role="status"></div>
+              </div>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.fork_replace_only_replaces_headers_with_the_specified_length_always_also_inject">replace-only replaces headers with the specified length. always also injects missing headers or those of other lengths. Both modes require an unexpired template for the same account and model; neither guarantees answer quality. Saved settings take effect immediately.</p>
+              <p data-i18n="ui.state_force_astra_help">Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.</p>
+              <p data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected collection account needs a usable template for its requested model. Disabled injection, observation mode or a replace-only skip blocks that attempt. This switch is saved immediately.</p>
+              <p data-i18n="ui.state_image_isolation_help">CPA image generation and edit endpoints do not require or learn conversational State. Group permissions, quotas and concurrency still apply. Image model support, uploads and timeouts are provided by CPA and the upstream.</p>
+              <p id="turn-state-host-requirement" data-i18n="ui.fork_http_sse_injection_requires_cliproxyapi_v7_3_4_or_a_version_that_forwards">HTTP / SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards Turn State request headers. Older versions may report injection without forwarding it upstream. Reused WebSocket connections carry headers only at a new handshake.</p>
+            </details>
             </div>
-            <div class="turn-state-fields">
-              <label class="field"><span data-i18n="ui.fork_injection_mode">Injection mode</span><span class="native-select"><select id="turn-state-inject-mode" disabled><option value="replace-only" data-i18n="ui.fork_replace_only_replace_states_of_the_specified_length">replace-only: replace states of the specified length</option><option value="always" data-i18n="ui.fork_always_inject_whenever_a_valid_template_exists">always: inject whenever a valid template exists</option></select></span></label>
-              <label class="field"><span data-i18n="ui.fork_template_lifetime_seconds">Template lifetime (seconds)</span><input id="turn-state-ttl" type="number" min="60" max="3600" step="1" disabled /></label>
-              <label class="field"><span data-i18n="ui.turn_state_renew_before">Renew before expiry (minutes)</span><input id="turn-state-renew-before" type="number" min="0" max="59" step="1" disabled /><span id="turn-state-renew-help" class="small muted"></span></label>
-              <label class="field"><span data-i18n="ui.state_hourly_limit">Hourly probe limit (0 = unlimited)</span><input id="turn-state-hourly-limit" type="number" min="0" max="10000" step="1" disabled /></label>
-              <label class="field"><span data-i18n="ui.fork_valid_template_length">Valid template length</span><input id="turn-state-template-length" type="number" min="100" max="8192" step="1" disabled /></label>
-              <label class="field"><span data-i18n="ui.fork_state_length_to_replace">State length to replace</span><input id="turn-state-replace-length" type="number" min="100" max="8192" step="1" disabled /></label>
-
+            <div class="card">
+              <h3 data-i18n="ui.state_section_renewal">Renewal and limits</h3>
+              <div class="turn-state-fields">
+                <label class="field"><span data-i18n="ui.fork_template_lifetime_seconds">Template lifetime (seconds)</span><input id="turn-state-ttl" type="number" min="60" max="3600" step="1" disabled /></label>
+                <label class="field"><span data-i18n="ui.turn_state_renew_before">Renew before expiry (minutes)</span><input id="turn-state-renew-before" type="number" min="0" max="59" step="1" disabled /><span id="turn-state-renew-help" class="small muted"></span></label>
+                <label class="field"><span data-i18n="ui.state_hourly_limit">Hourly probe limit (0 = unlimited)</span><input id="turn-state-hourly-limit" type="number" min="0" max="10000" step="1" disabled /></label>
+              </div>
+              <p id="turn-state-probe-budget" class="small" role="status"></p>
+              <div class="state-toggle-list"><label class="toggle-filter"><input id="turn-state-verify-completion" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_verify_completion">Verify completed probe responses</span></label></div>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.state_hourly_limit_help">A rolling hour shared by all accounts, models, pools and manual probes. Attempts are reserved before sending; failures after reservation remain counted. Saving, restarting or clearing templates does not reset it. When exhausted, collection waits while valid templates remain usable. A small limit can delay renewal.</p>
+              <p data-i18n="ui.state_verify_completion_help">Optional and off by default. Active probes must confirm a completed SSE or JSON response within 25 seconds and 1 MiB of decoded data. Failure keeps the old valid template. This may take longer and consume more output; it does not measure answer quality.</p>
+            </details>
             </div>
-            <p class="access-help" data-i18n="ui.state_verify_completion_help">Optional and off by default. Active probes must confirm a completed SSE or JSON response within 25 seconds and 1 MiB of decoded data. Failure keeps the old valid template. This may take longer and consume more output; it does not measure answer quality.</p>
-            <p class="access-help" data-i18n="ui.state_hourly_limit_help">A rolling hour shared by all accounts, models, pools and manual probes. Attempts are reserved before sending; failures after reservation remain counted. Saving, restarting or clearing templates does not reset it. When exhausted, collection waits while valid templates remain usable. A small limit can delay renewal.</p>
-            <p id="turn-state-probe-budget" class="small" role="status"></p>
-            <p class="access-help" data-i18n="ui.fork_replace_only_replaces_headers_with_the_specified_length_always_also_inject">replace-only replaces headers with the specified length. always also injects missing headers or those of other lengths. Both modes require an unexpired template for the same account and model; neither guarantees answer quality. Saved settings take effect immediately.</p>
-            <p class="access-help" data-i18n="ui.state_image_isolation_help">CPA image generation and edit endpoints do not require or learn conversational State. Group permissions, quotas and concurrency still apply. Image model support, uploads and timeouts are provided by CPA and the upstream.</p>
-            <p id="turn-state-host-requirement" class="access-help" data-i18n="ui.fork_http_sse_injection_requires_cliproxyapi_v7_3_4_or_a_version_that_forwards">HTTP / SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards Turn State request headers. Older versions may report injection without forwarding it upstream. Reused WebSocket connections carry headers only at a new handshake.</p>
-</div>
+            <div class="card" id="turn-state-cooldown-settings">
+              <div class="row spread settings-section-header"><h3 data-i18n="ui.state_cooldowns">Cooldowns and retries</h3><button id="turn-state-remove-limits" type="button" disabled data-i18n="ui.state_remove_limits">Remove cooldown and attempt limits</button></div>
+              <div class="turn-state-fields">
+                <label class="field"><span data-i18n="ui.state_static_cooldown">Static exit cooldown (minutes; 0 = off)</span><input id="turn-state-static-cooldown" type="number" min="0" max="1440" step="1" required disabled /></label>
+                <label class="field"><span data-i18n="ui.state_rotating_cooldown">Rotating pool window (minutes; 0 = off)</span><input id="turn-state-rotating-cooldown" type="number" min="0" max="1440" step="1" required disabled /></label>
+                <label class="field"><span data-i18n="ui.state_rotating_max_attempts">Rotating attempts per window (0 = unlimited)</span><input id="turn-state-rotating-max-attempts" type="number" min="0" max="100" step="1" required disabled /></label>
+                <label class="field"><span data-i18n="ui.state_account_cooldown">Account pause (minutes; 0 = off)</span><input id="turn-state-account-cooldown" type="number" min="0" max="1440" step="1" required disabled /></label>
+              </div>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.state_static_cooldown_help">Default: 55. After failure, the same account, model and exit wait before retrying. Direct connections follow this rule too. With 0, failures do not cool down and existing waits for these exits are ignored.</p>
+              <p data-i18n="ui.state_rotating_cooldown_help">Default: 10. Rotating URLs share a window per account and model. With 0, the window is disabled and its attempt limit is not enforced, even when the attempt limit below is positive.</p>
+              <p data-i18n="ui.state_rotating_max_attempts_help">Default: 10. Shared across rotating URLs for the same account and model. With 0, attempts are unlimited. A positive limit keeps attempts already used in the current window.</p>
+              <p data-i18n="ui.state_account_cooldown_help">Default: 10. HTTP 401, 403 or 429, or unreadable OAuth credentials, pause all models and exits for that account. With 0, these failures and existing account waits do not cause a long pause.</p>
+              <p data-i18n="ui.state_guide_cooldowns">HTTP 401, 403 or 429, or unreadable OAuth credentials, can pause an account across models and exits. Defaults: a 10-minute account pause, 55 minutes for a failed static exit per bucket, and 10 rotating attempts per bucket in a 10-minute window. Under Cooldowns and retries, 0 removes each limit; a zero rotating window also disables its attempt cap. Remove cooldown and attempt limits prepares a draft with all four settings and the hourly limit at 0; save to apply it. Fresh templates still wait for renewal and collection remains serial. The next check in logs is a scheduler check, not a promise to send a request then.</p>
+              <p data-i18n="ui.state_cooldown_bounds_help">Use whole minutes from 0 to 1440 and 0 to 100 attempts. Collection still runs serially with its normal 2-second scheduling interval and request timeout. Valid templates wait until renewal; a positive hourly limit still applies. Automatic proxy removal remains independent.</p>
+              <p data-i18n="ui.state_remove_limits_help">Remove cooldown and attempt limits fills these four settings and the hourly limit with 0 in your draft. Save all settings to apply it; this does not start collection or change proxy lists and automatic removal options.</p>
+              <p data-i18n="ui.state_cooldown_save_help">After saving, zero settings bypass the corresponding existing failure waits on the next collector heartbeat. Positive durations preserve existing deadlines; positive attempt limits preserve the count already used. Clear cooldowns can reset those waits explicitly. A stopped collector stays stopped.</p>
+            </details>
+            </div>
+            <details class="card state-advanced">
+              <summary data-i18n="ui.state_section_advanced">Advanced</summary>
+              <div class="turn-state-fields">
+                <label class="field"><span data-i18n="ui.fork_valid_template_length">Valid template length</span><input id="turn-state-template-length" type="number" min="100" max="8192" step="1" disabled /></label>
+                <label class="field"><span data-i18n="ui.fork_state_length_to_replace">State length to replace</span><input id="turn-state-replace-length" type="number" min="100" max="8192" step="1" disabled /></label>
+              </div>
+            </details>
+          </div>
+          <div class="state-save-bar" role="region" aria-label="Apply collection settings" data-i18n-aria-label="ui.state_apply_heading"><p id="turn-state-draft-status" class="small" role="status"></p><div class="row"><button id="turn-state-discard" type="button" data-i18n="ui.state_discard">Discard changes</button><button id="turn-state-save" class="primary" type="button" disabled data-i18n="ui.state_save_all">Save all settings</button></div></div>
           <dialog id="state-quality-dialog" class="settings-dialog state-quality-dialog" aria-labelledby="state-quality-title">
             <div class="row spread"><h2 id="state-quality-title" data-i18n="ui.state_quality_title">State model quality checks</h2><button id="state-quality-close" type="button" data-i18n="ui.state_quality_close">Close</button></div>
             <p class="access-help" data-i18n="ui.state_quality_intro">Run a few tasks against selected Codex accounts without leaving State. This spends the accounts’ upstream quota and uses saved State settings and the account/global proxy route, not the collection proxy pools. Automatic collection keeps running; these tests do not count against its hourly budget. Testing does not collect or repair State, enable accounts, or create downstream billing records.</p>
@@ -7183,6 +7251,66 @@
                 : m("ui.team_gate_transport_help"))
         );
       }
+      function showTurnStateView(view, remember = true) {
+        const panels = [...document.querySelectorAll("#tab-turn-state .state-view")];
+        if (!panels.some((panel) => panel.dataset.view === view)) view = "overview";
+        adminUIState.turnStateView = view;
+        for (const panel of panels) panel.classList.toggle("hidden", panel.dataset.view !== view);
+        for (const tab of document.querySelectorAll("#tab-turn-state [data-state-view]")) {
+          const active = tab.dataset.stateView === view;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+        }
+        if (remember) saveViewPreference("admin", "turnStateView", view);
+      }
+      // Browser validation cannot point at a field inside a hidden view.
+      function reportTurnStateField(input) {
+        const view = input.closest(".state-view")?.dataset.view;
+        if (view) showTurnStateView(view);
+        const details = input.closest("details");
+        if (details) details.open = true;
+        return input.reportValidity();
+      }
+      // One Off / Observe / Inject choice drives the saved enabled and dry_run
+      // switches, which stay the source of truth for drafts and saving.
+      function renderTurnStateMode() {
+        const enabled = $("turn-state-enabled"), dryRun = $("turn-state-dry-run");
+        const mode = !enabled.checked ? "off" : dryRun.checked ? "observe" : "inject";
+        for (const button of document.querySelectorAll("[data-state-mode]")) {
+          const active = button.dataset.stateMode === mode;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-checked", String(active));
+          button.disabled = enabled.disabled;
+        }
+      }
+      function renderTurnStateMaster() {
+        const state = resources.admin.turnState.value, input = $("turn-state-master");
+        input.disabled = !state || !!adminUIState.turnStateMasterSaving || !!adminUIState.turnStateSaving;
+        if (!state) return;
+        const on = !state.config.suspended;
+        input.checked = on;
+        let key = on ? "ui.state_master_on" : "ui.state_master_off_hooked";
+        if (on && state.hooks_registered === false) key = "ui.state_master_on_unhooked";
+        if (!on && state.hooks_registered === false) key = "ui.state_master_off_unhooked";
+        setText($("turn-state-master-status"), adminUIState.turnStateMasterSaving ? m("ui.saving") : m(key));
+      }
+      async function saveTurnStateMaster() {
+        const input = $("turn-state-master"), enabled = input.checked;
+        if (!enabled && !(await openActionDialog(m("ui.state_master_disable_title"), m("ui.state_master_disable_warning")))) {
+          renderTurnStateMaster();
+          return;
+        }
+        const owner = adminUIState;
+        owner.turnStateMasterSaving = true;
+        renderTurnStateMaster();
+        try {
+          const message = m(enabled ? "ui.state_master_enabled_notice" : "ui.state_master_disabled_notice");
+          await writeTurnState("PUT", "/turn-state", { suspended: !enabled }, message);
+        } finally {
+          owner.turnStateMasterSaving = false;
+          if (owner === adminUIState) renderTurnStateMaster();
+        }
+      }
       async function saveTeamStateGate() {
         const input = $("team-require-state"), enabled = input.checked;
         if (!enabled && !(await openActionDialog(m("ui.team_gate_disable_title"), m("ui.team_gate_disable_warning")))) {
@@ -10430,7 +10558,11 @@
         }
         setText(
           $("turn-state-mode-badge"),
-          m(!state.config.enabled ? "ui.state_disabled_badge" : state.config.dry_run ? "ui.state_observe_badge" : "ui.state_inject_badge")
+          m(
+            state.config.suspended
+              ? "ui.state_suspended_badge"
+              : !state.config.enabled ? "ui.state_disabled_badge" : state.config.dry_run ? "ui.state_observe_badge" : "ui.state_inject_badge"
+          )
         );
         setText($("turn-state-draft-status"), adminUIState.turnStateDirty ? m("ui.state_apply_unsaved") : m("ui.state_apply_saved"));
         setText(
@@ -10477,7 +10609,12 @@
         const status = $("turn-state-status");
         status.className = resource.error ? "notice err show" : state ? "notice hidden" : "notice show";
         setText(status, resource.error || (state ? "" : m("ui.fork_loading_turn_state_settings")));
+        renderTurnStateMaster();
         if (!state) return;
+        if (adminUIState.turnStateView === undefined) {
+          showTurnStateView(viewPreference("admin", "turnStateView", "overview"), false);
+          $("turn-state-guide").open = !state.config.probe_accounts?.length;
+        }
         renderTeamStateGate();
         const config = state.config;
         if (state.host_requirement)
@@ -10517,6 +10654,7 @@
           adminUIState.turnStateAccounts = new Set(config.probe_accounts || []);
         }
         renderTurnStateProxyPruning();
+        renderTurnStateMode();
         renderTurnStateAccounts(busy);
         setText(
           $("turn-state-proxy-load-status"),
@@ -10720,12 +10858,15 @@
           ["replace-length", "replace_length"]
         ]) {
           const input = $("turn-state-" + field);
-          if (!input.value || !input.reportValidity()) return;
+          if (!input.value || !input.checkValidity()) {
+            reportTurnStateField(input);
+            return;
+          }
           payload[key] = Number(input.value);
         }
         const minimum = $("turn-state-min-proxies");
         if (payload.probe_drop_failed_proxies || payload.probe_drop_degraded_proxies) {
-          if (!minimum.reportValidity()) return;
+          if (!reportTurnStateField(minimum)) return;
           payload.probe_min_proxies = Number(minimum.value);
         } else {
           payload.probe_min_proxies =
@@ -13978,6 +14119,17 @@
         $("integration-cookie").value = "";
       });
       $("team-require-state").onchange = () => guard(saveTeamStateGate);
+      $("turn-state-master").onchange = () => guard(saveTurnStateMaster);
+      for (const tab of document.querySelectorAll("#tab-turn-state [data-state-view]")) tab.onclick = () => showTurnStateView(tab.dataset.stateView);
+      for (const button of document.querySelectorAll("[data-state-mode]"))
+        button.onclick = () => {
+          const enabled = $("turn-state-enabled"), mode = button.dataset.stateMode;
+          if (enabled.disabled) return;
+          enabled.checked = mode !== "off";
+          if (mode !== "off") $("turn-state-dry-run").checked = mode === "observe";
+          enabled.dispatchEvent(new Event("input", { bubbles: true }));
+          renderTurnStateMode();
+        };
       $("team-runtime-select-all").onclick = () => {
         if (teamAccountBatchBusy()) return;
         for (const account of teamAccountRows()) if (account.credential_ref) teamAccountSelection().add(account.credential_ref);

@@ -21,6 +21,9 @@ type forceAstraRouteResponse struct {
 // Astra. Rewriting only an intercepted body is undone by executor translation
 // and would leave admission and usage attributed to the original model.
 func (a *App) routeForceAstra(raw []byte) ([]byte, error) {
+	if a == nil || !a.turnState.Active() {
+		return OKEnvelope(forceAstraRouteResponse{})
+	}
 	var req forceAstraRouteRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err

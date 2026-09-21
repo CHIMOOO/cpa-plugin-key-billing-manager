@@ -21,6 +21,7 @@ type App struct {
 	accountRuntime        *accountRuntime
 	risk                  *riskControl
 	hostSchema            atomic.Uint32
+	stateHooks            atomic.Bool // State hooks declared in the last host registration.
 	hostCaller            HostCaller
 	integrationsMu        sync.Mutex
 	integrationLogins     map[string]*integrationLogin
@@ -91,7 +92,11 @@ func (a *App) handleMethod(method string, request []byte) ([]byte, error) {
 			a.store.AddPluginLog(billing.PluginLogError, "Failed to apply plugin configuration: %v", errConfigure)
 			return nil, errConfigure
 		}
-		return OKEnvelope(registrationForHost(a.hostSchema.Load()))
+		// The host re-reads capabilities only on register/reconfigure, so a
+		// suspended State stays fully unhooked until CPA next reloads the plugin.
+		hooks := a.turnState.Active()
+		a.stateHooks.Store(hooks)
+		return OKEnvelope(registrationForHost(a.hostSchema.Load(), hooks))
 	case MethodRequestInterceptBefore:
 		return a.interceptBeforeAuth(request)
 	case MethodRequestInterceptAfter:
@@ -225,8 +230,15 @@ func registration() Registration {
 
 // Schema 5 only removes per-payload history that this plugin never reads.
 // Keep the original schema for older hosts, which reject a newer declaration.
-func registrationForHost(hostSchema uint32) Registration {
+func registrationForHost(hostSchema uint32, stateHooks bool) Registration {
 	result := registration()
+	if !stateHooks {
+		// These three hooks serve only Force Astra and response learning. The
+		// request interceptor and scheduler stay registered for billing.
+		result.Capabilities.ModelRouter = false
+		result.Capabilities.ResponseInterceptor = false
+		result.Capabilities.StreamChunkInterceptor = false
+	}
 	if hostSchema >= 5 {
 		result.SchemaVersion = 5
 	}

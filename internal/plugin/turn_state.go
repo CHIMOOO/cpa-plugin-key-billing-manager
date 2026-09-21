@@ -34,6 +34,7 @@ type turnStateStatus struct {
 	UpstreamWebsocketPatchPath           string                `json:"upstream_websocket_patch_path"`
 	UpstreamWebsocketManagementSupported bool                  `json:"upstream_websocket_management_supported"`
 	Runner                               turnStateRunnerStatus `json:"runner"`
+	HooksRegistered                      bool                  `json:"hooks_registered"`
 }
 
 func codexAuthFile(file hostAuthFile) bool {
@@ -81,6 +82,7 @@ func (a *App) getTurnState(_ ManagementRequest) (response ManagementResponse) {
 	}
 	status.HostRequirementMessage = messages.Literal(status.HostRequirement)
 	status.Runner = a.turnStateRunner.status()
+	status.HooksRegistered = a.stateHooks.Load()
 	status.ProbeUnavailableMessage = messages.Literal(status.ProbeUnavailableReason)
 	return JSONResponse(http.StatusOK, status)
 }
@@ -107,6 +109,9 @@ func (a *App) clearTurnState(req ManagementRequest) ManagementResponse {
 }
 
 func (a *App) probeTurnState(req ManagementRequest) ManagementResponse {
+	if !a.turnState.Active() {
+		return turnStateSuspendedError()
+	}
 	finish, allowed := a.beginManualTurnStateProbe()
 	if !allowed {
 		return JSONError(http.StatusConflict, "runner_active", "Stop server collection before starting a manual probe")
@@ -160,6 +165,16 @@ func (a *App) executeTurnStateProbe(req ManagementRequest) (response ManagementR
 	return JSONResponse(http.StatusOK, result)
 }
 
+func turnStateSuspendedError() ManagementResponse {
+	return JSONError(http.StatusConflict, "turn_state_suspended", "Turn State is globally disabled; enable it before sending probes")
+}
+
+// turnStateGate reports whether selected accounts must hold a usable template.
+// A suspended State never blocks or filters business traffic.
+func (a *App) turnStateGate() bool {
+	return a.turnState.Active() && a.accountRuntime != nil && a.accountRuntime.requiresTurnState()
+}
+
 type turnStateMissingAccount struct{}
 
 func (*turnStateMissingAccount) Error() string {
@@ -169,7 +184,7 @@ func (*turnStateMissingAccount) Error() string {
 // Request-level provider identity must come from CPA's auth inventory. ToFormat
 // alone is insufficient: xai also uses the codex format in supported hosts.
 func (a *App) turnStateRequest(req RequestInterceptRequest) (http.Header, []string) {
-	if a == nil || a.turnState == nil {
+	if a == nil || !a.turnState.Active() {
 		return nil, nil
 	}
 	// A scheduler retry can reuse the RequestID while selecting another
@@ -211,6 +226,11 @@ func (a *App) turnStateRequest(req RequestInterceptRequest) (http.Header, []stri
 }
 
 func (a *App) handleTurnStateResponse(raw []byte, stream bool) ([]byte, error) {
+	// Suspended State skips decoding: request.complete still drops any
+	// attribution left by a request admitted before the switch.
+	if !a.turnState.Active() {
+		return OKEnvelope(struct{}{})
+	}
 	var req struct {
 		RequestID       string         `json:"RequestID"`
 		Model           string         `json:"Model"`

@@ -1437,5 +1437,9 @@
   "Stop server collection before discarding a template": {
     "key": "backend.turn_state_discard_stop_runner",
     "formats": []
+  },
+  "Turn State is globally disabled; enable it before sending probes": {
+    "key": "backend.turn_state_suspended",
+    "formats": []
   }
 }

@@ -197,6 +197,7 @@ func (m *Manager) commitStateLocked(next diskState, full bool, clearScope string
 		next.Templates[k] = learned
 	}
 	m.state = next
+	m.suspended.Store(next.Config.Suspended)
 	if clearScope != "" {
 		m.templateEpoch++
 		if clearScope == "*" {

@@ -477,7 +477,7 @@ func (a *App) enforceAccountRuntime(req RequestInterceptRequest) RequestIntercep
 		return RequestInterceptResponse{}
 	}
 	id := metadataString(req.Metadata, MetadataSelectedAuth)
-	protectState := a.accountRuntime.requiresTurnState() && !isTurnStateImageRequest(req.Metadata)
+	protectState := a.turnStateGate() && !isTurnStateImageRequest(req.Metadata)
 	if id == "" {
 		if protectState && a.turnState.HasProtectedAccounts() {
 			return priceRefusal(req.SourceFormat, "turn_state_required", "Cannot verify the selected account; protected account requests are blocked")

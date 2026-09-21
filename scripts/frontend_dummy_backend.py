@@ -616,7 +616,7 @@ LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 
 TURN_STATE_CONFIG = {
-    "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
+    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
     "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
     "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
     "probe_verify_completion": False, "probe_hourly_limit": 0,
@@ -680,7 +680,7 @@ def turn_state_view():
             "probe_budget": turn_state_budget(),
             "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS, "runner": dict(TURN_STATE_RUNNER),
             "probe_progress": {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)},
-            "probe_supported": True, "probe_unavailable_reason": "",
+            "probe_supported": True, "probe_unavailable_reason": "", "hooks_registered": True,
             "upstream_websocket_management_supported": True,
             "upstream_websocket_patch_path": "/v0/management/auth-files/fields",
             "host_requirement": ui_message("backend.turn_state_host_requirement")["message"],
@@ -2086,7 +2086,7 @@ class Handler(BaseHTTPRequestHandler):
             if body.pop("expected_revision", turn_state_revision()) != turn_state_revision():
                 self.send_json(409, {"error": {"message": "Settings changed since proxies were loaded; reload the saved proxies and retry"}})
                 return
-            if body.get("inject_mode") not in {"always", "replace-only"}:
+            if "inject_mode" in body and body["inject_mode"] not in {"always", "replace-only"}:
                 self.send_json(400, {"error": ui_message("backend.turn_state_invalid_inject_mode")})
                 return
             if not valid_turn_state_pruning(body):

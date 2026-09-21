@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cpa-key-billing/internal/messages"
@@ -24,6 +25,9 @@ import (
 const Header = "X-Codex-Turn-State"
 
 type Config struct {
+	// Suspended is the global State switch. It leaves every other setting,
+	// template and cooldown untouched so resuming restores the prior behavior.
+	Suspended                    bool     `json:"suspended"`
 	ForceAstra                   bool     `json:"force_astra"`
 	Enabled                      bool     `json:"enabled"`
 	InjectMode                   string   `json:"inject_mode"`
@@ -181,6 +185,7 @@ type Manager struct {
 	persistenceError  string
 	runtimeDirty      bool
 	observations      observationState
+	suspended         atomic.Bool // Mirrors state.Config.Suspended for lock-free hot paths.
 }
 
 func New() *Manager {
@@ -277,6 +282,7 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 		return err
 	}
 	m.path, m.state = path, state
+	m.suspended.Store(state.Config.Suspended)
 	m.basePath, m.baseDigest = path, base
 	m.dirtyTemplates = map[string]Template{}
 	m.persistenceError = ""
@@ -473,6 +479,12 @@ func (m *Manager) updateLocked(raw []byte) error {
 	}
 	m.configRevision++
 	return nil
+}
+
+// Active reports the global State switch without taking the request mutex, so
+// host hooks can return before decoding a payload while State is suspended.
+func (m *Manager) Active() bool {
+	return m != nil && !m.suspended.Load()
 }
 
 func (m *Manager) Enabled() bool {

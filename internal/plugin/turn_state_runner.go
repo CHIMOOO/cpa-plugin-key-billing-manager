@@ -214,6 +214,9 @@ func (a *App) setTurnStateRunner(req ManagementRequest) ManagementResponse {
 	r := a.turnStateRunner
 	r.controlMu.Lock()
 	defer r.controlMu.Unlock()
+	if *input.Enabled && !a.turnState.Active() {
+		return turnStateSuspendedError()
+	}
 	if *input.Enabled {
 		config := a.turnState.Status().Config
 		if len(config.ProbeAccounts) == 0 || len(config.Models) == 0 {
@@ -282,7 +285,8 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 	if r.configToken != state.ProxyConfigRevision {
 		r.configToken, r.nextCheck = state.ProxyConfigRevision, time.Time{}
 	}
-	if !r.control.Enabled || r.stopPending || r.nextCheck.After(now) {
+	// A suspended State keeps the durable start intent but sends nothing.
+	if !r.control.Enabled || r.stopPending || state.Config.Suspended || r.nextCheck.After(now) {
 		status := r.statusLocked()
 		r.mu.Unlock()
 		return runnerResponse(http.StatusOK, status)
