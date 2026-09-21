@@ -30,7 +30,7 @@ func captureRequest(id, auth string) RequestInterceptRequest {
 		Stream:       true,
 		Headers:      http.Header{"Authorization": {"Bearer dummy-downstream-key"}, "X-Api-Key": {"dummy-key"}, "Content-Type": {"application/json"}},
 		Body:         []byte(`{"model":"dummy-model","input":"hello"}`),
-		Metadata:     map[string]any{MetadataSelectedAuth: auth, MetadataSelectedIndex: "dummy-index", MetadataRequestPath: "/v1/responses"},
+		Metadata:     map[string]any{MetadataSelectedAuth: auth, MetadataSelectedIndex: strings.TrimSuffix(auth, "-auth") + "-index", MetadataRequestPath: "/v1/responses"},
 	}
 }
 
