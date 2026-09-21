@@ -199,3 +199,63 @@ func TestExclusiveGroupExplicitEmptyDirectAllowlistFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+func TestGroupWithoutModelsServesEveryModelBesideListedGroups(t *testing.T) {
+	codex, xai := CredentialFingerprint("dummy-codex"), CredentialFingerprint("dummy-xai")
+	xaiProvider := []CredentialProviderSelector{{Source: CredentialSourceAIProviders, Provider: "xai"}}
+	for _, mode := range []string{GroupRoutingExclusive, GroupRoutingOrdinary} {
+		t.Run(mode, func(t *testing.T) {
+			store := newStore(t)
+			store.ReplaceAll(func(state *State) {
+				state.Groups = []KeyGroup{
+					{ID: "listed", Name: "Listed", RoutingMode: mode, Rule: RouteRule{Models: []string{"gpt-5"}, CredentialIDs: []string{codex}}},
+					{ID: "common", Name: "Common", RoutingMode: GroupRoutingCommon, Rule: RouteRule{CredentialProviders: xaiProvider}},
+				}
+				state.Keys["scope"] = &KeyState{GroupIDs: []string{"listed", "common"}}
+			})
+			d := store.ResolveRouting("scope", "grok-4", "grok-4")
+			if !d.AllowsModel() || d.AllowsCredential(codex, CredentialSourceAuthFiles, "codex") || !d.AllowsCredential(xai, CredentialSourceAIProviders, "xai") {
+				t.Fatalf("unlisted group did not serve its own model: %+v", d)
+			}
+			d = store.ResolveRouting("scope", "gpt-5", "gpt-5")
+			if !d.AllowsModel() || !d.AllowsCredential(codex, CredentialSourceAuthFiles, "codex") {
+				t.Fatalf("listed model lost its group: %+v", d)
+			}
+			if d = store.ResolveRouting("scope", "", ""); d.RestrictsModels() {
+				t.Fatalf("summary still lists only the listed group's models: %+v", d)
+			}
+			// A model denied anywhere stays denied.
+			store.ReplaceAll(func(state *State) { state.Groups[0].Rule.DeniedModels = []string{"grok-4"} })
+			if store.ResolveRouting("scope", "grok-4", "grok-4").AllowsModel() {
+				t.Fatal("model deny bypassed by an unlisted group")
+			}
+		})
+	}
+}
+
+func TestModelOnlyGrantsAndDirectModelRulesStillLimitUnlistedGroups(t *testing.T) {
+	codex := CredentialFingerprint("dummy-codex")
+	xaiProvider := []CredentialProviderSelector{{Source: CredentialSourceAIProviders, Provider: "xai"}}
+	store := newStore(t)
+	store.ReplaceAll(func(state *State) {
+		state.Groups = []KeyGroup{
+			{ID: "unique", Name: "Unique", RoutingMode: GroupRoutingExclusive, Rule: RouteRule{Models: []string{"gpt-5"}, CredentialIDs: []string{codex}}},
+			{ID: "common", Name: "Common", RoutingMode: GroupRoutingCommon, Rule: RouteRule{CredentialProviders: xaiProvider}},
+			{ID: "models", Name: "Models", Rule: RouteRule{Models: []string{"gpt-5"}}},
+			{ID: "creds", Name: "Credentials", Rule: RouteRule{CredentialProviders: xaiProvider}},
+		}
+		// The key's own model rule narrows an exclusive pool, unlisted grants included.
+		state.Keys["direct"] = &KeyState{GroupIDs: []string{"unique", "common"}, RouteBindings: RouteBindings{RouteRule: RouteRule{Models: []string{"gpt-5", "grok-4"}}}}
+		// A group listing only models limits the models of every other group.
+		state.Keys["model-only"] = &KeyState{GroupIDs: []string{"models", "creds"}}
+	})
+	if d := store.ResolveRouting("direct", "grok-4", "grok-4"); !d.AllowsModel() || !d.AllowsCredential(CredentialFingerprint("dummy-xai"), CredentialSourceAIProviders, "xai") || d.AllowsCredential(codex, CredentialSourceAuthFiles, "codex") {
+		t.Fatalf("direct model rule did not admit the unlisted grant: %+v", d)
+	}
+	if d := store.ResolveRouting("direct", "grok-3", "grok-3"); d.AllowsModel() {
+		t.Fatalf("direct model rule was bypassed: %+v", d)
+	}
+	if d := store.ResolveRouting("model-only", "grok-4", "grok-4"); d.AllowsModel() {
+		t.Fatalf("model-only group no longer limits models: %+v", d)
+	}
+}

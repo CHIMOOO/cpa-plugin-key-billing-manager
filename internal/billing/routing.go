@@ -60,6 +60,21 @@ type RoutingDecision struct {
 	// An exclusive group defines the maximum pool. A key's explicit direct
 	// allowlist may narrow that pool, including dynamic provider selectors.
 	CredentialConstraint *RouteRule
+	// A group that grants credentials without listing models allows every
+	// model on those credentials, even when another group lists models. Such
+	// credentials alone serve models outside pairedModels.
+	openCredentials *RouteRule
+	pairedModels    []string
+}
+
+// Called once the requested model is known: a model that only an unlisted
+// grant covers may use only that grant's credentials.
+func (d *RoutingDecision) narrowToModel() {
+	if d.openCredentials == nil || d.Model == "" || containsRouteValue(d.pairedModels, d.Model) {
+		return
+	}
+	d.CredentialIDs = slices.Clone(d.openCredentials.CredentialIDs)
+	d.CredentialProviders = slices.Clone(d.openCredentials.CredentialProviders)
 }
 
 func (d RoutingDecision) RestrictsModels() bool {
@@ -557,6 +572,7 @@ func (s *Store) ResolveRouting(scope, upstreamModel, routeModel string) RoutingD
 	s.read(func(state *State) {
 		decision = resolveRoutingState(state, state.Keys[normalizeScope(scope)])
 		decision.Model = strings.TrimSpace(state.ResolveBillingModel(upstreamModel, routeModel))
+		decision.narrowToModel()
 	})
 	return decision
 }
@@ -637,6 +653,14 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 	for _, rule := range groupRules {
 		merge(rule)
 	}
+	units := make([]RouteRule, 0, len(groups)+1)
+	for _, group := range groups {
+		units = append(units, state.grantUnit(group.RouteIDs, group.Rule))
+	}
+	if !exclusive {
+		units = append(units, state.grantUnit(key.RouteBindings.RouteIDs, key.RouteBindings.RouteRule))
+	}
+	open := openGrant(units)
 	if exclusive {
 		constraint := key.RouteBindings.RouteRule.clone()
 		for _, id := range key.RouteBindings.RouteIDs {
@@ -659,7 +683,12 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 			d.CredentialConstraint = &constraint
 		}
 		if len(constraint.Models) > 0 {
-			if len(d.Models) == 0 {
+			if open != nil {
+				// Unlisted grants serve every model the key's own rule allows.
+				d.pairedModels = slices.DeleteFunc(slices.Clone(d.Models), func(model string) bool { return !containsRouteValue(constraint.Models, model) })
+				d.Models = slices.Clone(constraint.Models)
+				d.openCredentials = open
+			} else if len(d.Models) == 0 {
 				d.Models = slices.Clone(constraint.Models)
 			} else {
 				d.Models = slices.DeleteFunc(d.Models, func(model string) bool { return !containsRouteValue(constraint.Models, model) })
@@ -671,6 +700,10 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 		merge(RouteRule{DeniedModels: constraint.DeniedModels, DeniedCredentialIDs: constraint.DeniedCredentialIDs, DeniedCredentialProviders: constraint.DeniedCredentialProviders})
 	} else {
 		merge(key.RouteBindings.RouteRule)
+	}
+	if open != nil && d.openCredentials == nil {
+		d.pairedModels, d.Models = d.Models, []string{}
+		d.openCredentials = open
 	}
 	for _, values := range []*[]string{&d.Models, &d.CredentialIDs, &d.DeniedModels, &d.DeniedCredentialIDs} {
 		sort.SliceStable(*values, func(i, j int) bool { return strings.ToLower((*values)[i]) < strings.ToLower((*values)[j]) })
@@ -687,4 +720,49 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 		*values = slices.Compact(*values)
 	}
 	return d
+}
+
+// grantUnit merges the allow lists of one grant: a group, or a key's own
+// bindings, with its routes. Missing routes are reported by the caller.
+func (s *State) grantUnit(routeIDs []string, rule RouteRule) RouteRule {
+	unit := RouteRule{
+		Models:              slices.Clone(rule.Models),
+		CredentialIDs:       slices.Clone(rule.CredentialIDs),
+		CredentialProviders: slices.Clone(rule.CredentialProviders),
+	}
+	for _, id := range routeIDs {
+		if route, ok := s.findRoute(id); ok {
+			unit.Models = append(unit.Models, route.Rule.Models...)
+			unit.CredentialIDs = append(unit.CredentialIDs, route.Rule.CredentialIDs...)
+			unit.CredentialProviders = append(unit.CredentialProviders, route.Rule.CredentialProviders...)
+		}
+	}
+	return unit
+}
+
+// openGrant returns the credentials of grants that list no models, when other
+// grants list models. A grant listing models without credentials still limits
+// the models of every grant, so it keeps the combined model allowlist.
+func openGrant(units []RouteRule) *RouteRule {
+	var open *RouteRule
+	listed := false
+	for _, unit := range units {
+		grants := len(unit.CredentialIDs) > 0 || len(unit.CredentialProviders) > 0
+		switch {
+		case len(unit.Models) > 0 && !grants:
+			return nil
+		case len(unit.Models) > 0:
+			listed = true
+		case grants:
+			if open == nil {
+				open = &RouteRule{CredentialIDs: []string{}, CredentialProviders: []CredentialProviderSelector{}}
+			}
+			open.CredentialIDs = append(open.CredentialIDs, unit.CredentialIDs...)
+			open.CredentialProviders = append(open.CredentialProviders, unit.CredentialProviders...)
+		}
+	}
+	if !listed {
+		return nil
+	}
+	return open
 }
