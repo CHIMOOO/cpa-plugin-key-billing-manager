@@ -36,7 +36,7 @@ func TestModelTestDeclarationComparesResolvedAliasAndDoesNotReusePriorResult(t *
 	}{Name: "actual-upstream", Alias: "friendly-alias"})
 	for _, declared := range []string{"actual-upstream", "other-version", ""} {
 		prepared := preparedModelTest(t, a, input)
-		body := map[string]any{"model": declared, "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": `{"name":"Ada","total":42,"tags":["blue","red"]}`}}}}
+		body := map[string]any{"model": declared, "choices": []any{map[string]any{"finish_reason": "stop", "message": map[string]string{"content": "Reasoning omitted.\nFinal answer: 21"}}}}
 		response := a.completeModelTest(ManagementRequest{Body: mustMarshal(t, map[string]any{"test_id": prepared.TestID, "status_code": 200, "body": string(mustMarshal(t, body))})})
 		var result modelTestResult
 		if json.Unmarshal(response.Body, &result) != nil || result.RequestedModel != "friendly-alias" || result.UpstreamModel != "actual-upstream" || result.ResponseModel != declared || !result.Assertions[0].Passed || result.UsageAvailable {

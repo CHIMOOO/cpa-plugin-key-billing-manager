@@ -348,7 +348,7 @@ func TestModelTestIncompleteOutputsCannotPassAssertions(t *testing.T) {
 		a, file, _ := modelTestFixture(t, false)
 		input := modelTestInput(file)
 		prepared := preparedModelTest(t, a, input)
-		delta, _ := json.Marshal(map[string]any{"type": "response.output_text.delta", "delta": `{"name":"Ada","total":42,"tags":["blue","red"]}`})
+		delta, _ := json.Marshal(map[string]any{"type": "response.output_text.delta", "delta": "Reasoning omitted.\nFinal answer: 21"})
 		body := "data: " + string(delta) + "\n" + terminal
 		response := a.completeModelTest(ManagementRequest{Body: mustMarshal(t, map[string]any{"test_id": prepared.TestID, "status_code": 200, "body": body})})
 		var result modelTestResult
