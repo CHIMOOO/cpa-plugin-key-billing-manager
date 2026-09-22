@@ -23,7 +23,7 @@ This independent fork of [haowang02/cpa-plugin-key-billing](https://github.com/h
 | Subscription Plans | Spending, token, and request limits; all-model, exact-model, or model-family pools; independent or shared reset schedules |
 | Account Integrations | OpenCode Go / Zen, CommandCode, and Cline Pass; publish supported models and query upstream-provided subscription quotas |
 | Accounts | Per-account requests, successes/failures, tokens, cost, current concurrency, and concurrency limits |
-| Codex Turn State | Account/model-specific collection, renewal, injection, and valid-bucket protection; static/rotating proxies, ten concurrent connectivity checks, optional automatic removal |
+| Codex Turn State | Account/model-specific collection, renewal, injection, and valid-bucket protection; parallel probes across accounts; static/rotating proxies, ten concurrent connectivity checks, optional automatic removal; on-demand diagnostic log |
 | Model Tests | Concurrent diagnostics across accounts with repeated runs; per-account pass counts, declared-model consistency and timing; proxied accounts marked in the list, animated SVG previews, and no execution of generated code |
 | Risk Center | Local keyword/model rules, observe/pre-block modes, and hash memory without persisting prompt text |
 | Traffic Capture | Watch several upstream accounts at once, pausing each on its own, with live headers, bodies, responses and the upstream response model; memory only, credentials and body text masked by default, downloadable as text |
@@ -288,7 +288,9 @@ If transport setup fails, State settings are not applied and the draft is retain
 | Default probe models | `gpt-6-astra` and `gpt-5.6-sol`; the exact former default list is corrected, while custom or cleared lists are preserved |
 | Template / replacement lengths | Default 292 / 312 |
 | TTL | Default 3600 seconds from the token's embedded issuance time; receiving the same token does not extend its lifetime |
-| Cookies | Upstream cookies are kept per account in memory only and refreshed by every upstream response of a selected account, including probes and 312 responses. For 240 seconds by default, requests for the selected models carry them, with or without a template. After the first listed model collects a 292, collection probes it again after 30 seconds by default to keep the cookies fresh; a refresh without a 292 keeps the template and retries on the next exit after the same interval, and never removes a proxy for a degraded state |
+| Cookies | Upstream cookies are kept per account in memory only. Following `ccodex-rotate`'s frozen-jar rule, by default only a response that carries a 292 (a probe or a business response, any model) refreshes the account's cookies; a 312 or any other response keeps the cookie set that came with the last 292. **Refresh cookies from every response** (`cookie_refresh_all`, off by default) lets every response refresh them. For 240 seconds by default, requests for the selected models carry them, with or without a template |
+| Cookie refresh rounds | After the first listed model collects a 292, collection starts a refresh round after 30 seconds by default (`cookie_refresh_seconds`): it tries the exit that last returned a 292 first, then the next exits one by one until one returns a 292, each exit at most once per round and at most 25, skipping cooling exits. A 312 during a refresh never cools an exit or removes a proxy; a static exit whose own connection fails still gets its static cooldown. A round without a 292 keeps the current template and waits `cookie_retry_seconds` (default 300, 30–3600) before the next round. Each attempt counts toward the hourly limit |
+| Concurrent probes | `probe_parallel`, default 3, range 1–10. Each account probes one bucket at a time and different accounts probe at the same time; the setting limits how many accounts probe at once. Buckets inside their berserk window are exempt from the one-per-account rule, up to 10 probes |
 
 ### First-time setup
 
@@ -329,6 +331,20 @@ The dashboard separates probe results, bucket readiness, and business decisions:
 
 Clearing cooldowns requires confirmation and removes failure waits while preserving valid templates and normal renewal schedules. The next probe may immediately spend account quota or proxy traffic and trigger throttling again; clearing does not remove upstream limits. A targeted reset also clears the account-wide rejection pause, as explained in the confirmation.
 
+### Diagnostic log
+
+The **Diagnostic log** at the bottom of the Status view helps when templates or cookies stop working a few minutes after collection. It is **off by default** and records only after **Start recording**, per account:
+
+- a snapshot of the existing 292 templates and cookies of the selected accounts and models when recording starts;
+- every probe's source (cookie refresh, renewal or collection), result, response State length, status, exit and refresh-round attempt;
+- when cookies were updated, and which responses the frozen-jar rule did not use;
+- templates learned from business responses, and cleared or discarded templates;
+- every business request of a selected account and model: which template was injected and its age since issue, whether cookies were sent and their age, the client's own State length, and the response status and State length.
+
+Compare the failure times on your dashboard with these entries to see whether failures follow the number of requests or the age of the 292 or cookies. Entries hold template fingerprints, cookie-set fingerprints, cookie names, lengths and ages, never State or cookie values; exits hide proxy usernames and passwords.
+
+The log lives in CPA process memory only, holds at most 20,000 entries and drops the oldest first (the page shows how many were dropped). A CPA restart or a data-path switch clears it; ordinary settings saves do not. The table shows the latest 100 entries and refreshes every 3 seconds while recording. **Download CSV** exports every entry (UTF-8 with BOM); **Clear** asks for confirmation and keeps recording on or off; **Stop recording** keeps the entries recorded so far.
+
 ### Connectivity and large proxy lists
 
 Test each pool to see progress, masked proxy addresses, and sampled exit IPs when available. Tests use no account credentials or account quota and check connectivity to the Codex API. Only connection or proxy-authentication failures qualify for removal; upstream 403/429 and inconclusive results are retained. Removing failed proxies edits the draft; click Save to apply it. Live collection progress and logs show the actual selected proxy position/total and masked address, with retry counts for rotating proxies. Successful templates retain their masked collection address. A proxy endpoint is not necessarily the actual exit IP; a rotating proxy's diagnostic IP describes that sample only, not a later collection request.
@@ -337,7 +353,7 @@ Each pool supports up to 20,000 proxies, with a 16 MiB limit for the complete co
 
 ### Execution and storage boundaries
 
-Active probing uses Go's built-in HTTP client to send a direct upstream request using the selected account, with a 25-second total timeout. Each probe opens a new connection and closes the response and connection after reading the headers, so rotating proxies can assign a new exit on every attempt. **It consumes upstream quota and is not billed to a downstream CPA API key.** The standalone collector owns periodic scheduling and calls the plugin synchronously. Browser reloads, navigation, sign-out, or closing the browser do not stop collection. Stop persists a disabled intent and lets the current probe drain. Duplicate processes respect one lease and the in-flight gate. Manual/legacy-browser probes are refused while automatic collection is enabled. Configuration changes and template clearing coordinate with in-flight probes.
+Active probing uses Go's built-in HTTP client to send a direct upstream request using the selected account, with a 25-second total timeout. One server collection request may run several probes: it splits into lanes up to the concurrent-probe setting, probes different accounts at the same time with one probe per account, and keeps starting new probes for about 12 seconds. Each probe opens a new connection and closes the response and connection after reading the headers, so rotating proxies can assign a new exit on every attempt. **It consumes upstream quota and is not billed to a downstream CPA API key.** The standalone collector owns periodic scheduling and calls the plugin synchronously. Browser reloads, navigation, sign-out, or closing the browser do not stop collection. Stop persists a disabled intent and lets probes in flight drain. Duplicate processes respect one lease and the in-flight gate. Manual/legacy-browser probes are refused while automatic collection is enabled. Configuration changes and template clearing coordinate with in-flight probes.
 
 HTTP/SSE injection needs CPA 7.3.4 or the equivalent forwarding fix. Upstream WebSocket headers apply only to a new handshake. Selected accounts disable that transport, so downstream WS clients are bridged to a fresh HTTP request per turn. WebSocket handshake responses are not part of HTTP/SSE response learning; active probing can collect templates first.
 

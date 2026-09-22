@@ -616,7 +616,7 @@ LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 
 TURN_STATE_CONFIG = {
-    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True, "inject_cookies": True, "cookie_ttl_seconds": 240, "cookie_refresh_seconds": 30, "breakout_retry": False, "berserk": False, "berserk_minutes": 1, "probe_parallel": 3,
+    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True, "inject_cookies": True, "cookie_ttl_seconds": 240, "cookie_refresh_seconds": 30, "cookie_retry_seconds": 300, "cookie_refresh_all": False, "breakout_retry": False, "berserk": False, "berserk_minutes": 1, "probe_parallel": 3,
     "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
     "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
     "probe_verify_completion": False, "probe_hourly_limit": 0,
@@ -667,12 +667,56 @@ def dummy_state_credential_ref(account_id):
     return "sha256:" + hashlib.sha256(("cpa-key-billing:credential:v1\0" + account_id).encode()).hexdigest()
 
 
+def dummy_state_accounts():
+    """Selected accounts, or the first Codex auth files before a scope is saved."""
+    return TURN_STATE_CONFIG["probe_accounts"] or [
+        item["ref"] for item in CREDENTIALS if item["provider"] == "codex" and item["source"] == "auth-files"][:2]
+
+
+def dummy_collector_lanes():
+    """While the dummy collector runs, two lanes probe different accounts six seconds out of ten."""
+    if not TURN_STATE_RUNNER["enabled"] or not TURN_STATE_RUNNER["online"] or time.time() % 10 >= 6:
+        return []
+    models = TURN_STATE_CONFIG["models"] or ["gpt-6-astra"]
+    static, rotating = TURN_STATE_CONFIG["probe_proxies"], TURN_STATE_CONFIG["probe_proxies_rotating"]
+    proxies = static + rotating
+    lanes = []
+    for index, account in enumerate(dummy_state_accounts()[:2]):
+        proxy = proxies[index % len(proxies)] if proxies else ""
+        lanes.append({"account": account, "model": models[index % len(models)], "exit": masked_dummy_proxy(proxy),
+                      "proxy_index": index % len(proxies) + 1 if proxies else 1, "proxy_total": len(proxies) or 1,
+                      "proxy_pool": "static" if proxy in static else "rotating" if proxy else "direct", "proxy_attempt": 1})
+    return lanes
+
+
+def turn_state_progress():
+    results = [dict(TURN_STATE_PROGRESS)] if TURN_STATE_PROGRESS else dummy_collector_lanes()
+    return {"active": bool(results), "result": results[-1] if results else {}, "results": results}
+
+
+def turn_state_runner_view():
+    runner = dict(TURN_STATE_RUNNER)
+    if dummy_collector_lanes():
+        runner.update(in_flight=True, phase="running")
+    return runner
+
+
+def turn_state_template_view(item, now):
+    view = dict(item, fingerprint=dummy_template_fingerprint(item),
+                remaining_seconds=max(0, int((datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) - now).total_seconds())))
+    # A refresh round in progress on the first model while the dummy collector runs.
+    attempts = int(time.time() // 10) % 4 if TURN_STATE_RUNNER["enabled"] and item.get("refresh_at") else 0
+    if attempts:
+        view["refresh_attempts"] = attempts
+    return view
+
+
 def turn_state_view():
     config = dict(TURN_STATE_CONFIG)
     for field in ("probe_proxies", "probe_proxies_rotating"):
         config[field] = []
     now = datetime.now(timezone.utc)
-    templates = [dict(item, fingerprint=dummy_template_fingerprint(item), remaining_seconds=max(0, int((datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) - now).total_seconds())))
+    templates = [turn_state_template_view(item, now)
                  for item in TURN_STATE_TEMPLATES if datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) > now]
     jars = [{"account": account, "count": jar["count"], "updated_at": iso(jar["updated_at"]),
              "expires_at": iso(jar["updated_at"] + timedelta(seconds=config["cookie_ttl_seconds"])),
@@ -684,8 +728,8 @@ def turn_state_view():
             "proxy_config_revision": turn_state_revision(),
             "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
             "probe_budget": turn_state_budget(),
-            "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS, "runner": dict(TURN_STATE_RUNNER),
-            "probe_progress": {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)},
+            "last_decision": {}, "last_probe": TURN_STATE_LAST, "probe_stats": TURN_STATE_PROBE_STATS, "runner": turn_state_runner_view(),
+            "probe_progress": turn_state_progress(),
             "probe_supported": True, "probe_unavailable_reason": "", "hooks_registered": True,
             "upstream_websocket_management_supported": True,
             "upstream_websocket_patch_path": "/v0/management/auth-files/fields",
@@ -706,7 +750,7 @@ def turn_state_revision():
 
 
 def valid_turn_state_pruning(config):
-    for field in ("probe_drop_failed_proxies", "probe_drop_degraded_proxies", "probe_verify_completion"):
+    for field in ("probe_drop_failed_proxies", "probe_drop_degraded_proxies", "probe_verify_completion", "cookie_refresh_all"):
         if field in config and type(config[field]) is not bool:
             return False
     limit = config.get("probe_hourly_limit", TURN_STATE_CONFIG["probe_hourly_limit"])
@@ -728,6 +772,120 @@ def masked_dummy_proxy(value):
     if not parsed.hostname:
         return "(direct)" if not value else "invalid"
     return f"{parsed.scheme}://{'***@' if parsed.username or parsed.password else ''}{parsed.hostname}:{parsed.port or (443 if parsed.scheme == 'https' else 80)}"
+
+
+def valid_cookie_retry(config):
+    value = config.get("cookie_retry_seconds", TURN_STATE_CONFIG["cookie_retry_seconds"])
+    return type(value) is int and 30 <= value <= 3600
+
+
+TURN_STATE_JOURNAL_LIMIT = 20000
+TURN_STATE_JOURNAL = {"recording": False, "since": None, "dropped": 0, "entries": [], "step": 0, "simulated_at": 0.0, "jars": {}}
+# One sample per simulated second while recording, so every event kind appears within a few polls.
+TURN_STATE_JOURNAL_SCRIPT = ("request_292", "request_312", "refresh_312", "ignored", "refresh_292", "updated_probe", "request_no_template",
+                             "learned", "updated_response", "request_present", "request_dry_run", "request_passed", "renewal",
+                             "collect_error", "discarded", "cleared")
+TURN_STATE_JOURNAL_COOKIES = "__cf_bm,_cfuvid,oai-sc"
+
+
+def journal_append(event, **fields):
+    entry = {"at": iso(datetime.now(timezone.utc)), "event": event}
+    entry.update({key: value for key, value in fields.items() if value is not None and value != ""})
+    entries = TURN_STATE_JOURNAL["entries"]
+    entries.append(entry)
+    if len(entries) > TURN_STATE_JOURNAL_LIMIT:
+        TURN_STATE_JOURNAL["dropped"] += len(entries) - TURN_STATE_JOURNAL_LIMIT
+        del entries[:len(entries) - TURN_STATE_JOURNAL_LIMIT]
+
+
+def journal_template(account, model, now):
+    issued = TURN_STATE_JOURNAL["since"] - timedelta(minutes=12)
+    fingerprint = hashlib.sha256(f"{account}\0{model}\0{iso(issued)}".encode()).hexdigest()
+    return {"template": fingerprint, "issued_at": iso(issued), "template_age_seconds": int((now - issued).total_seconds())}
+
+
+def journal_jar(account, now, update=False):
+    jar = TURN_STATE_JOURNAL["jars"].setdefault(account, {"version": 1, "updated_at": TURN_STATE_JOURNAL["since"] - timedelta(seconds=45)})
+    if update:
+        jar.update(version=jar["version"] + 1, updated_at=now)
+    return {"cookies": hashlib.sha256(f"{account}\0{jar['version']}".encode()).hexdigest()[:8],
+            "cookie_age_seconds": int((now - jar["updated_at"]).total_seconds())}
+
+
+def journal_start():
+    now = datetime.now(timezone.utc)
+    TURN_STATE_JOURNAL.update(recording=True, since=now, simulated_at=time.time(), jars={})
+    config = TURN_STATE_CONFIG
+    journal_append("recording_started", detail=f"cookie_ttl={config['cookie_ttl_seconds']} refresh={config['cookie_refresh_seconds']} "
+                                               f"retry={config['cookie_retry_seconds']} refresh_all={str(config['cookie_refresh_all']).lower()} "
+                                               f"inject_cookies={str(config['inject_cookies']).lower()}")
+    models = config["models"] or ["gpt-6-astra"]
+    for account in dummy_state_accounts():
+        journal_append("snapshot_template", account=account, model=models[0], source="probe", exit="http://***@proxy.example.com:8080",
+                       **journal_template(account, models[0], now))
+    for account in dummy_state_accounts():
+        journal_append("snapshot_cookies", account=account, cookie_count=3, cookie_names=TURN_STATE_JOURNAL_COOKIES, **journal_jar(account, now))
+
+
+def journal_sample(step):
+    accounts, models = dummy_state_accounts(), TURN_STATE_CONFIG["models"] or ["gpt-6-astra"]
+    account, model, now = accounts[step % len(accounts)], models[0], datetime.now(timezone.utc)
+    proxies = TURN_STATE_CONFIG["probe_proxies"] + TURN_STATE_CONFIG["probe_proxies_rotating"]
+    exit_ = masked_dummy_proxy(proxies[step % len(proxies)]) if proxies else "http://***@proxy.example.com:8080"
+    kind = TURN_STATE_JOURNAL_SCRIPT[step % len(TURN_STATE_JOURNAL_SCRIPT)]
+    base = {"account": account, "model": model}
+    if kind.startswith("request_"):
+        action = {"292": "injected", "312": "injected", "no_template": "no_template", "present": "present", "dry_run": "dry_run",
+                  "passed": "passed"}[kind[8:]]
+        request = dict(base, model=models[step % len(models)], action=action, status=200,
+                       length=312 if kind in ("request_312", "request_no_template", "request_dry_run") else 292,
+                       detail="client_len=0" if action in ("no_template", "passed") else "client_len=312",
+                       **journal_jar(account, now))
+        if action in ("injected", "present"):
+            request.update(journal_template(account, request["model"], now))
+        if action in ("dry_run", "passed"):
+            request.pop("cookies")
+        journal_append("request", **request)
+    elif kind in ("refresh_312", "refresh_292", "renewal", "collect_error"):
+        probe = dict(base, exit=exit_, source={"renewal": "renewal", "collect_error": "collect"}.get(kind, "refresh"))
+        if kind == "collect_error":
+            probe.update(action="error", detail="proxyconnect tcp: dial tcp 203.0.113.9:8080: i/o timeout")
+        else:
+            probe.update(status=200, length=312 if kind == "refresh_312" else 292,
+                         action={"refresh_312": "degraded", "refresh_292": "unchanged", "renewal": "harvested"}[kind])
+            if kind != "refresh_312":
+                probe.update({key: value for key, value in journal_template(account, model, now).items() if key != "template_age_seconds"})
+            if kind.startswith("refresh"):
+                probe["attempt"] = 1 if kind == "refresh_312" else 2
+        journal_append("probe", **probe)
+    elif kind == "ignored":
+        journal_append("cookies_ignored", **base, source="probe", length=312, cookie_names="__cf_bm,oai-sc")
+    elif kind.startswith("updated_"):
+        jar = journal_jar(account, now, update=True)
+        journal_append("cookies_updated", **base, source=kind[8:], length=292, cookies=jar["cookies"], cookie_count=3,
+                       cookie_names=TURN_STATE_JOURNAL_COOKIES)
+    elif kind == "learned":
+        template = journal_template(account, models[-1], now)
+        journal_append("template_learned", account=account, model=models[-1], template=template["template"], issued_at=template["issued_at"])
+    elif kind == "discarded":
+        journal_append("template_discarded", **base, template=journal_template(account, model, now)["template"])
+    else:
+        journal_append("template_cleared", detail="all")
+
+
+def journal_view(tail=100):
+    if TURN_STATE_JOURNAL["recording"]:
+        elapsed = int(time.time() - TURN_STATE_JOURNAL["simulated_at"])
+        for _ in range(min(12, elapsed)):
+            journal_sample(TURN_STATE_JOURNAL["step"])
+            TURN_STATE_JOURNAL["step"] += 1
+        TURN_STATE_JOURNAL["simulated_at"] += elapsed
+    entries = TURN_STATE_JOURNAL["entries"]
+    view = {"recording": TURN_STATE_JOURNAL["recording"], "count": len(entries), "dropped": TURN_STATE_JOURNAL["dropped"],
+            "limit": TURN_STATE_JOURNAL_LIMIT, "entries": entries[-tail:] if tail > 0 else list(entries)}
+    if TURN_STATE_JOURNAL["recording"]:
+        view["since"] = iso(TURN_STATE_JOURNAL["since"])
+    return view
 
 ROUTE_RULE_FIELDS = ("models", "credential_ids", "credential_providers", "denied_models", "denied_credential_ids", "denied_credential_providers")
 
@@ -1789,9 +1947,12 @@ def payload_for(path, query):
     if path == f"{API_BASE}/turn-state":
         return turn_state_view()
     if path == f"{API_BASE}/turn-state/runner":
-        return dict(TURN_STATE_RUNNER)
+        return turn_state_runner_view()
     if path == f"{API_BASE}/turn-state/probe-progress":
-        return {"active": bool(TURN_STATE_PROGRESS), "result": dict(TURN_STATE_PROGRESS)}
+        return turn_state_progress()
+    if path == f"{API_BASE}/turn-state/journal":
+        tail = (query.get("tail") or ["100"])[0]
+        return journal_view(int(tail) if tail.lstrip("-").isdigit() else 100)
     if path == f"{API_BASE}/access-control":
         return {"access_control": ACCESS_CONTROL}
     if path == f"{API_BASE}/groups":
@@ -2215,6 +2376,9 @@ class Handler(BaseHTTPRequestHandler):
             if not valid_turn_state_pruning(config):
                 self.send_json(400, {"error": {"message": "Invalid automatic proxy removal policy"}})
                 return
+            if not valid_cookie_retry(config):
+                self.send_json(400, {"error": ui_message("backend.turn_state_cookie_retry_invalid")})
+                return
             TURN_STATE_CONFIG.update(config)
             del TURN_STATE_UPLOADS[body["id"]]
             self.send_json(200, turn_state_view())
@@ -2228,6 +2392,9 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if not valid_turn_state_pruning(body):
                 self.send_json(400, {"error": {"message": "Invalid automatic proxy removal policy"}})
+                return
+            if not valid_cookie_retry(body):
+                self.send_json(400, {"error": ui_message("backend.turn_state_cookie_retry_invalid")})
                 return
             TURN_STATE_CONFIG.update(body)
             self.send_json(200, turn_state_view())
@@ -2277,7 +2444,22 @@ class Handler(BaseHTTPRequestHandler):
                                           "running" if TURN_STATE_RUNNER["in_flight"] else
                                           "offline" if not TURN_STATE_RUNNER["online"] else
                                           "waiting" if body["enabled"] else "stopped")
-            self.send_json(200, dict(TURN_STATE_RUNNER))
+            self.send_json(200, turn_state_runner_view())
+        elif route == ("PUT", f"{API_BASE}/turn-state/journal"):
+            body = json.loads(request_body or b"{}")
+            if type(body.get("recording")) is not bool:
+                self.send_json(400, {"error": "recording must be a boolean"})
+                return
+            if body["recording"] and not TURN_STATE_JOURNAL["recording"]:
+                journal_start()
+            elif not body["recording"] and TURN_STATE_JOURNAL["recording"]:
+                journal_append("recording_stopped")
+                TURN_STATE_JOURNAL.update(recording=False, since=None)
+            self.send_json(200, journal_view())
+        elif route == ("DELETE", f"{API_BASE}/turn-state/journal"):
+            TURN_STATE_JOURNAL["entries"].clear()
+            TURN_STATE_JOURNAL.update(dropped=0, simulated_at=time.time())
+            self.send_json(200, journal_view())
         elif route == ("POST", f"{API_BASE}/turn-state/probe"):
             if TURN_STATE_RUNNER["enabled"] or TURN_STATE_RUNNER["in_flight"]:
                 self.send_json(409, {"error": {"code": "runner_active", "message": "Stop the server collector before a manual probe"}})

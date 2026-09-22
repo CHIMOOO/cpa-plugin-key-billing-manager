@@ -2940,7 +2940,7 @@
             <div id="turn-state-probe-status" class="state-probe-status" role="status"></div>
             <div id="turn-state-metrics" class="state-metrics"></div>
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
-              <p data-i18n="ui.state_runner_help">Probes consume account quota. Install the collector on your CPA server, save the collection scope, then click Start. The collector keeps working when this page closes; Stop prevents further requests after the current probe finishes.</p>
+              <p data-i18n="ui.state_runner_help">Probes consume account quota. Install the collector on your CPA server, save the collection scope, then click Start. The collector keeps working when this page closes; Stop prevents further requests after the probes in flight finish.</p>
               <p data-i18n="ui.state_server_install">Install cpa-state-collector from this plugin release as a systemd service or Docker sidecar on the CPA server. Configure its CPA URL and management credential. This page only observes and controls that service.</p>
               <p data-i18n="ui.state_guide_session">The server keeps collection intent and recent logs. Refreshing, leaving this tab, closing the browser or signing out does not stop collection. Stop saves a server-side stop command. If the collector or CPA restarts, the service reconnects and resumes enabled collection.</p>
               <p><a href="https://github.com/CHIMOOO/cpa-plugin-key-billing-manager/blob/main/deploy/README.state-collector.md" target="_blank" rel="noopener noreferrer" data-i18n="ui.state_server_install_link">Collector installation guide (systemd / Docker)</a></p>
@@ -2982,6 +2982,14 @@
                 <div id="turn-state-observation-buckets" class="turn-state-table state-response-table"></div>
                 <details class="state-logs"><summary data-i18n="ui.state_observation_events">Recent response State events</summary><div id="turn-state-observation-events" class="turn-state-table state-response-table"></div></details>
               </details>
+            </div>
+            <div class="card" id="turn-state-journal-card">
+              <div class="row spread settings-section-header"><h3 data-i18n="ui.state_journal_title">Diagnostic log</h3><div class="row"><button id="turn-state-journal-toggle" type="button" data-i18n="ui.state_journal_start">Start recording</button><button id="turn-state-journal-download" type="button" disabled data-i18n="ui.state_journal_download">Download CSV</button><button id="turn-state-journal-clear" class="danger" type="button" disabled data-i18n="ui.clear">Clear</button></div></div>
+              <p id="turn-state-journal-status" class="small muted" role="status"></p>
+              <div id="turn-state-journal" class="turn-state-table state-response-table"></div>
+            <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.state_journal_help">Off by default. While recording, the plugin logs per account when 292 templates were collected or learned, when cookies were updated or not used, and what each business request of a selected account and model carried and got back. It keeps fingerprints, lengths, ages and cookie names, never State or cookie values. The table shows the latest 100 entries; Download CSV exports every entry. Compare failures with request counts and credential ages to see which one they follow.</p>
+            </details>
             </div>
           </div>
           <div class="state-view hidden" data-view="scope">
@@ -3041,7 +3049,7 @@
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
               <p data-i18n="ui.fork_replace_only_replaces_headers_with_the_specified_length_always_also_inject">replace-only replaces headers with the specified length. always also injects missing headers or those of other lengths. Both modes require an unexpired template for the same account and model; neither guarantees answer quality. Saved settings take effect immediately.</p>
               <p data-i18n="ui.state_breakout_retry_help">Off by default. When a request has no usable account left in its API key's groups (for example after CPA retries a failure), it may continue on another selected account that holds a valid template for the same model. Requires State injection and CPA request retries; the key's model permissions still apply.</p>
-              <p data-i18n="ui.state_inject_cookies_help">Every upstream response of a selected account, including probes and degraded responses, refreshes that account's cookies in memory. While they are younger than the cookie lifetime, requests for the selected models carry them in the Cookie header, with or without a template, replacing client cookies of the same name. Saving adds a Cookie forwarding header to the selected accounts' auth files, because CLIProxyAPI does not otherwise pass Cookie to Codex.</p>
+              <p data-i18n="ui.state_inject_cookies_help">Only responses that carry a 292, from probes or business requests of a selected account, refresh that account's cookies in memory; other responses keep the cookies of the last 292 unless Refresh cookies from every response is on. While they are younger than the cookie lifetime, requests for the selected models carry them in the Cookie header, with or without a template, replacing client cookies of the same name. Saving adds a Cookie forwarding header to the selected accounts' auth files, because CLIProxyAPI does not otherwise pass Cookie to Codex.</p>
               <p data-i18n="ui.state_force_astra_help">Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.</p>
               <p data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected account for a selected model needs a usable template for that model. Disabled injection, observation mode or a replace-only skip blocks that attempt. Other models on the same account skip State. This switch is saved immediately.</p>
               <p data-i18n="ui.state_image_isolation_help">CPA image generation and edit endpoints do not require or learn conversational State. Group permissions, quotas and concurrency still apply. Image model support, uploads and timeouts are provided by CPA and the upstream.</p>
@@ -3055,14 +3063,16 @@
                 <label class="field"><span data-i18n="ui.turn_state_renew_before">Renew before expiry (minutes)</span><input id="turn-state-renew-before" type="number" min="0" max="59" step="1" disabled /><span id="turn-state-renew-help" class="small muted"></span></label>
                 <label class="field"><span data-i18n="ui.state_cookie_ttl">Cookie lifetime (seconds)</span><input id="turn-state-cookie-ttl" type="number" min="30" max="3600" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_cookie_refresh">Refresh after collecting a 292 (seconds, 0 = off)</span><input id="turn-state-cookie-refresh" type="number" min="0" max="3600" step="1" disabled /></label>
+                <label class="field"><span data-i18n="ui.state_cookie_retry">Retry after a refresh round without a 292 (seconds)</span><input id="turn-state-cookie-retry" type="number" min="30" max="3600" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_hourly_limit">Hourly probe limit (0 = unlimited)</span><input id="turn-state-hourly-limit" type="number" min="0" max="10000" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_probe_parallel">Concurrent probes</span><input id="turn-state-probe-parallel" type="number" min="1" max="10" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_berserk_minutes">Berserk in the last (minutes)</span><input id="turn-state-berserk-minutes" type="number" min="1" max="59" step="1" disabled /></label>
               </div>
               <p id="turn-state-probe-budget" class="small" role="status"></p>
-              <div class="state-toggle-list"><label class="toggle-filter"><input id="turn-state-verify-completion" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_verify_completion">Verify completed probe responses</span></label><label class="toggle-filter"><input id="turn-state-berserk" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_berserk">Berserk renewal</span></label></div>
+              <div class="state-toggle-list"><label class="toggle-filter"><input id="turn-state-cookie-refresh-all" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_cookie_refresh_all">Refresh cookies from every response</span></label><label class="toggle-filter"><input id="turn-state-verify-completion" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_verify_completion">Verify completed probe responses</span></label><label class="toggle-filter"><input id="turn-state-berserk" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_berserk">Berserk renewal</span></label></div>
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
-              <p data-i18n="ui.state_cookie_refresh_help">Cookies expire long before the 292 template. Every upstream response of a selected account refreshes its cookies, including probes and degraded 312 responses. After the first model in the list collects a 292, server collection probes that bucket again after this interval so the cookies stay fresh. A refresh that gets no 292 keeps the current template and tries the next exit after the same interval; its response still refreshes the cookies, and a degraded refresh never removes a proxy. Each refresh counts toward the hourly limit.</p>
+              <p data-i18n="ui.state_cookie_refresh_help">Only a response that carries a 292 refreshes an account's cookies; a 312 or any other response keeps the cookies that came with the last 292, unless Refresh cookies from every response is on. After the first model in the list collects a 292, server collection starts a refresh round after the refresh interval: it tries the exit that last returned a 292 first, then the next exits one by one until one returns a 292, each exit once per round and at most 25. A 312 never pauses or removes an exit. A round without a 292 keeps the current template and waits the retry interval before the next round. Each attempt counts toward the hourly limit.</p>
+              <p data-i18n="ui.state_probe_parallel_help">Each account probes one bucket at a time, and different accounts probe at the same time. This number limits how many accounts probe at once; berserk renewal may run up to 10 probes.</p>
               <p data-i18n="ui.state_berserk_help">Off by default. When a selected template enters its last minutes without a renewal, server collection runs up to 10 probes at once, each on its own exit, until one succeeds. Each probe counts toward the hourly limit and the exit and account cooldowns.</p>
               <p data-i18n="ui.state_hourly_limit_help">A rolling hour shared by all accounts, models, pools and manual probes. Attempts are reserved before sending; failures after reservation remain counted. Saving, restarting or clearing templates does not reset it. When exhausted, collection waits while valid templates remain usable. A small limit can delay renewal.</p>
               <p data-i18n="ui.state_verify_completion_help">Optional and off by default. Active probes must confirm a completed SSE or JSON response within 25 seconds and 1 MiB of decoded data. Failure keeps the old valid template. This may take longer and consume more output; it does not measure answer quality.</p>
@@ -3081,8 +3091,8 @@
               <p data-i18n="ui.state_rotating_cooldown_help">Default: 10. Rotating URLs share a window per account and model. With 0, the window is disabled and its attempt limit is not enforced, even when the attempt limit below is positive.</p>
               <p data-i18n="ui.state_rotating_max_attempts_help">Default: 10. Shared across rotating URLs for the same account and model. With 0, attempts are unlimited. A positive limit keeps attempts already used in the current window.</p>
               <p data-i18n="ui.state_account_cooldown_help">Default: 10. HTTP 401, 403 or 429, or unreadable OAuth credentials, pause all models and exits for that account. With 0, these failures and existing account waits do not cause a long pause.</p>
-              <p data-i18n="ui.state_guide_cooldowns">HTTP 401, 403 or 429, or unreadable OAuth credentials, can pause an account across models and exits. Defaults: a 10-minute account pause, 55 minutes for a failed static exit per bucket, and 10 rotating attempts per bucket in a 10-minute window. Under Cooldowns and retries, 0 removes each limit; a zero rotating window also disables its attempt cap. Remove cooldown and attempt limits prepares a draft with all four settings and the hourly limit at 0; save to apply it. Fresh templates still wait for renewal and collection remains serial. The next check in logs is a scheduler check, not a promise to send a request then.</p>
-              <p data-i18n="ui.state_cooldown_bounds_help">Use whole minutes from 0 to 1440 and 0 to 100 attempts. Collection still runs serially with its normal 2-second scheduling interval and request timeout. Valid templates wait until renewal; a positive hourly limit still applies. Automatic proxy removal remains independent.</p>
+              <p data-i18n="ui.state_guide_cooldowns">HTTP 401, 403 or 429, or unreadable OAuth credentials, can pause an account across models and exits. Defaults: a 10-minute account pause, 55 minutes for a failed static exit per bucket, and 10 rotating attempts per bucket in a 10-minute window. Under Cooldowns and retries, 0 removes each limit; a zero rotating window also disables its attempt cap. Remove cooldown and attempt limits prepares a draft with all four settings and the hourly limit at 0; save to apply it. Fresh templates still wait for renewal, and each account still probes one bucket at a time. The next check in logs is a scheduler check, not a promise to send a request then.</p>
+              <p data-i18n="ui.state_cooldown_bounds_help">Use whole minutes from 0 to 1440 and 0 to 100 attempts. Each account still probes one bucket at a time, with its normal 2-second scheduling interval and request timeout. Valid templates wait until renewal; a positive hourly limit still applies. Automatic proxy removal remains independent.</p>
               <p data-i18n="ui.state_remove_limits_help">Remove cooldown and attempt limits fills these four settings and the hourly limit with 0 in your draft. Save all settings to apply it; this does not start collection or change proxy lists and automatic removal options.</p>
               <p data-i18n="ui.state_cooldown_save_help">After saving, zero settings bypass the corresponding existing failure waits on the next collector heartbeat. Positive durations preserve existing deadlines; positive attempt limits preserve the count already used. Clear cooldowns can reset those waits explicitly. A stopped collector stays stopped.</p>
             </details>
@@ -4403,6 +4413,7 @@
             epoch: "",
             sequence: 0
           };
+          turnStateJournal = { ...turnStateJournal, value: null, error: "", command: false };
           adminUIState = { ...emptyAuthQuotaState(), keySubmissions: new Set(), groupSubmissions: new Set(), selectedKeys: new Set() };
           expandedPluginLogIDs.clear();
           resourceGroups.admin.configuration.syncErrors = [];
@@ -11189,6 +11200,8 @@
         "renew-before",
         "cookie-ttl",
         "cookie-refresh",
+        "cookie-retry",
+        "cookie-refresh-all",
         "verify-completion",
         "hourly-limit",
         "static-cooldown",
@@ -11270,22 +11283,22 @@
               ? m("ui.probe_next_bucket", { seconds: Math.max(0, Math.ceil((Date.parse(runner.next_check_at) - Date.now()) / 1000)) })
               : ""
         );
-        const progress = resources.admin.turnState.value?.probe_progress;
-        if (runner?.in_flight && progress?.active && progress.result) {
-          const result = progress.result;
-          setText(
-            $("turn-state-probe-status"),
-            m("ui.turn_state_live_probe", {
-              account:
-                resources.admin.turnState.value.probe_accounts.find((account) => account.account === result.account)?.label ||
-                result.account ||
-                "",
-              model: result.model || "",
-              index: result.proxy_index || 1,
-              total: result.proxy_total || 1,
-              proxy: turnStateProxyDisplay(result.exit),
-              attempt: result.proxy_pool === "rotating" ? turnStateProbeAttempt(result) : ""
-            })
+        const probes = turnStateProbesInFlight(resources.admin.turnState.value?.probe_progress);
+        if (runner?.in_flight && probes.length) {
+          const accounts = resources.admin.turnState.value.probe_accounts;
+          $("turn-state-probe-status").replaceChildren(
+            ...probes.map((result) =>
+              el("div", {
+                text: m("ui.turn_state_live_probe", {
+                  account: accounts.find((account) => account.account === result.account)?.label || result.account || "",
+                  model: result.model || "",
+                  index: result.proxy_index || 1,
+                  total: result.proxy_total || 1,
+                  proxy: turnStateProxyDisplay(result.exit),
+                  attempt: result.proxy_pool === "rotating" ? turnStateProbeAttempt(result) : ""
+                })
+              })
+            )
           );
         }
         $("turn-state-probe-stop").disabled = !runner?.enabled || turnStateRunner.command;
@@ -11412,6 +11425,12 @@
           JSON.stringify(turnStateProxyLines($("turn-state-" + TURN_STATE_POOLS[pool]).value)) !==
             JSON.stringify(turnStateProxyLines(turnStatePoolState().baseline[pool]))
         );
+      }
+      // Every probe in flight, oldest first. Servers without per-account lanes
+      // report only the most recently started one.
+      function turnStateProbesInFlight(progress) {
+        const results = Array.isArray(progress?.results) ? progress.results : progress?.active ? [progress.result] : [];
+        return results.filter((result) => result?.account);
       }
       function turnStateProbeAttempt(result) {
         const limit = result.proxy_attempt_limit ?? 10;
@@ -11560,6 +11579,9 @@
           !!adminUIState.turnStateSaving || turnStateProbe.running || turnStateProbe.inFlight || turnStateDiagnostics.running ||
           turnStateDiagnostics.inFlight;
         const buckets = new Map(templates.map((template) => [JSON.stringify([template.account, template.model]), template]));
+        const probing = new Set(
+          turnStateProbesInFlight(state.probe_progress).map((result) => JSON.stringify([result.account, result.model]))
+        );
         const ready = templates.filter(
           (template) => state.config.probe_accounts?.includes(template.account) && state.config.models?.includes(template.model)
         ).length;
@@ -11600,8 +11622,7 @@
                 const remainingMS = Date.parse(template.expires_at) - now;
                 const leadSeconds = state.renewal_lead_seconds;
                 const renewalMS = Number.isFinite(leadSeconds) && leadSeconds >= 0 ? remainingMS - leadSeconds * 1000 : null;
-                const progress = state.probe_progress;
-                const renewing = progress?.active && progress.result?.account === account && progress.result?.model === model;
+                const renewing = probing.has(JSON.stringify([account, model]));
                 // Dim buckets that business requests will not use, so their
                 // countdown is not mistaken for live injection.
                 const injects = inScope && state.config.enabled && !state.config.dry_run;
@@ -11629,6 +11650,9 @@
                         class: "small muted",
                         text: m("ui.state_cookie_refresh_due", { seconds: Math.ceil((Date.parse(template.refresh_at) - now) / 1000) })
                       })
+                    : null,
+                  template.refresh_attempts > 0
+                    ? el("div", { class: "small muted", text: m("ui.state_cookie_refresh_round", { count: template.refresh_attempts }) })
                     : null,
                   template.exit
                     ? el("div", {
@@ -11744,6 +11768,225 @@
               {},
               el("td", {}, el("strong", { text: name(event.account) }), el("div", { class: "small muted", text: event.model })),
               el("td", { "data-label": m("ui.state_observation_latest") }, eventCell(event))
+            )
+        });
+      }
+
+      // The diagnostic journal lives in plugin memory and records nothing until
+      // started. The page reads it when the tab opens and polls while recording.
+      const TURN_STATE_JOURNAL_EVENTS = [
+        "recording_started",
+        "recording_stopped",
+        "snapshot_template",
+        "snapshot_cookies",
+        "probe",
+        "cookies_updated",
+        "cookies_ignored",
+        "request",
+        "template_learned",
+        "template_cleared",
+        "template_discarded"
+      ];
+      const TURN_STATE_JOURNAL_COLUMNS = [
+        "at",
+        "event",
+        "account",
+        "account_label",
+        "model",
+        "source",
+        "action",
+        "status",
+        "length",
+        "attempt",
+        "template",
+        "issued_at",
+        "template_age_seconds",
+        "cookies",
+        "cookie_count",
+        "cookie_age_seconds",
+        "cookie_names",
+        "exit",
+        "detail"
+      ];
+      let turnStateJournal = { value: null, error: "", timer: 0, generation: 0, loading: false, command: false, stale: true };
+
+      function validateTurnStateJournal(value) {
+        if (!value || typeof value.recording !== "boolean" || !Array.isArray(value.entries))
+          throw new UIError(m("ui.invalid_server_response"));
+        return value;
+      }
+      function cancelTurnStateJournalPoll() {
+        clearTimeout(turnStateJournal.timer);
+        turnStateJournal.timer = 0;
+        turnStateJournal.loading = false;
+        turnStateJournal.generation++;
+      }
+      function scheduleTurnStateJournal() {
+        clearTimeout(turnStateJournal.timer);
+        turnStateJournal.timer = 0;
+        if (currentRole === "admin" && activeTab(false) === "turn-state" && turnStateJournal.value?.recording && !turnStateJournal.command)
+          turnStateJournal.timer = setTimeout(pollTurnStateJournal, 3000);
+      }
+      async function pollTurnStateJournal() {
+        clearTimeout(turnStateJournal.timer);
+        turnStateJournal.timer = 0;
+        if (currentRole !== "admin" || activeTab(false) !== "turn-state" || turnStateJournal.loading || turnStateJournal.command) return;
+        const owner = adminUIState, generation = turnStateJournal.generation;
+        const current = () => owner === adminUIState && generation === turnStateJournal.generation;
+        turnStateJournal.loading = true;
+        turnStateJournal.stale = false;
+        try {
+          const value = validateTurnStateJournal(await plugin("GET", "/turn-state/journal?tail=100", null, { timeoutMS: 10000 }));
+          if (current()) Object.assign(turnStateJournal, { value, error: "" });
+        } catch (error) {
+          if (!current() || error instanceof StaleRequestError) return;
+          if (error instanceof AuthError) return void (await fail(error));
+          turnStateJournal.error = error.message || String(error);
+        } finally {
+          if (current()) {
+            turnStateJournal.loading = false;
+            renderTurnStateJournal();
+            scheduleTurnStateJournal();
+          }
+        }
+      }
+      async function changeTurnStateJournal(method, body, message) {
+        if (turnStateJournal.command) return;
+        const owner = adminUIState;
+        cancelTurnStateJournalPoll();
+        turnStateJournal.command = true;
+        renderTurnStateJournal();
+        try {
+          const value = validateTurnStateJournal(await plugin(method, "/turn-state/journal", body, { command: true, timeoutMS: 15000 }));
+          if (owner !== adminUIState) return;
+          Object.assign(turnStateJournal, { value, error: "", stale: false });
+          notify(message);
+        } finally {
+          if (owner === adminUIState) {
+            turnStateJournal.command = false;
+            renderTurnStateJournal();
+            scheduleTurnStateJournal();
+          }
+        }
+      }
+      function toggleTurnStateJournal() {
+        const recording = !turnStateJournal.value?.recording;
+        return changeTurnStateJournal("PUT", { recording }, m(recording ? "ui.state_journal_started" : "ui.state_journal_stopped"));
+      }
+      async function clearTurnStateJournal() {
+        const owner = adminUIState;
+        if (turnStateJournal.command || !(await openActionDialog(m("ui.state_journal_clear_title"), m("ui.state_journal_clear_warning"))))
+          return;
+        if (owner === adminUIState) await changeTurnStateJournal("DELETE", null, m("ui.state_journal_cleared"));
+      }
+      function turnStateJournalCSV(entries) {
+        const labels = new Map((resources.admin.turnState.value?.probe_accounts || []).map((item) => [item.account, item.label]));
+        const lines = [TURN_STATE_JOURNAL_COLUMNS.map(csvCell).join(",")];
+        for (const entry of entries) {
+          const row = { ...entry, account_label: labels.get(entry.account) };
+          lines.push(TURN_STATE_JOURNAL_COLUMNS.map((column) => csvCell(row[column])).join(","));
+        }
+        return "﻿" + lines.join("\r\n") + "\r\n";
+      }
+      async function downloadTurnStateJournal() {
+        if (turnStateJournal.command) return;
+        const owner = adminUIState;
+        turnStateJournal.command = true;
+        renderTurnStateJournal();
+        try {
+          const value = validateTurnStateJournal(await plugin("GET", "/turn-state/journal?tail=0", null, { timeoutMS: 60000 }));
+          if (owner !== adminUIState) return;
+          const now = new Date(), pad = (part) => String(part).padStart(2, "0");
+          const stamp =
+            now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "-" + pad(now.getHours()) + pad(now.getMinutes()) +
+            pad(now.getSeconds());
+          downloadCSV("cpa-state-journal-" + stamp + ".csv", turnStateJournalCSV(value.entries));
+          notify(m("ui.state_journal_downloaded", { count: value.entries.length }));
+        } finally {
+          if (owner === adminUIState) {
+            turnStateJournal.command = false;
+            renderTurnStateJournal();
+            scheduleTurnStateJournal();
+          }
+        }
+      }
+      // Fingerprints, lengths and ages only; the journal never holds State or cookie values.
+      function turnStateJournalDetails(entry) {
+        const known = (prefix, value, values) => (values.includes(value) ? m(prefix + value) : value);
+        const short = (value) => value.split(",").map((item) => (item.length > 16 ? item.slice(0, 12) + "…" : item)).join(", ");
+        const parts = [];
+        if (entry.event === "probe")
+          parts.push(
+            known("ui.state_journal_source_", entry.source, ["refresh", "renewal", "collect"]),
+            turnStateProbeActionLabel(entry.action) || entry.action
+          );
+        else if (entry.event === "request")
+          parts.push(known("ui.state_journal_action_", entry.action, ["injected", "dry_run", "present", "passed", "no_template"]));
+        else if (entry.event === "snapshot_template")
+          parts.push(known("ui.turn_state_source_", entry.source, ["probe", "response", "legacy"]));
+        else parts.push(known("ui.state_journal_from_", entry.source, ["probe", "response"]), entry.action);
+        if (entry.length) parts.push(m("ui.state_journal_length", { length: entry.length }));
+        else if (["probe", "request"].includes(entry.event)) parts.push(m("ui.state_journal_no_state"));
+        if (entry.status) parts.push(m("ui.state_journal_status", { status: entry.status }));
+        if (entry.template) parts.push(m("ui.state_journal_template", { fingerprint: short(entry.template) }));
+        if (entry.issued_at)
+          parts.push(m("ui.state_journal_issued", { time: window.billingI18n.date(new Date(entry.issued_at), { timeStyle: "medium" }) }));
+        if (Number.isFinite(entry.template_age_seconds))
+          parts.push(m("ui.state_journal_template_age", { seconds: entry.template_age_seconds }));
+        if (entry.cookies) parts.push(m("ui.state_journal_cookies", { fingerprint: entry.cookies }));
+        else if (entry.event === "request") parts.push(m("ui.state_journal_no_cookies"));
+        if (entry.cookie_count) parts.push(m("ui.state_journal_cookie_count", { count: entry.cookie_count }));
+        if (Number.isFinite(entry.cookie_age_seconds)) parts.push(m("ui.state_journal_cookie_age", { seconds: entry.cookie_age_seconds }));
+        if (entry.cookie_names) parts.push(m("ui.state_journal_cookie_names", { names: entry.cookie_names.replaceAll(",", ", ") }));
+        if (entry.exit) parts.push(m("ui.state_journal_exit", { exit: turnStateProxyDisplay(entry.exit) }));
+        if (entry.attempt) parts.push(m("ui.state_journal_attempt", { attempt: entry.attempt }));
+        if (entry.detail) parts.push(entry.detail);
+        return parts.filter(Boolean).flatMap((part, index) => (index ? [DISPLAY_SEPARATOR, part] : [part]));
+      }
+      function renderTurnStateJournal() {
+        const journal = turnStateJournal.value, state = resources.admin.turnState.value, busy = turnStateJournal.command;
+        const toggle = $("turn-state-journal-toggle");
+        setText(toggle, m(journal?.recording ? "ui.state_journal_stop" : "ui.state_journal_start"));
+        toggle.disabled = busy;
+        $("turn-state-journal-download").disabled = busy || !journal?.count;
+        $("turn-state-journal-clear").disabled = busy || !journal?.count;
+        const parts = [
+          turnStateJournal.error ? m("ui.state_journal_failed", { reason: turnStateJournal.error }) : null,
+          ...(journal
+            ? [
+                journal.recording
+                  ? m("ui.state_journal_recording", { time: when(journal.since), count: journal.count })
+                  : m("ui.state_journal_idle", { count: journal.count }),
+                journal.dropped > 0 ? m("ui.state_journal_dropped", { count: journal.dropped }) : null,
+                m("ui.state_journal_memory", { limit: journal.limit || 20000 })
+              ]
+            : [])
+        ].filter(Boolean);
+        const status = $("turn-state-journal-status");
+        status.className = "small " + (turnStateJournal.error ? "warning-text" : "muted");
+        status.replaceChildren(
+          ...parts.flatMap((part, index) => (index ? [DISPLAY_SEPARATOR, part] : [part])).map(window.billingI18n.textNode)
+        );
+        const name = (account) => state?.probe_accounts.find((item) => item.account === account)?.label || account;
+        renderCollection($("turn-state-journal"), (journal?.entries || []).slice(-100).reverse(), {
+          headers: [m("ui.time"), m("ui.state_journal_account"), m("ui.state_journal_event"), m("ui.model"), m("ui.state_journal_details")],
+          empty: m(journal?.recording ? "ui.state_journal_waiting" : "ui.state_journal_empty"),
+          render: (entry) =>
+            el(
+              "tr",
+              {},
+              el("td", {}, dateTimeLines(entry.at)),
+              el("td", { "data-label": m("ui.state_journal_account"), text: entry.account ? name(entry.account) : "—" }),
+              el(
+                "td",
+                { "data-label": m("ui.state_journal_event") },
+                el("span", {
+                  class: "tag " + (["cookies_ignored", "template_cleared", "template_discarded"].includes(entry.event) ? "warn" : "plain"),
+                  text: TURN_STATE_JOURNAL_EVENTS.includes(entry.event) ? m("ui.state_journal_event_" + entry.event) : entry.event || "—"
+                })
+              ),
+              el("td", { "data-label": m("ui.model"), text: entry.model || "—" }),
+              el("td", { "data-label": m("ui.state_journal_details") }, turnStateJournalDetails(entry))
             )
         });
       }
@@ -12205,6 +12448,7 @@
             ["dry-run", config.dry_run],
             ["learn-responses", config.learn_responses],
             ["inject-cookies", config.inject_cookies],
+            ["cookie-refresh-all", config.cookie_refresh_all],
             ["breakout-retry", config.breakout_retry],
             ["berserk", config.berserk],
             ["verify-completion", config.probe_verify_completion],
@@ -12219,6 +12463,7 @@
             ["berserk-minutes", config.berserk_minutes || 1],
             ["cookie-ttl", config.cookie_ttl_seconds || 240],
             ["cookie-refresh", config.cookie_refresh_seconds ?? 30],
+            ["cookie-retry", config.cookie_retry_seconds || 300],
             ["probe-parallel", config.probe_parallel || 3],
             ["hourly-limit", config.probe_hourly_limit || 0],
             ["static-cooldown", config.probe_static_cooldown_minutes ?? 55],
@@ -12277,6 +12522,8 @@
         renderTurnStateRenewHelp();
         renderTurnStateTemplates();
         renderTurnStateObservations(state);
+        renderTurnStateJournal();
+        if (turnStateJournal.stale) void pollTurnStateJournal();
         renderTurnStateDiagnostics();
         if (!pools.loaded && !pools.loading && !pools.error && currentRole === "admin" && activeTab(false) === "turn-state")
           loadTurnStateProxies();
@@ -12427,6 +12674,7 @@
           dry_run: $("turn-state-dry-run").checked,
           learn_responses: $("turn-state-learn-responses").checked,
           inject_cookies: $("turn-state-inject-cookies").checked,
+          cookie_refresh_all: $("turn-state-cookie-refresh-all").checked,
           breakout_retry: $("turn-state-breakout-retry").checked,
           berserk: $("turn-state-berserk").checked,
           probe_verify_completion: $("turn-state-verify-completion").checked,
@@ -12442,6 +12690,7 @@
           ["berserk-minutes", "berserk_minutes"],
           ["cookie-ttl", "cookie_ttl_seconds"],
           ["cookie-refresh", "cookie_refresh_seconds"],
+          ["cookie-retry", "cookie_retry_seconds"],
           ["probe-parallel", "probe_parallel"],
           ["hourly-limit", "probe_hourly_limit"],
           ["static-cooldown", "probe_static_cooldown_minutes"],
@@ -12559,6 +12808,22 @@
         return fallback;
       }
 
+      function turnStateProbeActionLabel(action) {
+        return {
+          harvested: m("ui.fork_template_harvested"),
+          unchanged: m("ui.fork_no_new_template"),
+          degraded: m("ui.fork_degraded_state"),
+          discarded: m("ui.state_probe_discarded"),
+          cooling: m("ui.state_collection_wait_label"),
+          account_wait: m("ui.state_account_wait_label"),
+          budget_wait: m("ui.state_budget_wait_label"),
+          fresh: m("ui.fork_template_still_valid"),
+          busy: m("ui.fork_another_probe_is_running"),
+          error: m("ui.fork_probe_failed"),
+          "self-test": m("ui.state_bucket_test")
+        }[action];
+      }
+
       function appendTurnStateProbeLog(result) {
         result = Object.fromEntries(
           [
@@ -12597,19 +12862,6 @@
         result.at ||= new Date().toISOString();
         turnStateLogRows.push(result);
         turnStateLogRows = turnStateLogRows.slice(-50);
-        const labels = {
-          harvested: m("ui.fork_template_harvested"),
-          unchanged: m("ui.fork_no_new_template"),
-          degraded: m("ui.fork_degraded_state"),
-          discarded: m("ui.state_probe_discarded"),
-          cooling: m("ui.state_collection_wait_label"),
-          account_wait: m("ui.state_account_wait_label"),
-          budget_wait: m("ui.state_budget_wait_label"),
-          fresh: m("ui.fork_template_still_valid"),
-          busy: m("ui.fork_another_probe_is_running"),
-          error: m("ui.fork_probe_failed"),
-          "self-test": m("ui.state_bucket_test")
-        };
         const dispositionKey = {
           removed: "ui.state_proxy_removed",
           retained_minimum: "ui.state_proxy_retained_minimum",
@@ -12620,7 +12872,7 @@
         const nextCheck = Date.parse(result.next_check_at || "");
         const line = m("ui.turn_state_probe_line", {
           at: window.billingI18n.date(new Date(result.at), { timeStyle: "medium" }),
-          action: labels[result.action] || result.action || m("ui.fork_probe"),
+          action: turnStateProbeActionLabel(result.action) || result.action || m("ui.fork_probe"),
           model: result.model
             ? " · " +
               (resources.admin.turnState.value?.probe_accounts.find((account) => account.account === result.account)?.label ||
@@ -12673,11 +12925,14 @@
         turnStateRunner.generation++;
         stopTurnStateDiagnostics();
         clearTimeout(turnStateClockTimer);
+        cancelTurnStateJournalPoll();
+        turnStateJournal.stale = true;
       }
 
       function wakeTurnStateSession() {
         if (currentRole !== "admin" || activeTab(false) !== "turn-state") return;
         if (!turnStateRunner.loading && !turnStateRunner.command) void pollTurnStateRunner();
+        if (turnStateJournal.stale) void pollTurnStateJournal();
       }
 
       async function changeTurnStateRunner(enabled) {
@@ -15671,6 +15926,8 @@
         $("shared-time-filter").classList.toggle("hidden", !["analysis", "request-events", "errors"].includes(selected));
         $("events-export").classList.toggle("hidden", !["request-events", "errors"].includes(selected));
         if (!["analysis", "request-events", "errors"].includes(selected)) { closeSharedTimePopover(false); }
+        // Cached navigation may skip rendering, so the journal loads on entry.
+        if (selected === "turn-state" && turnStateJournal.stale) void pollTurnStateJournal();
         schedulePageTabLayout();
         revealTab(document.querySelector(`[data-tab="${selected}"]`));
       }
@@ -15835,6 +16092,9 @@
           renderTurnState();
         });
       $("turn-state-refresh").onclick = () => guard(refreshTurnState);
+      $("turn-state-journal-toggle").onclick = () => guard(toggleTurnStateJournal);
+      $("turn-state-journal-download").onclick = () => guard(downloadTurnStateJournal);
+      $("turn-state-journal-clear").onclick = () => guard(clearTurnStateJournal);
       $("turn-state-probe-start").onclick = () => guard(startTurnStateProbe);
       $("turn-state-probe-stop").onclick = () => guard(stopTurnStateProbe);
       $("turn-state-proxy-reload").onclick = () => guard(() => loadTurnStateProxies({ discard: true }));
