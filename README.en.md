@@ -288,7 +288,7 @@ If transport setup fails, State settings are not applied and the draft is retain
 | Default probe models | `gpt-6-astra` and `gpt-5.6-sol`; the exact former default list is corrected, while custom or cleared lists are preserved |
 | Template / replacement lengths | Default 292 / 312 |
 | TTL | Default 3600 seconds from the token's embedded issuance time; receiving the same token does not extend its lifetime |
-| Cookies | Upstream cookies are kept per account in memory only and refreshed by every upstream response of a selected account, including probes and 312 responses. For 240 seconds by default, requests for the selected models carry them, with or without a template. After the first listed model collects a 292, collection probes it again after 30 seconds by default to keep the cookies fresh |
+| Cookies | Upstream cookies are kept per account in memory only and refreshed by every upstream response of a selected account, including probes and 312 responses. For 240 seconds by default, requests for the selected models carry them, with or without a template. After the first listed model collects a 292, collection probes it again after 30 seconds by default to keep the cookies fresh; a refresh without a 292 keeps the template and retries on the next exit after the same interval, and never removes a proxy for a degraded state |
 
 ### First-time setup
 

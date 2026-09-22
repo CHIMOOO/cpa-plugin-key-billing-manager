@@ -143,20 +143,46 @@ func TestSuccessfulProbeSchedulesACookieRefreshForTheFirstModel(t *testing.T) {
 	if len(probes) != 3 || probes[2] != "model-a" {
 		t.Fatalf("probe order = %v", probes)
 	}
-	// A refresh that meets a dry window stops refreshing instead of retrying.
+	// A refresh that meets a dry window keeps the template and its cadence,
+	// so the probe responses keep the cookies fresh.
 	*now = now.Add(31 * time.Second)
 	value = func() string { return strings.Repeat("d", 312) }
 	if result, err := m.Probe("", "", dummyCredential); err != nil || result.Action != "degraded" {
 		t.Fatalf("dry refresh = %+v %v", result, err)
 	}
-	*now = now.Add(time.Minute)
+	*now = now.Add(10 * time.Second)
 	if result, err := m.Probe("", "", dummyCredential); err != nil || result.Action != "fresh" {
-		t.Fatalf("a failed refresh kept retrying: %+v %v", result, err)
+		t.Fatalf("a failed refresh retried before its interval: %+v %v", result, err)
 	}
-	for _, view := range m.Status().Templates {
-		if !view.RefreshAt.IsZero() {
-			t.Fatalf("%s still has a refresh scheduled", view.Model)
-		}
+	*now = now.Add(21 * time.Second)
+	if result, err := m.Probe("", "", dummyCredential); err != nil || result.Action != "degraded" || result.Model != "model-a" {
+		t.Fatalf("a failed refresh stopped refreshing: %+v %v", result, err)
+	}
+	if views := m.Status().Templates; len(views) != 2 {
+		t.Fatalf("a failed refresh dropped a template: %+v", views)
+	}
+}
+
+// A refresh that meets a degraded state never removes its proxy.
+func TestDegradedRefreshKeepsItsProxy(t *testing.T) {
+	m, now := newTestManager(t)
+	if err := m.Update([]byte(`{"cookie_refresh_seconds":30,"probe_drop_degraded_proxies":true,"probe_min_proxies":1,"probe_static_cooldown_minutes":0,"probe_proxies":["http://first.invalid:8080","http://second.invalid:8080","http://third.invalid:8080"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	value := tokenAt(*now)
+	m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
+		return ProbeResponse{Status: 200, Value: value}, nil
+	}
+	if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "harvested" {
+		t.Fatalf("harvest = %+v %v", result, err)
+	}
+	*now = now.Add(31 * time.Second)
+	value = strings.Repeat("d", 312)
+	if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "degraded" || result.ProxyDisposition == "removed" {
+		t.Fatalf("degraded refresh = %+v %v", result, err)
+	}
+	if status := m.Status(); status.ProxyCounts["static"] != 3 {
+		t.Fatalf("a degraded refresh removed a proxy: %+v", status.ProxyCounts)
 	}
 }
 

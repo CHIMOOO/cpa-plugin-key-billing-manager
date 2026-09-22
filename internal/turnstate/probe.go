@@ -675,11 +675,15 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	default:
 		result.Action, result.Reason = "error", "The response did not contain a turn-state of the configured template length"
 	}
-	// A refresh still due here was not rescheduled above: a failed refresh
-	// stops until the template's own renewal instead of retrying a dry window,
-	// and a model that is no longer first stops refreshing.
+	// A refresh still due here was not rescheduled above. A refresh that did
+	// not collect a 292 keeps its cadence on the next exit: its response still
+	// refreshed the account's cookies, and the one-hour template stays in use.
+	// A model that is no longer first stops refreshing.
 	if t, ok := next.Templates[key(c.account, c.model)]; ok && !t.RefreshAt.IsZero() && !t.RefreshAt.After(now) {
 		t.RefreshAt = time.Time{}
+		if c.refresh && refreshesCookies(next.Config, c.model) && usableWithConfig(t, next.Config, now) {
+			t.RefreshAt = now.Add(time.Duration(next.Config.CookieRefreshSeconds) * time.Second)
+		}
 		next.Templates[key(c.account, c.model)] = t
 	}
 	// Zero disables the long failure pause, never the ordinary request interval.

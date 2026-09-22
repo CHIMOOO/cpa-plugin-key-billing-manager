@@ -12,7 +12,7 @@
   "ui.state_inject_cookies_help": "所选账号的每次上游响应（包括探测和降级响应）都会刷新该账号在内存中的 Cookie。只要 Cookie 未超过有效期，所选模型的请求都会在 Cookie 请求头里带上它们，不管这次有没有注入模板；同名的客户端 Cookie 会被替换。保存时会给所选账号的认证文件加上 Cookie 转发头，因为 CLIProxyAPI 默认不会把 Cookie 转发给 Codex。",
   "ui.state_cookie_ttl": "Cookie 有效期（秒）",
   "ui.state_cookie_refresh": "采到 292 后再采间隔（秒，0 为关闭）",
-  "ui.state_cookie_refresh_help": "Cookie 比 292 模板过期得早。所选账号的每次上游响应都会刷新它的 Cookie，包括探测和降级的 312 响应。模型列表中的第一个模型采到 292 后，服务器采集会在这个间隔后再探测该桶一次，保持 Cookie 新鲜；刷新失败则停止，等模板正常续采。每次刷新都计入每小时上限。",
+  "ui.state_cookie_refresh_help": "Cookie 比 292 模板过期得早。所选账号的每次上游响应都会刷新它的 Cookie，包括探测和降级的 312 响应。模型列表中的第一个模型采到 292 后，服务器采集会在这个间隔后再探测该桶一次，保持 Cookie 新鲜。刷新没拿到 292 时保留当前模板，按同样间隔换下一个出口继续刷新；这次响应仍会刷新 Cookie，刷新遇到降级也不会自动丢弃代理。每次刷新都计入每小时上限。",
   "ui.state_cookie_jar_fresh": "Cookie {count} 个 · 剩 {seconds} 秒",
   "ui.state_cookie_jar_expired": "Cookie {count} 个 · 已过期",
   "ui.state_cookie_jar_empty": "暂无 Cookie",

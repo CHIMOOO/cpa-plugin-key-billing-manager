@@ -6,7 +6,9 @@ package turnstate
 func discardProbeProxy(state *diskState, c probeCandidate, response ProbeResponse, result *ProbeResult) bool {
 	cfg := &state.Config
 	failed := response.ProxyFailure && (response.Status == 0 || response.Status == 407)
-	if c.proxy == "" || !(cfg.ProbeDropFailedProxies && failed || cfg.ProbeDropDegradedProxies && result.Action == "degraded") {
+	// A cookie refresh meets degraded states routinely while its template is
+	// still valid, so it never removes a proxy for that.
+	if c.proxy == "" || !(cfg.ProbeDropFailedProxies && failed || cfg.ProbeDropDegradedProxies && result.Action == "degraded" && !c.refresh) {
 		return false
 	}
 	pool := &cfg.ProbeProxies
