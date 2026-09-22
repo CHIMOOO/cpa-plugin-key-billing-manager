@@ -1443,6 +1443,7 @@
   "backend.turn_state_account_paused_configured": "The upstream returned HTTP {v0}; this account is paused for {v1} minutes. Check sign-in, permissions, and the exit before retrying",
   "backend.turn_state_rate_limited_configured": "The upstream rate-limited this account; probes are paused for {v0} minutes",
   "backend.turn_state_credential_invalid_configured": "Cannot read a valid Codex OAuth credential; this account is paused for {v0} minutes. Sign in again or check the account",
+  "backend.turn_state_exit_blocked": "The upstream blocked this exit with HTTP 403 (challenge or unsupported region); the account is not paused and the next probe uses another exit",
   "backend.turn_state_account_paused": "The upstream returned HTTP {v0}; this account is paused for 10 minutes. Check sign-in, permissions, and the exit before retrying",
   "backend.turn_state_account_wait": "Pending buckets are waiting for account pauses; collection will resume automatically",
   "backend.turn_state_waiting": "Pending buckets are waiting for account pauses or exit cooldowns; collection will resume automatically",

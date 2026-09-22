@@ -110,3 +110,29 @@ func TestProbeWaitReasonsDistinguishAccountsAndExits(t *testing.T) {
 		})
 	}
 }
+
+func TestExitBlocked403MovesToAnotherExitWithoutPausingTheAccount(t *testing.T) {
+	m, now := newTestManager(t)
+	if err := m.Update([]byte(`{"probe_accounts":["account-a"],"models":["model-a"],"probe_proxies":["http://first.invalid:8080","http://second.invalid:8080"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
+		return ProbeResponse{Status: 403, ExitBlocked: true}, nil
+	}
+	started := *now
+	result, err := m.Probe("account-a", "model-a", dummyCredential)
+	if err != nil || result.Action != "error" || !strings.Contains(result.Reason, "another exit") {
+		t.Fatalf("blocked exit result = %+v %v", result, err)
+	}
+	if got := m.state.Cooldowns[accountKey("account-a")].Until; got.After(started.Add(2 * time.Second)) {
+		t.Fatalf("a blocked exit paused the account until %v", got)
+	}
+	m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
+		return ProbeResponse{Status: 200, Value: tokenAt(*now)}, nil
+	}
+	*now = started.Add(2 * time.Second)
+	result, err = m.Probe("account-a", "model-a", dummyCredential)
+	if err != nil || result.Action != "harvested" || result.Exit != "http://second.invalid:8080" {
+		t.Fatalf("the account did not continue on another exit: %+v %v", result, err)
+	}
+}

@@ -31,6 +31,9 @@ type ProbeResponse struct {
 	// CompletionFailure is a bounded, fixed diagnostic from strict active
 	// probing. An unsuccessful response body is not proof of a broken proxy.
 	CompletionFailure string
+	// ExitBlocked marks a 403 the upstream gave this exit (a challenge page or
+	// an unsupported region), not a refusal of the account's credential.
+	ExitBlocked bool
 }
 
 type ProbeResult struct {
@@ -521,6 +524,10 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	switch {
 	case failure != "":
 		result.Action, result.Reason = "error", failure
+	case response.Status == 403 && response.ExitBlocked:
+		// The exit keeps the cooldown it reserved; the account continues on the
+		// next exit instead of waiting out an account pause.
+		result.Action, result.Reason = "error", "The upstream blocked this exit with HTTP 403 (challenge or unsupported region); the account is not paused and the next probe uses another exit"
 	case response.Status == 401 || response.Status == 403:
 		// Enabled refusal pauses apply to every model and exit for the account.
 		result.ReasonMessage = messages.New("The upstream returned HTTP %d; this account is paused for %d minutes. Check sign-in, permissions, and the exit before retrying", response.Status, next.Config.ProbeAccountCooldownMinutes)

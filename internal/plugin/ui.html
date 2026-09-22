@@ -12147,8 +12147,10 @@
         renderTurnStateMaster();
         if (!state) return;
         if (adminUIState.turnStateView === undefined) {
-          showTurnStateView(viewPreference("admin", "turnStateView", "overview"), false);
+          const pending = pendingTurnStatePosition();
+          showTurnStateView(pending?.view || viewPreference("admin", "turnStateView", "overview"), false);
           $("turn-state-guide").open = !state.config.probe_accounts?.length;
+          if (pending) setTimeout(() => restoreTurnStatePosition(pending));
         }
         renderTeamStateGate();
         const config = state.config;
@@ -12428,6 +12430,7 @@
         turnStateRunner.timer = 0;
         turnStateRunner.loading = false;
         turnStateRunner.generation++;
+        const position = captureTurnStatePosition();
         owner.turnStateSaving = true;
         renderTurnState();
         try { await writeTurnState("PUT", "/turn-state", payload, m("ui.fork_turn_state_settings_saved"), true); } catch (error) {
@@ -12442,8 +12445,45 @@
               await loadTurnStateProxies();
             }
             renderTurnState();
+            restoreTurnStatePosition(position);
           }
         }
+      }
+
+      // Saving re-renders the view and reloads proxy pools, and an embedding
+      // host may reload the page. Keep the operator on the same view and height.
+      const TURN_STATE_POSITION_KEY = "cpa-team-manager.turnStatePosition";
+      function turnStateScrollers() {
+        const scrollers = [document.scrollingElement];
+        try {
+          if (window.parent !== window && window.parent.document?.scrollingElement) scrollers.push(window.parent.document.scrollingElement);
+        } catch (_) {}
+        return scrollers;
+      }
+      function captureTurnStatePosition() {
+        const position = { view: adminUIState.turnStateView, tops: turnStateScrollers().map((item) => item.scrollTop), at: Date.now() };
+        try { sessionStorage.setItem(TURN_STATE_POSITION_KEY, JSON.stringify(position)); } catch (_) {}
+        return position;
+      }
+      function restoreTurnStatePosition(position) {
+        try { sessionStorage.removeItem(TURN_STATE_POSITION_KEY); } catch (_) {}
+        if (!position) return;
+        if (position.view && position.view !== adminUIState.turnStateView) showTurnStateView(position.view, false);
+        const apply = () =>
+          turnStateScrollers().forEach((item, index) => {
+            if (Number.isFinite(position.tops[index]) && item.scrollTop !== position.tops[index]) item.scrollTop = position.tops[index];
+          });
+        apply();
+        requestAnimationFrame(apply);
+      }
+      // A position saved just before an embedding host reloaded the page.
+      function pendingTurnStatePosition() {
+        try {
+          const position = JSON.parse(sessionStorage.getItem(TURN_STATE_POSITION_KEY) || "null");
+          if (position && Array.isArray(position.tops) && Date.now() - position.at < 60000) return position;
+          sessionStorage.removeItem(TURN_STATE_POSITION_KEY);
+        } catch (_) {}
+        return null;
       }
 
       async function stopTurnStateProbe() { await changeTurnStateRunner(false); }

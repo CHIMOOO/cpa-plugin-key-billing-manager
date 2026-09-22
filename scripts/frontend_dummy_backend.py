@@ -616,8 +616,8 @@ LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 
 TURN_STATE_CONFIG = {
-    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True,
-    "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
+    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True, "inject_cookies": True,
+    "template_length": 292, "replace_length": 312, "ttl_seconds": 240, "renew_before_minutes": 2,
     "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
     "probe_verify_completion": False, "probe_hourly_limit": 0,
     "probe_static_cooldown_minutes": 55, "probe_rotating_cooldown_minutes": 10,
@@ -2133,10 +2133,12 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"status": "ok", "disabled": body["disabled"]})
         elif route == ("PATCH", "/v0/management/auth-files/fields"):
             body = json.loads(request_body or b"{}")
-            if not isinstance(body.get("name"), str) or not isinstance(body.get("websockets"), bool):
-                self.send_json(400, {"error": {"message": "Invalid transport patch"}})
+            websockets, headers = body.get("websockets"), body.get("headers")
+            if not isinstance(body.get("name"), str) or (websockets is None and headers is None) or                     (websockets is not None and not isinstance(websockets, bool)) or (headers is not None and not isinstance(headers, dict)):
+                self.send_json(400, {"error": {"message": "Invalid auth file patch"}})
                 return
-            TURN_STATE_WEBSOCKETS[body["name"]] = body["websockets"]
+            if websockets is not None:
+                TURN_STATE_WEBSOCKETS[body["name"]] = websockets
             self.send_json(200, {"status": "ok"})
         elif route == ("POST", f"{API_BASE}/turn-state/proxies/read"):
             body = json.loads(request_body or b"{}")
@@ -2326,7 +2328,7 @@ class Handler(BaseHTTPRequestHandler):
                     TURN_STATE_PROBE_STATS["harvested"] += 1
                     TURN_STATE_TEMPLATES.append({"account": accounts[0], "model": models[0], "length": 292,
                                                  "issued_at": iso(now), "expires_at": iso(now + timedelta(seconds=TURN_STATE_CONFIG["ttl_seconds"])),
-                                                 "source": "probe", "exit": result["exit"], "harvested_at": iso(now)})
+                                                 "source": "probe", "exit": result["exit"], "harvested_at": iso(now), "cookies": 2})
                     TURN_STATE_COUNTERS["learned"] += 1
                 TURN_STATE_PROGRESS.clear()
             TURN_STATE_LAST.update(result)

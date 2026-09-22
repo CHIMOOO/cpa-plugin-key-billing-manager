@@ -1443,6 +1443,7 @@
   "backend.turn_state_account_paused_configured": "上游返回 HTTP {v0}；暂停该账号 {v1} 分钟，重试前请检查登录、权限和出口",
   "backend.turn_state_rate_limited_configured": "账号受到上游限流；暂停该账号 {v0} 分钟",
   "backend.turn_state_credential_invalid_configured": "无法读取有效的 Codex OAuth 凭证；暂停该账号 {v0} 分钟，请重新登录或检查账号",
+  "backend.turn_state_exit_blocked": "上游以 HTTP 403 拦截了这个出口（人机验证或不支持的地区）；账号不暂停，下一次探测换用其他出口",
   "backend.turn_state_account_paused": "上游返回 HTTP {v0}；暂停该账号 10 分钟，重试前请检查登录、权限和出口",
   "backend.turn_state_account_wait": "待采集桶因账号暂停而等待，采集将自动恢复",
   "backend.turn_state_waiting": "待采集桶因账号暂停或出口冷却而等待，采集将自动恢复",

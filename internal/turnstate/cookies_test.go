@@ -1,7 +1,9 @@
 package turnstate
 
 import (
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -42,5 +44,24 @@ func TestMigrateDefaultsMovesOnlyTheOldLifetimeOnce(t *testing.T) {
 	}
 	if err := validateConfig(&state.Config); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestExitBlockedRecognizesChallengesAndRegions(t *testing.T) {
+	cases := []struct {
+		header http.Header
+		body   string
+		want   bool
+	}{
+		{http.Header{"Cf-Mitigated": {"challenge"}}, "", true},
+		{http.Header{"Content-Type": {"text/html; charset=UTF-8"}}, "<html>", true},
+		{http.Header{"Content-Type": {"application/json"}}, `{"error":{"code":"unsupported_country_region_territory"}}`, true},
+		{http.Header{"Content-Type": {"application/json"}}, `{"error":{"code":"account_deactivated"}}`, false},
+	}
+	for _, c := range cases {
+		response := &http.Response{StatusCode: 403, Header: c.header, Body: io.NopCloser(strings.NewReader(c.body))}
+		if got := exitBlocked(response); got != c.want {
+			t.Fatalf("exitBlocked(%v, %q) = %v", c.header, c.body, got)
+		}
 	}
 }

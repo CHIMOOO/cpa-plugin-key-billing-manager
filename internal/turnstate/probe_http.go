@@ -149,5 +149,22 @@ func doHTTPProbe(client *http.Client, endpoint string, credential Credential, mo
 	if credential.ProbeVerifyCompletion && response.StatusCode == http.StatusOK {
 		result.CompletionFailure = verifyProbeCompletion(response)
 	}
+	if response.StatusCode == http.StatusForbidden {
+		result.ExitBlocked = exitBlocked(response)
+	}
 	return result, nil
+}
+
+// exitBlocked reads at most 4 KiB of a 403 to tell an exit-level block (a
+// Cloudflare challenge page or an unsupported country) from an account refusal.
+func exitBlocked(response *http.Response) bool {
+	if response.Header.Get("Cf-Mitigated") != "" {
+		return true
+	}
+	if kind := strings.ToLower(response.Header.Get("Content-Type")); strings.HasPrefix(kind, "text/html") {
+		return true
+	}
+	body, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+	text := strings.ToLower(string(body))
+	return strings.Contains(text, "unsupported_country") || strings.Contains(text, "country, region, or territory not supported")
 }

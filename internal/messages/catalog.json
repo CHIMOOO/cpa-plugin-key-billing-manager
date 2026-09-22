@@ -1366,6 +1366,10 @@
     "key": "backend.turn_state_account_paused_configured",
     "formats": ["%d", "%d"]
   },
+  "The upstream blocked this exit with HTTP 403 (challenge or unsupported region); the account is not paused and the next probe uses another exit": {
+    "key": "backend.turn_state_exit_blocked",
+    "formats": []
+  },
   "The upstream rate-limited this account; probes are paused for %d minutes": {
     "key": "backend.turn_state_rate_limited_configured",
     "formats": ["%d"]
