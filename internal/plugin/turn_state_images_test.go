@@ -65,6 +65,7 @@ func TestImageEndpointsDoNotRequireChatState(t *testing.T) {
 	for _, path := range []string{"", "/v1/responses", "/v1/responses/compact", "/v1/chat/completions", "/images/generations", "/v1/images/unknown", "/v1/images/generations/"} {
 		t.Run("protected-"+path, func(t *testing.T) {
 			req := imageTestRequest("not-image", path)
+			req.Model = "dummy-chat-model"
 			req.Body = []byte(`{"tools":[{"type":"image_generation"}]}`)
 			result := imageTestIntercept(t, app, MethodRequestInterceptAfter, req)
 			if !result.Terminate || !strings.Contains(string(result.ResponseBody), "turn_state_required") {
@@ -94,6 +95,7 @@ func TestImageStateExemptionKeepsCredentialRoutingAndDisabledFiltering(t *testin
 		t.Fatalf("State exemption expanded the credential pool: %+v", picked)
 	}
 	scheduling.Options.Metadata[MetadataRequestPath] = "/v1/responses"
+	scheduling.Model = "dummy-chat-model"
 	raw, err = app.HandleMethod(MethodSchedulerPick, mustMarshal(t, scheduling))
 	if err != nil {
 		t.Fatal(err)

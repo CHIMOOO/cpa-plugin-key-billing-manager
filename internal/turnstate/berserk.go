@@ -1,6 +1,9 @@
 package turnstate
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // BerserkConcurrency is the most probes berserk mode runs at the same time.
 const BerserkConcurrency = 10
@@ -44,12 +47,29 @@ func (m *Manager) inScopeLocked(account, model string) bool {
 	if !contains(m.state.Config.ProbeAccounts, account) {
 		return false
 	}
+	want := scopeModel(model)
 	for _, candidate := range m.state.Config.Models {
-		if ModelName(candidate) == model {
+		if strings.EqualFold(scopeModel(candidate), want) {
 			return true
 		}
 	}
 	return false
+}
+
+// scopeModel is the model a selected Codex account serves upstream for this
+// name. CPA treats any trailing "(...)" as a thinking suffix, strips an auth
+// prefix and matches names regardless of case, so scope decisions do too:
+// an odd spelling of a selected model must never skip State. Template keys
+// stay exact, so such a spelling finds no template and fails closed.
+func scopeModel(model string) string {
+	model = strings.TrimSpace(model)
+	if start := strings.LastIndexByte(model, '('); start > 0 && strings.HasSuffix(model, ")") {
+		model = strings.TrimSpace(model[:start])
+	}
+	if slash := strings.LastIndexByte(model, '/'); slash >= 0 {
+		model = model[slash+1:]
+	}
+	return model
 }
 
 // BreakoutReady reports whether a request whose API key groups have no usable

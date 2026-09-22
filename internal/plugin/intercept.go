@@ -181,7 +181,7 @@ func (a *App) interceptAfterAuth(raw []byte) ([]byte, error) {
 	}
 	if !response.Terminate && a != nil && a.turnState.Active() && a.store != nil && a.store.Enabled() {
 		account := metadataString(req.Metadata, MetadataSelectedAuth)
-		if !isTurnStateImageRequest(req.Metadata) && metadataString(req.Metadata, MetadataSource) != SourcePluginHostModelCallback && a.turnStateGate() && a.turnState.AccountProtected(account) {
+		if !isTurnStateImageRequest(req.Metadata) && metadataString(req.Metadata, MetadataSource) != SourcePluginHostModelCallback && a.turnStateGate() && a.turnState.Protects(account, req.Model) {
 			var reason string
 			response.Headers, response.ClearHeaders, reason = a.turnState.BeforeRequired(req.RequestID, account, req.Model, req.Headers)
 			if reason != "" {

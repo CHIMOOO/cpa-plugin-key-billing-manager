@@ -34,6 +34,8 @@ type Config struct {
 	DryRun                       bool     `json:"dry_run"`
 	LearnResponses               bool     `json:"learn_responses"`
 	InjectCookies                bool     `json:"inject_cookies"`
+	CookieTTLSeconds             int      `json:"cookie_ttl_seconds"`
+	CookieRefreshSeconds         int      `json:"cookie_refresh_seconds"`
 	BreakoutRetry                bool     `json:"breakout_retry"`
 	ProbeParallel                int      `json:"probe_parallel"`
 	Berserk                      bool     `json:"berserk"`
@@ -58,7 +60,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, ProbeParallel: 3, BerserkMinutes: 1, TemplateLength: 292,
+	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, CookieTTLSeconds: 240, CookieRefreshSeconds: 30, ProbeParallel: 3, BerserkMinutes: 1, TemplateLength: 292,
 		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
 		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10,
 		ProbeStaticCooldownMinutes: 55, ProbeRotatingCooldownMinutes: 10,
@@ -73,9 +75,12 @@ type Template struct {
 	Source      string    `json:"source,omitempty"`
 	Exit        string    `json:"exit,omitempty"`
 	HarvestedAt time.Time `json:"harvested_at,omitzero"`
-	// Cookies holds the name=value pairs the harvesting response set. They are
-	// sent with the template so later turns look like the same upstream session.
+	// Cookies is only read from v0.1.6 to v0.1.9 files and cleared on load.
+	// Cookies now live in the per-account jar, in memory.
 	Cookies string `json:"cookies,omitempty"`
+	// RefreshAt schedules the next probe of the first model's bucket shortly
+	// after a successful one, which keeps the account's cookies fresh.
+	RefreshAt time.Time `json:"refresh_at,omitzero"`
 	// ExitKey identifies the exit that harvested this template, so renewal
 	// tries the same exit first. It is a hash and never holds the proxy URL.
 	ExitKey string `json:"exit_key,omitempty"`
@@ -92,7 +97,7 @@ type TemplateView struct {
 	Source           string    `json:"source,omitempty"`
 	Exit             string    `json:"exit,omitempty"`
 	HarvestedAt      time.Time `json:"harvested_at,omitzero"`
-	Cookies          int       `json:"cookies,omitempty"`
+	RefreshAt        time.Time `json:"refresh_at,omitzero"`
 }
 
 type Decision struct {
@@ -111,6 +116,7 @@ type Counters struct {
 	Substituted uint64    `json:"substituted"`
 	Inserted    uint64    `json:"inserted"`
 	Skipped     uint64    `json:"skipped"`
+	Cookies     uint64    `json:"cookies"`
 	DryRun      uint64    `json:"dry_run"`
 	Errors      uint64    `json:"errors"`
 	Since       time.Time `json:"since"`
@@ -132,6 +138,7 @@ type Status struct {
 	PendingLearnedCount int               `json:"pending_learned_count"`
 	PersistenceError    string            `json:"persistence_error,omitempty"`
 	Observations        ObservationStatus `json:"observations"`
+	CookieJars          []CookieJarView   `json:"cookie_jars"`
 }
 
 type pending struct {
@@ -170,6 +177,7 @@ type Manager struct {
 	probeMu           sync.RWMutex // Probes share it; configuration writers take it exclusively.
 	probing           int
 	probingBuckets    map[string]int // Buckets with a probe in flight.
+	cookies           map[string]*accountCookies
 	writerMu          sync.Mutex
 	path              string
 	state             diskState
@@ -286,6 +294,12 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 				return err
 			}
 		}
+		for k, t := range state.Templates {
+			if t.Cookies != "" {
+				t.Cookies = ""
+				state.Templates[k] = t
+			}
+		}
 		if migrated {
 			rescheduleRenewals(&state)
 		}
@@ -305,6 +319,7 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 		return err
 	}
 	m.path, m.state = path, state
+	m.cookies = nil
 	m.suspended.Store(state.Config.Suspended)
 	m.basePath, m.baseDigest = path, base
 	m.dirtyTemplates = map[string]Template{}
@@ -337,6 +352,12 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.RenewBeforeMinutes < 0 || cfg.RenewBeforeMinutes > 59 || cfg.RenewBeforeMinutes*60 >= cfg.TTLSeconds {
 		return messages.Errorf("Renewal lead must be 0 (automatic) or 1–59 minutes and shorter than the template lifetime")
+	}
+	if cfg.CookieTTLSeconds < 30 || cfg.CookieTTLSeconds > 3600 {
+		return messages.Errorf("Cookie lifetime must be between 30 and 3600 seconds")
+	}
+	if cfg.CookieRefreshSeconds < 0 || cfg.CookieRefreshSeconds > 3600 {
+		return messages.Errorf("Cookie refresh interval must be 0 (off) or between 1 and 3600 seconds")
 	}
 	if cfg.ProbeParallel < 1 || cfg.ProbeParallel > BerserkConcurrency {
 		return messages.Errorf("Concurrent probes must be between 1 and 10")
@@ -558,7 +579,7 @@ func (m *Manager) Status() Status {
 		expiresAt := t.IssuedAt.Add(time.Duration(cfg.TTLSeconds) * time.Second)
 		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt, Fingerprint: templateFingerprint(t.Value),
 			ExpiresAt: expiresAt, Length: len(t.Value), RemainingSeconds: int64(expiresAt.Sub(now) / time.Second),
-			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt, Cookies: cookieCount(t.Cookies)})
+			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt, RefreshAt: bucketRefreshAt(t, cfg)})
 	}
 	sort.Slice(rows, func(i, j int) bool { return key(rows[i].Account, rows[i].Model) < key(rows[j].Account, rows[j].Model) })
 	progress := ProbeProgress{}
@@ -570,7 +591,7 @@ func (m *Manager) Status() Status {
 		ProxyConfigRevision: m.configRevisionTokenLocked(),
 		ServerTime:          now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
 		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress,
-		ProbeBudget: probeBudget(m.state, now), Observations: m.observationStatusLocked(now)}
+		ProbeBudget: probeBudget(m.state, now), Observations: m.observationStatusLocked(now), CookieJars: m.cookieJarsLocked(now)}
 }
 
 func maskSavedExit(exit string) string {
@@ -702,6 +723,20 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 	if requestID != "" && len(m.pending) < 4096 {
 		m.pending[requestID] = pending{Account: account, Model: model, At: now, Epoch: m.templateEpoch}
 	}
+	updated, clear := m.templateHeadersLocked(requestID, account, model, headers, now)
+	// Fresh cookies ride on every selected request, with or without a template.
+	if cookies := m.injectCookiesLocked(account, model, headers, now); cookies != "" {
+		if updated == nil {
+			updated = http.Header{}
+		}
+		updated.Set("Cookie", cookies)
+		clear = append(clear, "Cookie")
+		m.counters.Cookies++
+	}
+	return updated, clear
+}
+
+func (m *Manager) templateHeadersLocked(requestID, account, model string, headers http.Header, now time.Time) (http.Header, []string) {
 	value := headerValue(headers)
 	t, ok := m.state.Templates[key(account, model)]
 	if !ok || !m.usableLocked(t, now) {
@@ -730,9 +765,6 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 		p.Wrote = true
 		m.pending[requestID] = p
 	}
-	if cookies := injectedCookies(headers, t, m.state.Config); cookies != "" {
-		return http.Header{Header: []string{t.Value}, "Cookie": []string{cookies}}, []string{Header, "Cookie"}
-	}
 	return http.Header{Header: []string{t.Value}}, []string{Header}
 }
 
@@ -743,10 +775,23 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 	defer m.mu.Unlock()
 	p, remembered := m.pending[requestID]
 	delete(m.pending, requestID)
+	now := m.now()
+	// Every response of a selected account refreshes its cookie jar, whatever
+	// the state length and even while injection is off.
+	jarAccount, jarModel := account, ModelName(model)
+	if remembered {
+		if account == "" || account == p.Account {
+			jarAccount, jarModel = p.Account, p.Model
+		} else {
+			jarAccount = ""
+		}
+	}
+	if jarAccount != "" && m.inScopeLocked(jarAccount, jarModel) {
+		m.storeCookiesLocked(jarAccount, headers, now)
+	}
 	if !m.state.Config.Enabled {
 		return nil
 	}
-	now := m.now()
 	m.pruneLocked(now)
 	if !remembered || now.Sub(p.At) > 15*time.Minute || p.Epoch < m.allTemplateEpoch || p.Epoch < m.clearedTemplates[key(p.Account, p.Model)] {
 		if headerValue(headers) != "" && (remembered || account == "" || m.inScopeLocked(account, ModelName(model))) {
@@ -765,10 +810,10 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 	if value == "" || !m.state.Config.LearnResponses {
 		return nil
 	}
-	return m.learnFromLocked(account, model, value, responseCookies(headers), now, "response", "")
+	return m.learnFromLocked(account, model, value, now, "response", "")
 }
 
-func (m *Manager) learnFromLocked(account, model, value, cookies string, now time.Time, source, exit string) error {
+func (m *Manager) learnFromLocked(account, model, value string, now time.Time, source, exit string) error {
 	if !validBucket(account, model) {
 		m.recordLocked("skip", "Cannot verify the response account and upstream model", account, model, now)
 		return nil
@@ -791,8 +836,9 @@ func (m *Manager) learnFromLocked(account, model, value, cookies string, now tim
 	if exists && !timestamp.After(old.IssuedAt) {
 		return nil
 	}
+	// A learned template keeps a pending cookie refresh of the one it replaces.
 	m.state.Templates[k] = Template{Account: account, Model: model, Value: value, IssuedAt: timestamp,
-		Source: source, Exit: exit, HarvestedAt: now, Cookies: cookies}
+		Source: source, Exit: exit, HarvestedAt: now, RefreshAt: old.RefreshAt}
 	m.dirtyTemplates[k] = m.state.Templates[k]
 	m.recordLocked("harvest", "A valid response template was cached; management synchronization will persist it", account, model, now)
 	return nil

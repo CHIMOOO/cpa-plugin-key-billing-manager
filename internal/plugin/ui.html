@@ -2952,7 +2952,7 @@
             <ol class="state-guide-steps">
               <li><strong data-i18n="ui.state_guide_account_title">Choose accounts and models</strong><p data-i18n="ui.state_guide_account">Select valid Codex accounts with available quota and enter the exact upstream model IDs used by your requests. A template belongs to one account and model.</p></li>
               <li><strong data-i18n="ui.state_guide_proxy_title">Set up and test proxies</strong><p data-i18n="ui.state_guide_proxy">Put fixed exits in the static pool and URLs that change exit on each connection in the rotating pool. Test connectivity; reachable does not mean a valid State was collected.</p></li>
-              <li><strong data-i18n="ui.state_guide_injection_title">Enable actual injection</strong><p data-i18n="ui.state_guide_injection">Enable injection and turn off Observe only. Use always when your client sends no State header. Default protection blocks business traffic on selected accounts until a usable bucket is ready.</p></li>
+              <li><strong data-i18n="ui.state_guide_injection_title">Enable actual injection</strong><p data-i18n="ui.state_guide_injection">Enable injection and turn off Observe only. Use always when your client sends no State header. Default protection blocks business traffic for the selected models on selected accounts until a usable bucket is ready; other models skip State.</p></li>
               <li><strong data-i18n="ui.state_guide_verify_title">Save, collect and verify</strong><p data-i18n="ui.state_guide_verify">Install the server collector, save all settings to verify upstream HTTP/SSE, then start collection. Confirm the collector is online and inspect bucket validity and injection counters. Finally verify a complete business response; a collected header alone does not prove stability.</p></li>
             </ol>
             <details><summary data-i18n="ui.state_guide_more">Results, page refresh and automatic proxy removal</summary>
@@ -3041,9 +3041,9 @@
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
               <p data-i18n="ui.fork_replace_only_replaces_headers_with_the_specified_length_always_also_inject">replace-only replaces headers with the specified length. always also injects missing headers or those of other lengths. Both modes require an unexpired template for the same account and model; neither guarantees answer quality. Saved settings take effect immediately.</p>
               <p data-i18n="ui.state_breakout_retry_help">Off by default. When a request has no usable account left in its API key's groups (for example after CPA retries a failure), it may continue on another selected account that holds a valid template for the same model. Requires State injection and CPA request retries; the key's model permissions still apply.</p>
-              <p data-i18n="ui.state_inject_cookies_help">Collection and learning also keep the cookies the upstream set with each template. Injecting a template sends them in the Cookie header too, replacing client cookies of the same name. Saving adds a Cookie forwarding header to the selected accounts' auth files, because CLIProxyAPI does not otherwise pass Cookie to Codex.</p>
+              <p data-i18n="ui.state_inject_cookies_help">Every upstream response of a selected account, including probes and degraded responses, refreshes that account's cookies in memory. While they are younger than the cookie lifetime, requests for the selected models carry them in the Cookie header, with or without a template, replacing client cookies of the same name. Saving adds a Cookie forwarding header to the selected accounts' auth files, because CLIProxyAPI does not otherwise pass Cookie to Codex.</p>
               <p data-i18n="ui.state_force_astra_help">Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.</p>
-              <p data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected collection account needs a usable template for its requested model. Disabled injection, observation mode or a replace-only skip blocks that attempt. This switch is saved immediately.</p>
+              <p data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected account for a selected model needs a usable template for that model. Disabled injection, observation mode or a replace-only skip blocks that attempt. Other models on the same account skip State. This switch is saved immediately.</p>
               <p data-i18n="ui.state_image_isolation_help">CPA image generation and edit endpoints do not require or learn conversational State. Group permissions, quotas and concurrency still apply. Image model support, uploads and timeouts are provided by CPA and the upstream.</p>
               <p id="turn-state-host-requirement" data-i18n="ui.fork_http_sse_injection_requires_cliproxyapi_v7_3_4_or_a_version_that_forwards">HTTP / SSE injection requires CLIProxyAPI v7.3.4 or a version that forwards Turn State request headers. Older versions may report injection without forwarding it upstream. Reused WebSocket connections carry headers only at a new handshake.</p>
             </details>
@@ -3051,8 +3051,10 @@
             <div class="card">
               <h3 data-i18n="ui.state_section_renewal">Renewal and limits</h3>
               <div class="turn-state-fields">
-                <label class="field"><span data-i18n="ui.fork_template_lifetime_seconds">Template lifetime (seconds)</span><input id="turn-state-ttl" type="number" min="60" max="3600" step="1" disabled /></label>
+                <label class="field"><span data-i18n="ui.fork_template_lifetime_seconds">292 template lifetime (seconds)</span><input id="turn-state-ttl" type="number" min="60" max="3600" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.turn_state_renew_before">Renew before expiry (minutes)</span><input id="turn-state-renew-before" type="number" min="0" max="59" step="1" disabled /><span id="turn-state-renew-help" class="small muted"></span></label>
+                <label class="field"><span data-i18n="ui.state_cookie_ttl">Cookie lifetime (seconds)</span><input id="turn-state-cookie-ttl" type="number" min="30" max="3600" step="1" disabled /></label>
+                <label class="field"><span data-i18n="ui.state_cookie_refresh">Refresh after collecting a 292 (seconds, 0 = off)</span><input id="turn-state-cookie-refresh" type="number" min="0" max="3600" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_hourly_limit">Hourly probe limit (0 = unlimited)</span><input id="turn-state-hourly-limit" type="number" min="0" max="10000" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_probe_parallel">Concurrent probes</span><input id="turn-state-probe-parallel" type="number" min="1" max="10" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_berserk_minutes">Berserk in the last (minutes)</span><input id="turn-state-berserk-minutes" type="number" min="1" max="59" step="1" disabled /></label>
@@ -3060,6 +3062,7 @@
               <p id="turn-state-probe-budget" class="small" role="status"></p>
               <div class="state-toggle-list"><label class="toggle-filter"><input id="turn-state-verify-completion" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_verify_completion">Verify completed probe responses</span></label><label class="toggle-filter"><input id="turn-state-berserk" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_berserk">Berserk renewal</span></label></div>
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
+              <p data-i18n="ui.state_cookie_refresh_help">Cookies expire long before the 292 template. Every upstream response of a selected account refreshes its cookies, including probes and degraded 312 responses. After the first model in the list collects a 292, server collection probes that bucket again after this interval so the cookies stay fresh; a refresh that fails stops until the template's normal renewal. Each refresh counts toward the hourly limit.</p>
               <p data-i18n="ui.state_berserk_help">Off by default. When a selected template enters its last minutes without a renewal, server collection runs up to 10 probes at once, each on its own exit, until one succeeds. Each probe counts toward the hourly limit and the exit and account cooldowns.</p>
               <p data-i18n="ui.state_hourly_limit_help">A rolling hour shared by all accounts, models, pools and manual probes. Attempts are reserved before sending; failures after reservation remain counted. Saving, restarting or clearing templates does not reset it. When exhausted, collection waits while valid templates remain usable. A small limit can delay renewal.</p>
               <p data-i18n="ui.state_verify_completion_help">Optional and off by default. Active probes must confirm a completed SSE or JSON response within 25 seconds and 1 MiB of decoded data. Failure keeps the old valid template. This may take longer and consume more output; it does not measure answer quality.</p>
@@ -11184,6 +11187,8 @@
         "inject-mode",
         "ttl",
         "renew-before",
+        "cookie-ttl",
+        "cookie-refresh",
         "verify-completion",
         "hourly-limit",
         "static-cooldown",
@@ -11431,7 +11436,7 @@
         return new Intl.NumberFormat(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Math.max(0, value));
       }
       function renderTurnStateRenewHelp() {
-        const ttl = Number($("turn-state-ttl").value) || 240;
+        const ttl = Number($("turn-state-ttl").value) || 3600;
         const lead = Number($("turn-state-renew-before").value) || 0;
         setText(
           $("turn-state-renew-help"),
@@ -11528,6 +11533,17 @@
         node.className = "small " + (budget.exhausted ? "warning-text" : "muted");
       }
 
+      // The account's cookie jar, which every selected request carries while fresh.
+      function turnStateCookieJar(state, account, now) {
+        if (!state.config.probe_accounts?.includes(account) || !state.config.inject_cookies) return null;
+        const jar = (state.cookie_jars || []).find((item) => item.account === account);
+        if (!jar) return el("div", { class: "small muted", text: m("ui.state_cookie_jar_empty") });
+        const seconds = Math.floor((Date.parse(jar.expires_at) - now) / 1000);
+        return seconds >= 0
+          ? el("div", { class: "small muted", text: m("ui.state_cookie_jar_fresh", { count: jar.count, seconds }) })
+          : el("div", { class: "small warning-text", text: m("ui.state_cookie_jar_expired", { count: jar.count }) });
+      }
+
       function renderTurnStateTemplates() {
         renderTurnStateProbeBudget();
         adminUIState.turnStateOpenBuckets = new Set(
@@ -11561,7 +11577,12 @@
             el(
               "tr",
               {},
-              el("td", {}, state.probe_accounts.find((item) => item.account === account)?.label || account),
+              el(
+                "td",
+                {},
+                state.probe_accounts.find((item) => item.account === account)?.label || account,
+                turnStateCookieJar(state, account, now)
+              ),
               ...models.map((model) => {
                 const template = buckets.get(JSON.stringify([account, model]));
                 const inScope = state.config.probe_accounts?.includes(account) && state.config.models?.includes(model);
@@ -11603,8 +11624,11 @@
                         })
                       : null,
                   el("div", { class: "small muted", text: m("ui.turn_state_template_detail", { length: template.length, source }) }),
-                  template.cookies
-                    ? el("div", { class: "small muted", text: m("ui.state_bucket_cookies", { count: template.cookies }) })
+                  inScope && Date.parse(template.refresh_at) > now
+                    ? el("div", {
+                        class: "small muted",
+                        text: m("ui.state_cookie_refresh_due", { seconds: Math.ceil((Date.parse(template.refresh_at) - now) / 1000) })
+                      })
                     : null,
                   template.exit
                     ? el("div", {
@@ -12193,6 +12217,8 @@
             ["ttl", config.ttl_seconds],
             ["renew-before", config.renew_before_minutes || 0],
             ["berserk-minutes", config.berserk_minutes || 1],
+            ["cookie-ttl", config.cookie_ttl_seconds || 240],
+            ["cookie-refresh", config.cookie_refresh_seconds ?? 30],
             ["probe-parallel", config.probe_parallel || 3],
             ["hourly-limit", config.probe_hourly_limit || 0],
             ["static-cooldown", config.probe_static_cooldown_minutes ?? 55],
@@ -12414,6 +12440,8 @@
           ["ttl", "ttl_seconds"],
           ["renew-before", "renew_before_minutes"],
           ["berserk-minutes", "berserk_minutes"],
+          ["cookie-ttl", "cookie_ttl_seconds"],
+          ["cookie-refresh", "cookie_refresh_seconds"],
           ["probe-parallel", "probe_parallel"],
           ["hourly-limit", "probe_hourly_limit"],
           ["static-cooldown", "probe_static_cooldown_minutes"],

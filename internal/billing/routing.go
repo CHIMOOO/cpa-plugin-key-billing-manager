@@ -676,10 +676,11 @@ func resolveRoutingState(state *State, key *KeyState) RoutingDecision {
 			constraint.DeniedCredentialIDs = append(constraint.DeniedCredentialIDs, route.Rule.DeniedCredentialIDs...)
 			constraint.DeniedCredentialProviders = append(constraint.DeniedCredentialProviders, route.Rule.DeniedCredentialProviders...)
 		}
-		// An untouched key inherits its groups. An explicitly configured direct
-		// rule remains a constraint even after its credential allowlist is
-		// emptied; model-only and deny-only edits must not restore access.
-		if key.RouteBindings.Configured || len(constraint.CredentialIDs) > 0 || len(constraint.CredentialProviders) > 0 {
+		// An untouched or cleared key inherits its groups: Clear promises that
+		// only group grants remain. Any other configured direct rule stays a
+		// constraint; model-only and deny-only edits must not restore access.
+		cleared := len(key.RouteBindings.RouteIDs) == 0 && key.RouteBindings.RouteRule.empty()
+		if key.RouteBindings.Configured && !cleared || len(constraint.CredentialIDs) > 0 || len(constraint.CredentialProviders) > 0 {
 			d.CredentialConstraint = &constraint
 		}
 		if len(constraint.Models) > 0 {

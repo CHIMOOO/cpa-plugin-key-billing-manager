@@ -21,7 +21,7 @@ func newTestManager(t *testing.T) (*Manager, *time.Time) {
 	if err := m.Configure(filepath.Join(t.TempDir(), "billing.db")); err != nil {
 		t.Fatal(err)
 	}
-	if err := m.Update([]byte(`{"enabled":true,"models":["model-a"],"probe_accounts":["account-a"]}`)); err != nil {
+	if err := m.Update([]byte(`{"enabled":true,"models":["model-a"],"probe_accounts":["account-a"],"cookie_refresh_seconds":0}`)); err != nil {
 		t.Fatal(err)
 	}
 	return m, &now

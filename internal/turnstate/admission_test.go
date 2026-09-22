@@ -7,7 +7,7 @@ import (
 
 func TestProtectedAdmissionRechecksExpiryAfterScheduler(t *testing.T) {
 	m, now := newTestManager(t)
-	if err := m.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["account-a"]}`)); err != nil {
+	if err := m.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["account-a"],"models":["model"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	m.mu.Lock()
@@ -27,7 +27,7 @@ func TestProtectedAdmissionRechecksExpiryAfterScheduler(t *testing.T) {
 
 func TestProtectedAdmissionUsesOneInstantForValidationAndInjection(t *testing.T) {
 	m, now := newTestManager(t)
-	if err := m.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["account-a"]}`)); err != nil {
+	if err := m.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["account-a"],"models":["model"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	token := tokenAt(*now)
@@ -44,5 +44,33 @@ func TestProtectedAdmissionUsesOneInstantForValidationAndInjection(t *testing.T)
 	headers, _, reason := m.BeforeRequired("request", "account-a", "model", nil)
 	if reason != "" || headers.Get(Header) != token {
 		t.Fatal("validation and injection used different clock instants", reason, calls)
+	}
+}
+
+func TestProtectionCoversOnlySelectedAccountsSelectedModels(t *testing.T) {
+	m, _ := newTestManager(t)
+	if err := m.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["account-a"],"models":["model"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"model", "model(high)", "", "model(x)", "model()", "model( high )", "MODEL", "team/model"} {
+		if !m.Protects("account-a", model) {
+			t.Fatalf("%q lost protection", model)
+		}
+	}
+	// Odd spellings find no template, so they fail closed.
+	if m.BusinessReady("account-a", "model(x)") {
+		t.Fatal("an odd spelling passed the scheduler gate")
+	}
+	if m.Protects("account-a", "other-model") || m.Protects("account-b", "model") {
+		t.Fatal("request outside the saved scope was protected")
+	}
+	if m.BusinessReady("account-a", "model") || !m.BusinessReady("account-a", "other-model") {
+		t.Fatal("scheduler gate ignored the model scope")
+	}
+	if headers, _, reason := m.BeforeRequired("scoped", "account-a", "model", nil); reason == "" || headers != nil {
+		t.Fatal("in-scope model without a template was allowed")
+	}
+	if headers, _, reason := m.BeforeRequired("unscoped", "account-a", "other-model", nil); reason != "" || headers != nil {
+		t.Fatal("out-of-scope model went through State", reason)
 	}
 }

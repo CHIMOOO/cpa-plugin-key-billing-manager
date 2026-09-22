@@ -73,7 +73,14 @@ func TestAccountConcurrencyParallelLimitIsAtomic(t *testing.T) {
 func TestProtectedStateBlocksMissingModelsConfigurationAndFallback(t *testing.T) {
 	a := newConfiguredApp(t)
 	a.hostSchema.Store(6)
-	if err := a.turnState.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["dummy-a","dummy-b"],"models":["unrelated-probe-model"]}`)); err != nil {
+	if err := a.turnState.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["dummy-a","dummy-b"],"models":["model","other-model"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	// Models outside the saved scope skip State even on a selected account.
+	if got := turnStateAfterAuth(t, a, "unscoped", "dummy-a", "unrelated-model", nil); got.Terminate || got.Headers.Get(turnstate.Header) != "" {
+		t.Fatal("out-of-scope model went through State", got)
+	}
+	if _, err := a.completeRequest(mustMarshal(t, RequestCompletion{RequestID: "unscoped"})); err != nil {
 		t.Fatal(err)
 	}
 	if got := turnStateAfterAuth(t, a, "blocked", "dummy-a", "model", nil); !got.Terminate || !strings.Contains(string(got.ResponseBody), "turn_state_required") {
@@ -143,28 +150,47 @@ func TestAccountUsageUsesExactIndexAndPersistsFailure(t *testing.T) {
 
 func TestProtectedStateRejectsUnknownHostsAndLongLivedSessions(t *testing.T) {
 	a := newConfiguredApp(t)
-	if err := a.turnState.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["dummy-a"]}`)); err != nil {
+	if err := a.turnState.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["dummy-a"],"models":["model"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	for _, schema := range []uint32{0, 5} {
 		a.hostSchema.Store(schema)
-		got := turnStateAfterAuth(t, a, "unsupported", "dummy-a", "model", nil)
-		if !got.Terminate || !strings.Contains(string(got.ResponseBody), "turn_state_host_unsupported") {
-			t.Fatal("unsupported host accepted", schema, got)
+		// Odd spellings of a selected model are still that model upstream.
+		for _, model := range []string{"model", "model(x)", "MODEL", "team/model"} {
+			got := turnStateAfterAuth(t, a, "unsupported", "dummy-a", model, nil)
+			if !got.Terminate || !strings.Contains(string(got.ResponseBody), "turn_state_host_unsupported") {
+				t.Fatal("unsupported host accepted", schema, model, got)
+			}
 		}
+		// Models outside the scope skip State, so the host version is irrelevant.
+		if got := turnStateAfterAuth(t, a, "unscoped-host", "dummy-a", "other-model", nil); got.Terminate {
+			t.Fatal("out-of-scope model refused on an old host", schema, got)
+		}
+		a.accountRuntime.release("unscoped-host")
 	}
 	a.hostSchema.Store(6)
-	for _, req := range []RequestInterceptRequest{
-		{RequestID: "websocket", Headers: http.Header{"Upgrade": {"websocket"}}, Metadata: map[string]any{MetadataSelectedAuth: "dummy-a"}},
-		{RequestID: "session", Metadata: map[string]any{MetadataSelectedAuth: "dummy-a", "execution_session_id": "dummy-session"}},
-	} {
-		got := a.enforceAccountRuntime(req)
-		if !got.Terminate || !strings.Contains(string(got.ResponseBody), "turn_state_websocket_unsupported") {
-			t.Fatal("long-lived session accepted", got)
+	for _, model := range []string{"", "model"} {
+		for _, req := range []RequestInterceptRequest{
+			{RequestID: "websocket", Model: model, Headers: http.Header{"Upgrade": {"websocket"}}, Metadata: map[string]any{MetadataSelectedAuth: "dummy-a"}},
+			{RequestID: "session", Model: model, Metadata: map[string]any{MetadataSelectedAuth: "dummy-a", "execution_session_id": "dummy-session"}},
+		} {
+			got := a.enforceAccountRuntime(req)
+			if !got.Terminate || !strings.Contains(string(got.ResponseBody), "turn_state_websocket_unsupported") {
+				t.Fatal("long-lived session accepted", model, got)
+			}
 		}
 	}
 	if len(a.accountRuntime.requests) != 0 {
 		t.Fatal("unsupported requests acquired slots")
+	}
+	for _, req := range []RequestInterceptRequest{
+		{RequestID: "unscoped-websocket", Model: "other-model", Headers: http.Header{"Upgrade": {"websocket"}}, Metadata: map[string]any{MetadataSelectedAuth: "dummy-a"}},
+		{RequestID: "unscoped-session", Model: "other-model", Metadata: map[string]any{MetadataSelectedAuth: "dummy-a", "execution_session_id": "dummy-session"}},
+	} {
+		if got := a.enforceAccountRuntime(req); got.Terminate {
+			t.Fatal("out-of-scope long-lived session refused", got)
+		}
+		a.accountRuntime.release(req.RequestID)
 	}
 }
 

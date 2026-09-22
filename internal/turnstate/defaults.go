@@ -1,12 +1,10 @@
 package turnstate
 
-// defaultsRevision 1 shortened the shipped template lifetime from one hour to
-// 240 seconds with renewal two minutes before expiry.
-const defaultsRevision = 1
-
-// The lifetime a new or migrated state file starts with. Package tests keep
-// the one-hour DefaultConfig their fixtures were written against.
-var shippedTTLSeconds, shippedRenewBeforeMinutes = 240, 2
+// defaultsRevision 1 (v0.1.6 to v0.1.9) shipped a 240-second template lifetime
+// renewed two minutes early. Revision 2 returns the 292 template to one hour:
+// 240 seconds is the lifetime of the upstream cookies, which now have their
+// own jar and their own setting.
+const defaultsRevision = 2
 
 // legacyConfig is the base a saved file is decoded over, so a setting the
 // file omits keeps the value its writer used rather than a newer default.
@@ -15,21 +13,20 @@ func legacyConfig() Config {
 }
 
 func shippedConfig() Config {
-	cfg := DefaultConfig()
-	cfg.TTLSeconds, cfg.RenewBeforeMinutes = shippedTTLSeconds, shippedRenewBeforeMinutes
-	return cfg
+	return DefaultConfig()
 }
 
-// migrateDefaults moves the old one-hour lifetime to the current default once.
-// A lifetime the operator saves later is kept, including a return to 3600.
+// migrateDefaults undoes the revision 1 lifetime once. A lifetime the operator
+// changed away from the revision 1 values is kept.
 func migrateDefaults(state *diskState) bool {
 	if state.Defaults >= defaultsRevision {
 		return false
 	}
+	previous := state.Defaults
 	state.Defaults = defaultsRevision
-	if state.Config.TTLSeconds != 3600 || shippedTTLSeconds == 3600 {
+	if previous != 1 || state.Config.TTLSeconds != 240 || state.Config.RenewBeforeMinutes != 2 {
 		return false
 	}
-	state.Config.TTLSeconds, state.Config.RenewBeforeMinutes = shippedTTLSeconds, shippedRenewBeforeMinutes
+	state.Config.TTLSeconds, state.Config.RenewBeforeMinutes = 3600, 0
 	return true
 }

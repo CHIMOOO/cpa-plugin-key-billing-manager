@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -23,9 +24,11 @@ type Credential struct {
 }
 
 type ProbeResponse struct {
-	Status  int
-	Value   string
-	Cookies string
+	Status int
+	Value  string
+	// SetCookies holds the raw Set-Cookie lines of any response, whatever its
+	// status or state length; they refresh the account's cookie jar.
+	SetCookies []string
 	// ProxyFailure is set only by the transport after a connection or proxy
 	// authentication failure, never by upstream account or quota responses.
 	ProxyFailure bool
@@ -439,7 +442,7 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 			template, hasTemplate := m.state.Templates[key(selectedAccount, selectedModel)]
 			hasTemplate = hasTemplate && m.usableLocked(template, now)
 			if hasTemplate {
-				renewAt := templateRenewAt(template, cfg)
+				renewAt := bucketRenewAt(template, cfg)
 				if renewAt.After(now) {
 					fresh++
 					earlier(renewAt)
@@ -576,6 +579,7 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
+	m.storeCookiesLocked(c.account, http.Header{"Set-Cookie": response.SetCookies}, now)
 	next := cloneState(m.state)
 	pruneState(&next, now)
 	result := c.progress()
@@ -626,7 +630,10 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		result.Action, result.Reason = "degraded", result.ReasonMessage.Text
 	case len(response.Value) == next.Config.TemplateLength:
 		issued, parsed := issuedAt(response.Value)
-		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now, Cookies: response.Cookies, ExitKey: c.cooldownKey}
+		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now, ExitKey: c.cooldownKey}
+		if refreshesCookies(next.Config, c.model) {
+			incoming.RefreshAt = now.Add(time.Duration(next.Config.CookieRefreshSeconds) * time.Second)
+		}
 		if !parsed || !usableWithConfig(incoming, next.Config, now) {
 			result.Action, result.Reason = "error", "The response length matches, but its Fernet timestamp is invalid, in the future, or expired"
 			break
@@ -638,6 +645,11 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		bucket := key(c.account, c.model)
 		if previous, exists := next.Templates[bucket]; exists && usableWithConfig(previous, next.Config, now) && !issued.After(previous.IssuedAt) {
 			result.Action, result.Reason = "unchanged", "The upstream returned the same or an older template; its original expiry was not extended"
+			// The upstream still serves this state, so cookie refreshes continue.
+			if refreshesCookies(next.Config, c.model) {
+				previous.RefreshAt = now.Add(time.Duration(next.Config.CookieRefreshSeconds) * time.Second)
+				next.Templates[bucket] = previous
+			}
 			break
 		}
 		next.Templates[bucket] = incoming
@@ -645,17 +657,25 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	default:
 		result.Action, result.Reason = "error", "The response did not contain a turn-state of the configured template length"
 	}
+	// A failed cookie refresh stops refreshing until the template's own
+	// renewal, instead of retrying a dry window every few seconds.
+	if result.Action != "harvested" && result.Action != "unchanged" {
+		if t, ok := next.Templates[key(c.account, c.model)]; ok && !t.RefreshAt.IsZero() && !t.RefreshAt.After(now) {
+			t.RefreshAt = time.Time{}
+			next.Templates[key(c.account, c.model)] = t
+		}
+	}
 	// Zero disables the long failure pause, never the ordinary request interval.
 	rest = max(rest, 2*time.Second)
 	next.Cooldowns[accountKey(c.account)] = cooldown{Until: now.Add(rest), PacingUntil: now.Add(2 * time.Second)}
 	if result.Action == "harvested" {
 		bucket := key(c.account, c.model)
-		next.Cooldowns[c.cooldownKey] = cooldown{Until: templateRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
+		next.Cooldowns[c.cooldownKey] = cooldown{Until: bucketRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
 		if c.rotating {
 			// A successful bucket starts a fresh attempt budget when its new
 			// template is due. Failure budgets must not postpone short-TTL
 			// renewals or preserve nine old failures after a successful tenth.
-			next.Cooldowns[rotatingBudgetKey(c.account, c.model)] = cooldown{Until: templateRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
+			next.Cooldowns[rotatingBudgetKey(c.account, c.model)] = cooldown{Until: bucketRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
 		}
 	}
 	removed := discardProbeProxy(&next, c, response, &result)

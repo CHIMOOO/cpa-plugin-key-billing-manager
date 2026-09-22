@@ -616,8 +616,8 @@ LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 
 TURN_STATE_CONFIG = {
-    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True, "inject_cookies": True, "breakout_retry": False, "berserk": False, "berserk_minutes": 1, "probe_parallel": 3,
-    "template_length": 292, "replace_length": 312, "ttl_seconds": 240, "renew_before_minutes": 2,
+    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True, "inject_cookies": True, "cookie_ttl_seconds": 240, "cookie_refresh_seconds": 30, "breakout_retry": False, "berserk": False, "berserk_minutes": 1, "probe_parallel": 3,
+    "template_length": 292, "replace_length": 312, "ttl_seconds": 3600, "renew_before_minutes": 0,
     "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
     "probe_verify_completion": False, "probe_hourly_limit": 0,
     "probe_static_cooldown_minutes": 55, "probe_rotating_cooldown_minutes": 10,
@@ -625,6 +625,7 @@ TURN_STATE_CONFIG = {
     "models": ["gpt-6-astra", "gpt-5.6-sol"], "probe_accounts": [], "probe_proxies": [], "probe_proxies_rotating": [],
 }
 TURN_STATE_TEMPLATES = []
+TURN_STATE_COOKIE_JARS = {}
 TURN_STATE_OBSERVATIONS = {"since": iso(NOW), "buckets": [], "events": []}
 TURN_STATE_BUDGET_ATTEMPTS = []
 TURN_STATE_COUNTERS = {"injected": 0, "learned": 0, "passed": 0}
@@ -673,7 +674,12 @@ def turn_state_view():
     now = datetime.now(timezone.utc)
     templates = [dict(item, fingerprint=dummy_template_fingerprint(item), remaining_seconds=max(0, int((datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) - now).total_seconds())))
                  for item in TURN_STATE_TEMPLATES if datetime.fromisoformat(item["expires_at"].replace("Z", "+00:00")) > now]
-    return {"config": config, "templates": templates, "counters": TURN_STATE_COUNTERS,
+    jars = [{"account": account, "count": jar["count"], "updated_at": iso(jar["updated_at"]),
+             "expires_at": iso(jar["updated_at"] + timedelta(seconds=config["cookie_ttl_seconds"])),
+             "remaining_seconds": max(0, int((jar["updated_at"] + timedelta(seconds=config["cookie_ttl_seconds"]) - now).total_seconds())),
+             "fresh": jar["updated_at"] + timedelta(seconds=config["cookie_ttl_seconds"]) >= now}
+            for account, jar in TURN_STATE_COOKIE_JARS.items() if account in config["probe_accounts"]]
+    return {"config": config, "templates": templates, "counters": TURN_STATE_COUNTERS, "cookie_jars": jars,
             "server_time": iso(now), "observations": TURN_STATE_OBSERVATIONS,
             "proxy_config_revision": turn_state_revision(),
             "renewal_lead_seconds": config["renew_before_minutes"] * 60 or min(config["ttl_seconds"] // 4, 300),
@@ -2328,7 +2334,9 @@ class Handler(BaseHTTPRequestHandler):
                     TURN_STATE_PROBE_STATS["harvested"] += 1
                     TURN_STATE_TEMPLATES.append({"account": accounts[0], "model": models[0], "length": 292,
                                                  "issued_at": iso(now), "expires_at": iso(now + timedelta(seconds=TURN_STATE_CONFIG["ttl_seconds"])),
-                                                 "source": "probe", "exit": result["exit"], "harvested_at": iso(now), "cookies": 2})
+                                                 "source": "probe", "exit": result["exit"], "harvested_at": iso(now),
+                                                 "refresh_at": iso(now + timedelta(seconds=TURN_STATE_CONFIG["cookie_refresh_seconds"])) if TURN_STATE_CONFIG["cookie_refresh_seconds"] and models[0] == TURN_STATE_CONFIG["models"][0] else None})
+                    TURN_STATE_COOKIE_JARS[accounts[0]] = {"count": 2, "updated_at": now}
                     TURN_STATE_COUNTERS["learned"] += 1
                 TURN_STATE_PROGRESS.clear()
             TURN_STATE_LAST.update(result)

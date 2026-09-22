@@ -209,8 +209,20 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	}
 	allowed := make([]SchedulerAuthCandidate, 0, len(req.Candidates))
 	for _, candidate := range req.Candidates {
-		if candidateAllowed(candidate, decision) && (!protectAccounts || !a.turnState.AccountProtected(candidate.ID) || a.hostSchema.Load() >= 6 && a.turnState.BusinessReady(candidate.ID, req.Model)) {
+		if candidateAllowed(candidate, decision) && (!protectAccounts || !a.turnState.Protects(candidate.ID, req.Model) || a.hostSchema.Load() >= 6 && a.turnState.BusinessReady(candidate.ID, req.Model)) {
 			allowed = append(allowed, candidate)
+		}
+	}
+	// The route model may be a client alias or carry an auth prefix that only
+	// resolves to a selected model after authentication. Prefer accounts the
+	// final check cannot refuse; a protected account without a template for
+	// this name still serves when nothing else can.
+	if protectAccounts {
+		unready := func(candidate SchedulerAuthCandidate) bool {
+			return a.turnState.AccountProtected(candidate.ID) && !a.turnState.TemplateReady(candidate.ID, req.Model)
+		}
+		if sure := slices.DeleteFunc(slices.Clone(allowed), unready); len(sure) > 0 {
+			allowed = sure
 		}
 	}
 	if fresh := slices.DeleteFunc(slices.Clone(allowed), stale); len(fresh) > 0 {

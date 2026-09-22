@@ -271,7 +271,7 @@ Configure the module in its own **Codex Turn State** tab. It is adapted from [ar
 
 The module is disabled by default. Saved settings apply immediately; replacing the plugin library still requires a CPA restart.
 
-**Enrolling an account for collection enables business protection by default.** Business requests require a valid template for the selected account and actual upstream model. Missing/expired buckets, disabled injection, dry-run, and headers that `replace-only` cannot replace cause rejection. Other accounts follow their own rules. Protection is a separate immediately saved switch; disabling it requires confirmation. `always` supports clients without a template header but still requires a valid bucket.
+**Enrolling an account for collection enables business protection by default.** Business requests for the selected models require a valid template for the selected account and actual upstream model; other models on the account skip State. Missing/expired buckets, disabled injection, dry-run, and headers that `replace-only` cannot replace cause rejection. Other accounts follow their own rules. Protection is a separate immediately saved switch; disabling it requires confirmation. `always` supports clients without a template header but still requires a valid bucket.
 
 Protected accounts require a verified CPA 7.3.4-compatible host with header forwarding. Host schema 6 is a minimum marker, not proof that every fork contains the fix. Unknown selected-account metadata or an older host fails closed. Protected accounts must use upstream HTTP/SSE; downstream WebSocket clients may remain connected to CPA. Saving collection settings or starting probing uses CPA's existing per-account management PATCH to turn off upstream WebSocket and reads back the result before continuing. It preserves account enablement, OAuth credentials and global proxies; removing the account from collection does not re-enable upstream WebSocket.
 
@@ -288,6 +288,7 @@ If transport setup fails, State settings are not applied and the draft is retain
 | Default probe models | `gpt-6-astra` and `gpt-5.6-sol`; the exact former default list is corrected, while custom or cleared lists are preserved |
 | Template / replacement lengths | Default 292 / 312 |
 | TTL | Default 3600 seconds from the token's embedded issuance time; receiving the same token does not extend its lifetime |
+| Cookies | Upstream cookies are kept per account in memory only and refreshed by every upstream response of a selected account, including probes and 312 responses. For 240 seconds by default, requests for the selected models carry them, with or without a template. After the first listed model collects a 292, collection probes it again after 30 seconds by default to keep the cookies fresh |
 
 ### First-time setup
 

@@ -1050,6 +1050,22 @@
     "key": "backend.turn_state_invalid_lengths",
     "formats": []
   },
+  "Cookie lifetime must be between 30 and 3600 seconds": {
+    "key": "backend.turn_state_cookie_ttl_invalid",
+    "formats": []
+  },
+  "Cookie refresh interval must be 0 (off) or between 1 and 3600 seconds": {
+    "key": "backend.turn_state_cookie_refresh_invalid",
+    "formats": []
+  },
+  "Concurrent probes must be between 1 and 10": {
+    "key": "backend.turn_state_probe_parallel_invalid",
+    "formats": []
+  },
+  "Berserk mode must start 1–59 minutes before expiry and within the template lifetime": {
+    "key": "backend.turn_state_berserk_minutes_invalid",
+    "formats": []
+  },
   "Template lifetime must be 60–3600 seconds and must not exceed the upstream token lifetime": {
     "key": "backend.turn_state_invalid_ttl",
     "formats": []

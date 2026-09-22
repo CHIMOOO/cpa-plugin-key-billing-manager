@@ -166,7 +166,7 @@ func TestCommonGroupsWithoutExclusiveKeepOrdinaryUnion(t *testing.T) {
 	}
 }
 
-func TestExclusiveGroupExplicitEmptyDirectAllowlistFailsClosed(t *testing.T) {
+func TestExclusiveGroupDirectRulesConstrainUnlessCleared(t *testing.T) {
 	a, b := CredentialFingerprint("dummy-a"), CredentialFingerprint("dummy-b")
 	state := NewState()
 	state.Groups = []KeyGroup{
@@ -181,7 +181,7 @@ func TestExclusiveGroupExplicitEmptyDirectAllowlistFailsClosed(t *testing.T) {
 		allowB   bool
 	}{
 		{name: "untouched", allowA: true, allowB: true},
-		{name: "explicit-empty", bindings: RouteBindings{Configured: true}},
+		{name: "cleared", bindings: RouteBindings{Configured: true}, allowA: true, allowB: true},
 		{name: "models-only", bindings: RouteBindings{Configured: true, RouteRule: RouteRule{Models: []string{"model"}}}},
 		{name: "deny-only", bindings: RouteBindings{Configured: true, RouteRule: RouteRule{DeniedCredentialIDs: []string{a}}}},
 		{name: "direct-route", bindings: RouteBindings{Configured: true, RouteIDs: []string{"direct"}}, allowB: true},
@@ -193,7 +193,7 @@ func TestExclusiveGroupExplicitEmptyDirectAllowlistFailsClosed(t *testing.T) {
 			if decision.ConfigurationError != "" || decision.AllowsCredential(a, "auth-files", "codex") != test.allowA || decision.AllowsCredential(b, "auth-files", "codex") != test.allowB {
 				t.Fatalf("configured direct allowlist escaped: %+v", decision)
 			}
-			if test.bindings.Configured && decision.CredentialConstraint == nil {
+			if test.bindings.Configured && test.name != "cleared" && decision.CredentialConstraint == nil {
 				t.Fatal("explicit direct settings were treated as absent")
 			}
 		})

@@ -32,7 +32,7 @@
   {
     "id": "free",
     "name": "Custom prompt",
-    "prompt": "Explain the difference between correlation and causation using a concrete everyday example. Then describe what further evidence would be needed before claiming a causal relationship.",
+    "prompt": "用一句话介绍你自己，并说明你是哪个模型。",
     "assertion": "Optional exact output",
     "expected": "",
     "label_key": "ui.model_test_preset_free",
