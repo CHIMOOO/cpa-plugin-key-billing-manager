@@ -25,7 +25,9 @@ func configureRotationProxies(t *testing.T, m *Manager, statics, rotating []stri
 	}
 }
 
-func TestProxyCursorContinuesAcrossSuccessfulBucketsRestartsAndRenewals(t *testing.T) {
+// New buckets continue the shared cursor across restarts; a renewal goes back
+// to the exit that harvested that bucket's template.
+func TestProxyCursorContinuesForNewBucketsAndRenewalsReuseTheirExit(t *testing.T) {
 	m, now := newTestManager(t)
 	if err := m.Update([]byte(`{"ttl_seconds":60,"probe_accounts":["account-a","account-b"],"models":["model-a","model-b"]}`)); err != nil {
 		t.Fatal(err)
@@ -35,18 +37,22 @@ func TestProxyCursorContinuesAcrossSuccessfulBucketsRestartsAndRenewals(t *testi
 		if call == 4 {
 			*now = now.Add(45 * time.Second)
 		}
+		want := call % 3
+		if call >= 4 {
+			want = (call - 4) % 3
+		}
 		m = readRestarted(t, m)
 		m.runProbe = func(_ Credential, _, proxy string) (ProbeResponse, error) {
-			if proxy != rotationProxies[call%3] {
-				t.Errorf("probe %d restarted the exit pool: %q", call, proxy)
+			if proxy != rotationProxies[want] {
+				t.Errorf("probe %d used %q", call, proxy)
 			}
 			return ProbeResponse{Status: 200, Value: tokenAt(*now)}, nil
 		}
 		result, err := m.Probe("", "", dummyCredential)
-		if err != nil || result.Action != "harvested" || result.ProxyIndex != call%3+1 || result.ProxyTotal != 3 {
+		if err != nil || result.Action != "harvested" || result.ProxyIndex != want+1 || result.ProxyTotal != 3 {
 			t.Fatalf("success %d: %+v, %v", call, result, err)
 		}
-		if (result.ProxyPool == "rotating") != (call%3 == 2) {
+		if (result.ProxyPool == "rotating") != (want == 2) {
 			t.Fatalf("wrong pool for shared cursor: %+v", result)
 		}
 		*now = now.Add(3 * time.Second)

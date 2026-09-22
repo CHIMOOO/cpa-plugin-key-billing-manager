@@ -3054,6 +3054,7 @@
                 <label class="field"><span data-i18n="ui.fork_template_lifetime_seconds">Template lifetime (seconds)</span><input id="turn-state-ttl" type="number" min="60" max="3600" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.turn_state_renew_before">Renew before expiry (minutes)</span><input id="turn-state-renew-before" type="number" min="0" max="59" step="1" disabled /><span id="turn-state-renew-help" class="small muted"></span></label>
                 <label class="field"><span data-i18n="ui.state_hourly_limit">Hourly probe limit (0 = unlimited)</span><input id="turn-state-hourly-limit" type="number" min="0" max="10000" step="1" disabled /></label>
+                <label class="field"><span data-i18n="ui.state_probe_parallel">Concurrent probes</span><input id="turn-state-probe-parallel" type="number" min="1" max="10" step="1" disabled /></label>
                 <label class="field"><span data-i18n="ui.state_berserk_minutes">Berserk in the last (minutes)</span><input id="turn-state-berserk-minutes" type="number" min="1" max="59" step="1" disabled /></label>
               </div>
               <p id="turn-state-probe-budget" class="small" role="status"></p>
@@ -11179,6 +11180,7 @@
         "breakout-retry",
         "berserk",
         "berserk-minutes",
+        "probe-parallel",
         "inject-mode",
         "ttl",
         "renew-before",
@@ -12191,6 +12193,7 @@
             ["ttl", config.ttl_seconds],
             ["renew-before", config.renew_before_minutes || 0],
             ["berserk-minutes", config.berserk_minutes || 1],
+            ["probe-parallel", config.probe_parallel || 3],
             ["hourly-limit", config.probe_hourly_limit || 0],
             ["static-cooldown", config.probe_static_cooldown_minutes ?? 55],
             ["rotating-cooldown", config.probe_rotating_cooldown_minutes ?? 10],
@@ -12411,6 +12414,7 @@
           ["ttl", "ttl_seconds"],
           ["renew-before", "renew_before_minutes"],
           ["berserk-minutes", "berserk_minutes"],
+          ["probe-parallel", "probe_parallel"],
           ["hourly-limit", "probe_hourly_limit"],
           ["static-cooldown", "probe_static_cooldown_minutes"],
           ["rotating-cooldown", "probe_rotating_cooldown_minutes"],

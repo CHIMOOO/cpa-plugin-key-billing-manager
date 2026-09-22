@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -128,7 +129,7 @@ func TestTrafficCaptureBoundsBodiesAndEntries(t *testing.T) {
 
 func TestTrafficCaptureSettingRegistersResponseHooksWithoutState(t *testing.T) {
 	state := filepath.Join(t.TempDir(), "state.db")
-	configYAML := []byte("enabled: true\nstate_file: \"" + state + "\"\n")
+	configYAML := []byte("enabled: true\nstate_file: " + strconv.Quote(state) + "\n")
 	register := func(app *App) Registration {
 		t.Helper()
 		raw, err := app.HandleMethod(MethodPluginRegister, mustMarshal(t, LifecycleRequest{ConfigYAML: configYAML}))

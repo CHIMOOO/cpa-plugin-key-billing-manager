@@ -35,6 +35,7 @@ type Config struct {
 	LearnResponses               bool     `json:"learn_responses"`
 	InjectCookies                bool     `json:"inject_cookies"`
 	BreakoutRetry                bool     `json:"breakout_retry"`
+	ProbeParallel                int      `json:"probe_parallel"`
 	Berserk                      bool     `json:"berserk"`
 	BerserkMinutes               int      `json:"berserk_minutes"`
 	TemplateLength               int      `json:"template_length"`
@@ -57,7 +58,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, BerserkMinutes: 1, TemplateLength: 292,
+	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, ProbeParallel: 3, BerserkMinutes: 1, TemplateLength: 292,
 		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
 		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10,
 		ProbeStaticCooldownMinutes: 55, ProbeRotatingCooldownMinutes: 10,
@@ -75,6 +76,9 @@ type Template struct {
 	// Cookies holds the name=value pairs the harvesting response set. They are
 	// sent with the template so later turns look like the same upstream session.
 	Cookies string `json:"cookies,omitempty"`
+	// ExitKey identifies the exit that harvested this template, so renewal
+	// tries the same exit first. It is a hash and never holds the proxy URL.
+	ExitKey string `json:"exit_key,omitempty"`
 }
 
 type TemplateView struct {
@@ -332,6 +336,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.RenewBeforeMinutes < 0 || cfg.RenewBeforeMinutes > 59 || cfg.RenewBeforeMinutes*60 >= cfg.TTLSeconds {
 		return messages.Errorf("Renewal lead must be 0 (automatic) or 1–59 minutes and shorter than the template lifetime")
+	}
+	if cfg.ProbeParallel < 1 || cfg.ProbeParallel > BerserkConcurrency {
+		return messages.Errorf("Concurrent probes must be between 1 and 10")
 	}
 	if cfg.BerserkMinutes < 1 || cfg.BerserkMinutes > 59 || cfg.Berserk && cfg.BerserkMinutes*60 >= cfg.TTLSeconds {
 		return messages.Errorf("Berserk mode must start 1–59 minutes before expiry and within the template lifetime")

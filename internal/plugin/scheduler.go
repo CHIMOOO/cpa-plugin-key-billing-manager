@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -195,7 +196,15 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 		return ErrorEnvelope("routing_configuration_error", decision.ConfigurationError, http.StatusServiceUnavailable), nil
 	}
 	protectAccounts := !isTurnStateImageRequest(req.Options.Metadata) && a.turnStateGate() && a.turnState.HasProtectedAccounts()
-	if !decision.RestrictsCredentials() && !protectAccounts {
+	// Without the hard gate, still steer away from selected State accounts
+	// whose bucket for this model has expired, while another account remains.
+	stale := func(candidate SchedulerAuthCandidate) bool { return false }
+	if !protectAccounts && !isTurnStateImageRequest(req.Options.Metadata) && a.turnState.Active() && a.turnState.HasProtectedAccounts() {
+		stale = func(candidate SchedulerAuthCandidate) bool {
+			return a.turnState.StaleBucket(candidate.ID, req.Model)
+		}
+	}
+	if !decision.RestrictsCredentials() && !protectAccounts && !slices.ContainsFunc(req.Candidates, stale) {
 		return OKEnvelope(SchedulerPickResponse{Handled: false})
 	}
 	allowed := make([]SchedulerAuthCandidate, 0, len(req.Candidates))
@@ -203,6 +212,9 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 		if candidateAllowed(candidate, decision) && (!protectAccounts || !a.turnState.AccountProtected(candidate.ID) || a.hostSchema.Load() >= 6 && a.turnState.BusinessReady(candidate.ID, req.Model)) {
 			allowed = append(allowed, candidate)
 		}
+	}
+	if fresh := slices.DeleteFunc(slices.Clone(allowed), stale); len(fresh) > 0 {
+		allowed = fresh
 	}
 	if len(allowed) == 0 {
 		allowed = a.breakoutCandidates(req)

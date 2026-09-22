@@ -9,6 +9,7 @@ import (
 
 func TestForceAstraUsesTargetStateTemplate(t *testing.T) {
 	app := newConfiguredApp(t)
+	app.setAccountRuntimeSettings(ManagementRequest{Body: []byte(`{"require_turn_state":false}`)}) // Test learning, not the protected-account gate.
 	app.SetHostCaller(func(string, any) (json.RawMessage, error) {
 		return mustMarshal(t, hostAuthListResponse{Files: []hostAuthFile{
 			{ID: "dummy-auth", AuthIndex: "dummy-index", Provider: "codex"},

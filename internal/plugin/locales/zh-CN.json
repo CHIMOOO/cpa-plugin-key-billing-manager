@@ -1,6 +1,7 @@
 {
   "ui.state_force_astra_title": "强制 Astra",
   "ui.state_force_astra": "将 GPT/Codex 文本请求强制路由到 gpt-6-astra",
+  "ui.state_probe_parallel": "并发探测数",
   "ui.state_berserk": "狂暴续采",
   "ui.state_berserk_minutes": "最后几分钟进入狂暴（分钟）",
   "ui.state_berserk_help": "默认关闭。所选模板进入最后几分钟仍未续采成功时，服务器采集会同时发起最多 10 个探测，各走不同出口，直到有一个成功。每个探测都计入每小时上限以及出口和账号冷却。",

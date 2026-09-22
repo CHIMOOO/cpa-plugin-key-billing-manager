@@ -367,13 +367,19 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 	}
 	observed := make([]turnstate.ProbeResult, slots)
 	var wg sync.WaitGroup
+	var panicMu sync.Mutex
+	var panicked any
 	for i := range observed {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			// Re-raise below on this goroutine, so the App recovery boundary and
+			// the deferred finalizer still see a callback panic.
 			defer func() {
-				if recover() != nil {
-					observed[i] = turnstate.ProbeResult{}
+				if value := recover(); value != nil {
+					panicMu.Lock()
+					panicked = value
+					panicMu.Unlock()
 				}
 			}()
 			response := probe()
@@ -383,6 +389,9 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 		}()
 	}
 	wg.Wait()
+	if panicked != nil {
+		panic(panicked)
+	}
 	// Slots that found nothing left to probe are not separate log entries.
 	for _, result := range observed {
 		if result.Action != "" && result.Account != "" {

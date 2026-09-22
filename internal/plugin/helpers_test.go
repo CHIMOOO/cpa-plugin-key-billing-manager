@@ -75,7 +75,7 @@ func testConfigYAML(t *testing.T, enabled bool) []byte {
 	t.Helper()
 	return []byte("enabled: " + strconv.FormatBool(enabled) +
 		"\ndebug: true" +
-		"\nstate_file: \"" + filepath.Join(t.TempDir(), "state.db") + "\"\n")
+		"\nstate_file: " + strconv.Quote(filepath.Join(t.TempDir(), "state.db")) + "\n")
 }
 
 func newConfiguredApp(t *testing.T) *App {
@@ -102,7 +102,7 @@ func newAppWithPriceAndState(t *testing.T, enabled bool) (*App, string) {
 	app := newTestApp(t)
 	t.Cleanup(app.Shutdown)
 	statePath := filepath.Join(t.TempDir(), "state.db")
-	configYAML := "enabled: " + strconv.FormatBool(enabled) + "\nstate_file: \"" + statePath + "\"\n"
+	configYAML := "enabled: " + strconv.FormatBool(enabled) + "\nstate_file: " + strconv.Quote(statePath) + "\n"
 	if _, errHandle := app.HandleMethod(MethodPluginRegister, mustMarshal(t, LifecycleRequest{
 		ConfigYAML: []byte(configYAML),
 	})); errHandle != nil {

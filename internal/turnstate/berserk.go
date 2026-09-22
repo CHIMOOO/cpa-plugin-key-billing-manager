@@ -5,15 +5,16 @@ import "time"
 // BerserkConcurrency is the most probes berserk mode runs at the same time.
 const BerserkConcurrency = 10
 
-// ProbeConcurrency is how many probes the collector may run now: one, or
-// BerserkConcurrency while a selected bucket's template is in its last
-// BerserkMinutes and has not been renewed yet.
+// ProbeConcurrency is how many probes the collector may run now: the
+// configured ProbeParallel, or BerserkConcurrency while a selected bucket's
+// template is in its last BerserkMinutes and has not been renewed yet.
 func (m *Manager) ProbeConcurrency() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	cfg := m.state.Config
+	parallel := min(max(1, cfg.ProbeParallel), BerserkConcurrency)
 	if !cfg.Berserk || cfg.Suspended {
-		return 1
+		return parallel
 	}
 	now := m.now()
 	window := time.Duration(cfg.BerserkMinutes) * time.Minute
@@ -25,7 +26,7 @@ func (m *Manager) ProbeConcurrency() int {
 			return BerserkConcurrency
 		}
 	}
-	return 1
+	return parallel
 }
 
 // InScope reports whether State handles this account and upstream model at
@@ -64,4 +65,18 @@ func (m *Manager) BreakoutReady(account, model string) bool {
 	}
 	t, ok := m.state.Templates[key(account, model)]
 	return ok && m.usableLocked(t, m.now())
+}
+
+// StaleBucket reports a selected account and model that injection would use
+// but whose template is missing or expired. Observe and off modes never steer.
+func (m *Manager) StaleBucket(account, model string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	cfg := m.state.Config
+	model = ModelName(model)
+	if cfg.Suspended || !cfg.Enabled || cfg.DryRun || !m.inScopeLocked(account, model) {
+		return false
+	}
+	t, ok := m.state.Templates[key(account, model)]
+	return !ok || !m.usableLocked(t, m.now())
 }

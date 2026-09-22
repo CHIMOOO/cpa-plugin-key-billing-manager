@@ -1,6 +1,7 @@
 {
   "ui.state_force_astra_title": "Force Astra",
   "ui.state_force_astra": "Route GPT/Codex text requests to gpt-6-astra",
+  "ui.state_probe_parallel": "Concurrent probes",
   "ui.state_berserk": "Berserk renewal",
   "ui.state_berserk_minutes": "Berserk in the last (minutes)",
   "ui.state_berserk_help": "Off by default. When a selected template enters its last minutes without a renewal, server collection runs up to 10 probes at once, each on its own exit, until one succeeds. Each probe counts toward the hourly limit and the exit and account cooldowns.",

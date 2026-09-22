@@ -19,14 +19,14 @@ func TestInScopeCoversOnlySelectedAccountsAndModels(t *testing.T) {
 func TestBerserkRaisesConcurrencyOnlyInTheLastMinutes(t *testing.T) {
 	m, now := newTestManager(t)
 	learn(t, m, tokenAt(*now))
-	if got := m.ProbeConcurrency(); got != 1 {
+	if got := m.ProbeConcurrency(); got != 3 {
 		t.Fatalf("berserk off concurrency = %d", got)
 	}
 	if err := m.Update([]byte(`{"berserk":true,"berserk_minutes":1}`)); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(58 * time.Minute)
-	if got := m.ProbeConcurrency(); got != 1 {
+	if got := m.ProbeConcurrency(); got != 3 {
 		t.Fatalf("concurrency two minutes before expiry = %d", got)
 	}
 	*now = now.Add(90 * time.Second)
@@ -34,7 +34,7 @@ func TestBerserkRaisesConcurrencyOnlyInTheLastMinutes(t *testing.T) {
 		t.Fatalf("concurrency in the last minute = %d", got)
 	}
 	*now = now.Add(time.Minute)
-	if got := m.ProbeConcurrency(); got != 1 {
+	if got := m.ProbeConcurrency(); got != 3 {
 		t.Fatalf("an expired template kept berserk concurrency %d", got)
 	}
 	if err := m.Update([]byte(`{"ttl_seconds":60,"berserk":true,"berserk_minutes":1}`)); err == nil {
@@ -99,5 +99,45 @@ func TestBreakoutReadyNeedsTheSettingInjectionAndATemplate(t *testing.T) {
 	}
 	if m.BreakoutReady("account-a", "model-a") {
 		t.Fatal("breakout was ready in observe mode")
+	}
+}
+
+func TestRenewalRetriesTheExitThatHarvested(t *testing.T) {
+	m, now := newTestManager(t)
+	if err := m.Update([]byte(`{"probe_static_cooldown_minutes":0,"probe_proxies":["http://first.invalid:8080","http://second.invalid:8080","http://third.invalid:8080"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	var used []string
+	m.runProbe = func(_ Credential, _ string, proxy string) (ProbeResponse, error) {
+		used = append(used, proxy)
+		return ProbeResponse{Status: 200, Value: tokenAt(*now)}, nil
+	}
+	if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "harvested" {
+		t.Fatalf("first harvest = %+v %v", result, err)
+	}
+	*now = now.Add(59 * time.Minute)
+	if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "harvested" {
+		t.Fatalf("renewal = %+v %v", result, err)
+	}
+	if len(used) != 2 || used[0] != used[1] {
+		t.Fatalf("renewal did not reuse the successful exit: %v", used)
+	}
+}
+
+func TestStaleBucketOnlySteersWhileInjecting(t *testing.T) {
+	m, now := newTestManager(t)
+	if !m.StaleBucket("account-a", "model-a") || m.StaleBucket("account-b", "model-a") {
+		t.Fatal("stale bucket did not follow the saved scope")
+	}
+	learn(t, m, tokenAt(*now))
+	if m.StaleBucket("account-a", "model-a") {
+		t.Fatal("a valid template was reported stale")
+	}
+	if err := m.Update([]byte(`{"dry_run":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(2 * time.Hour)
+	if m.StaleBucket("account-a", "model-a") {
+		t.Fatal("observe mode steered traffic")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -85,7 +86,7 @@ func TestServerRunnerControlPersistsButLeaseAndLogsResetOnRestart(t *testing.T) 
 	statePath := strings.TrimSuffix(a.turnStateRunner.path, ".turn-state-runner.json")
 	restarted := newTestApp(t)
 	t.Cleanup(restarted.Shutdown)
-	config := []byte("enabled: true\nstate_file: \"" + statePath + "\"\n")
+	config := []byte("enabled: true\nstate_file: " + strconv.Quote(statePath) + "\n")
 	if err := restarted.configure(mustMarshal(t, LifecycleRequest{ConfigYAML: config})); err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +200,7 @@ func TestServerRunnerManualProbeAndConfigureCannotOverlap(t *testing.T) {
 	newPath := filepath.Join(t.TempDir(), "other.db")
 	configured := make(chan error, 1)
 	go func() {
-		configured <- a.configure(mustMarshal(t, LifecycleRequest{ConfigYAML: []byte("enabled: true\nstate_file: \"" + newPath + "\"\n")}))
+		configured <- a.configure(mustMarshal(t, LifecycleRequest{ConfigYAML: []byte("enabled: true\nstate_file: " + strconv.Quote(newPath) + "\n")}))
 	}()
 	select {
 	case err := <-configured:
@@ -388,7 +389,7 @@ func TestServerRunnerInvalidPersistentControlDoesNotSwitchStores(t *testing.T) {
 		if err := os.WriteFile(newPath+".turn-state-runner.json", []byte(value), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if err := a.configure(mustMarshal(t, LifecycleRequest{ConfigYAML: []byte("enabled: true\nstate_file: \"" + newPath + "\"\n")})); err == nil || a.turnState.StoragePath() != oldPath {
+		if err := a.configure(mustMarshal(t, LifecycleRequest{ConfigYAML: []byte("enabled: true\nstate_file: " + strconv.Quote(newPath) + "\n")})); err == nil || a.turnState.StoragePath() != oldPath {
 			t.Fatal("invalid runner state partially switched storage", value, err)
 		}
 	}

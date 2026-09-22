@@ -41,6 +41,7 @@ func TestTurnStateHooksLearnAndInjectWithoutChangingResponse(t *testing.T) {
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "nonstream", true: "stream"}[stream], func(t *testing.T) {
 			app := newConfiguredApp(t)
+			app.setAccountRuntimeSettings(ManagementRequest{Body: []byte(`{"require_turn_state":false}`)}) // Test learning, not the protected-account gate.
 			app.SetHostCaller(func(method string, payload any) (json.RawMessage, error) {
 				return mustMarshal(t, hostAuthListResponse{Files: []hostAuthFile{
 					{ID: "dummy-auth-a", AuthIndex: "dummy-index-a", Provider: "codex", Type: "codex", Source: "file"},

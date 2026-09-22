@@ -444,8 +444,26 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 			found := false
 			var budget cooldown
 			budgetLoaded := false
-			for offset := 0; offset < total; offset++ {
+			// A renewal first retries the exit that harvested the current template.
+			sticky := -1
+			if hasTemplate && template.ExitKey != "" {
+				for index := 0; index < total; index++ {
+					if proxy, rotating := probeProxyAt(cfg, index); proxyKey(selectedAccount, selectedModel, proxy, rotating) == template.ExitKey {
+						sticky = index
+						break
+					}
+				}
+			}
+			for offset := -1; offset < total; offset++ {
 				index := (start + offset) % total
+				if offset < 0 {
+					if sticky < 0 {
+						continue
+					}
+					index = sticky
+				} else if index == sticky {
+					continue
+				}
 				proxy, rotating := probeProxyAt(cfg, index)
 				if rotating && !budgetLoaded {
 					budget = rotatingBudget(m.state, selectedAccount, selectedModel, now)
@@ -569,7 +587,7 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		result.Action, result.Reason = "error", response.CompletionFailure
 	case len(response.Value) == next.Config.TemplateLength:
 		issued, parsed := issuedAt(response.Value)
-		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now, Cookies: response.Cookies}
+		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now, Cookies: response.Cookies, ExitKey: c.cooldownKey}
 		if !parsed || !usableWithConfig(incoming, next.Config, now) {
 			result.Action, result.Reason = "error", "The response length matches, but its Fernet timestamp is invalid, in the future, or expired"
 			break
