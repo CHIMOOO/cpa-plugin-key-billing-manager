@@ -47,7 +47,7 @@ func TestTurnStateHooksLearnAndInjectWithoutChangingResponse(t *testing.T) {
 					{ID: "dummy-auth-b", AuthIndex: "dummy-index-b", Provider: "codex", Type: "codex", Source: "file"},
 				}}), nil
 			})
-			if err := app.turnState.Update([]byte(`{"enabled":true,"inject_mode":"always"}`)); err != nil {
+			if err := app.turnState.Update([]byte(`{"enabled":true,"inject_mode":"always","probe_accounts":["dummy-auth-a"],"models":["upstream-model"]}`)); err != nil {
 				t.Fatal(err)
 			}
 			turnStateAfterAuth(t, app, "learning", "dummy-auth-a", "upstream-model", nil)

@@ -616,7 +616,7 @@ LIVE_KEYS = [key for key in KEYS if not key.get("deleted_at")]
 ACCESS_CONTROL = {"enabled": True, "deny_ungrouped": False}
 
 TURN_STATE_CONFIG = {
-    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True, "inject_cookies": True,
+    "suspended": False, "enabled": False, "force_astra": False, "inject_mode": "replace-only", "dry_run": True, "learn_responses": True, "inject_cookies": True, "breakout_retry": False, "berserk": False, "berserk_minutes": 1,
     "template_length": 292, "replace_length": 312, "ttl_seconds": 240, "renew_before_minutes": 2,
     "probe_drop_failed_proxies": False, "probe_drop_degraded_proxies": False, "probe_min_proxies": 10,
     "probe_verify_completion": False, "probe_hourly_limit": 0,

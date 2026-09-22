@@ -120,7 +120,13 @@ func (a *App) probeTurnState(req ManagementRequest) ManagementResponse {
 	return a.executeTurnStateProbe(req)
 }
 
-func (a *App) executeTurnStateProbe(req ManagementRequest) (response ManagementResponse) {
+func (a *App) executeTurnStateProbe(req ManagementRequest) ManagementResponse {
+	return a.executeTurnStateProbeLimit(req, 1)
+}
+
+// executeTurnStateProbeLimit with a limit above one is a berserk collector
+// slot: it lets the manager pick the bucket and exit while others run.
+func (a *App) executeTurnStateProbeLimit(req ManagementRequest, limit int) (response ManagementResponse) {
 	defer func() { response.Headers.Set("Cache-Control", "private, no-store") }()
 	var input struct {
 		Account string `json:"account"`
@@ -139,10 +145,17 @@ func (a *App) executeTurnStateProbe(req ManagementRequest) (response ManagementR
 			available[file.ID] = struct{}{}
 		}
 	}
-	result, err := a.turnState.ProbeWithAvailability(input.Account, input.Model, func(account string) bool {
+	isAvailable := func(account string) bool {
 		_, ok := available[account]
 		return ok
-	}, func(account string) (turnstate.Credential, error) {
+	}
+	probe := func(fetch func(string) (turnstate.Credential, error)) (turnstate.ProbeResult, error) {
+		if limit > 1 {
+			return a.turnState.ProbeConcurrently(limit, isAvailable, fetch)
+		}
+		return a.turnState.ProbeWithAvailability(input.Account, input.Model, isAvailable, fetch)
+	}
+	result, err := probe(func(account string) (turnstate.Credential, error) {
 		for _, file := range files {
 			if file.ID != account || !codexAuthFile(file) {
 				continue
@@ -195,6 +208,11 @@ func (a *App) turnStateRequest(req RequestInterceptRequest) (http.Header, []stri
 	}
 	account := metadataString(req.Metadata, MetadataSelectedAuth)
 	if account == "" || req.RequestID == "" {
+		return nil, nil
+	}
+	// Accounts and models outside the saved scope never use State; skip the
+	// credential lookup and the per-request bookkeeping for them.
+	if !a.turnState.InScope(account, req.Model) {
 		return nil, nil
 	}
 	a.routingMu.Lock()

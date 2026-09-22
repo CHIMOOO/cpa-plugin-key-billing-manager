@@ -14,7 +14,7 @@ func TestForceAstraUsesTargetStateTemplate(t *testing.T) {
 			{ID: "dummy-auth", AuthIndex: "dummy-index", Provider: "codex"},
 		}}), nil
 	})
-	if err := app.turnState.Update([]byte(`{"force_astra":true,"enabled":true,"dry_run":false,"inject_mode":"always"}`)); err != nil {
+	if err := app.turnState.Update([]byte(`{"force_astra":true,"enabled":true,"dry_run":false,"inject_mode":"always","probe_accounts":["dummy-auth"],"models":["gpt-6-astra","gpt-5.6-luna"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	// Learn a template under the routed model, then send a Luna request.

@@ -299,16 +299,26 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 	r.mu.Unlock()
 	// Finalize even if a host callback panics; a failed tick must not leave a
 	// permanent active flag and silently disable a durable collection intent.
-	result := turnstate.ProbeResult{Action: "error", Reason: "Server collection could not complete this probe; it will retry"}
+	var results []turnstate.ProbeResult
 	defer func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		r.inFlight = false
 		finished := r.now()
-		result = sanitizeRunnerResult(result)
+		if len(results) == 0 {
+			results = []turnstate.ProbeResult{{Action: "error", Reason: "Server collection could not complete this probe; it will retry"}}
+		}
+		// The earliest hint among parallel probes decides the next check.
+		var hint time.Time
+		for i := range results {
+			results[i] = sanitizeRunnerResult(results[i])
+			if at := results[i].NextCheckAt; !at.IsZero() && (hint.IsZero() || at.Before(hint)) {
+				hint = at
+			}
+		}
 		r.nextCheck = finished.Add(30 * time.Second)
-		if !result.NextCheckAt.IsZero() {
-			r.nextCheck = result.NextCheckAt
+		if !hint.IsZero() {
+			r.nextCheck = hint
 			if r.nextCheck.Before(finished.Add(2 * time.Second)) {
 				r.nextCheck = finished.Add(2 * time.Second)
 			}
@@ -321,19 +331,21 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 			// scheduling hint, without admitting a second concurrent request.
 			r.nextCheck = time.Time{}
 		}
-		// Management logs describe the next scheduler check, rather than the
-		// manager's potentially much later account/exit cooldown deadline.
-		result.NextCheckAt = r.nextCheck
 		r.lastError = ""
-		if result.Action == "error" {
-			r.lastError = result.Reason
+		for _, result := range results {
+			// Management logs describe the next scheduler check, rather than the
+			// manager's potentially much later account/exit cooldown deadline.
+			result.NextCheckAt = r.nextCheck
+			if result.Action == "error" {
+				r.lastError = result.Reason
+			}
+			r.sequence++
+			event := turnStateRunnerEvent{Sequence: r.sequence, At: finished, Result: result}
+			encoded, _ := json.Marshal(event)
+			event.jsonBytes = len(encoded) + 1 // Include the array separator.
+			r.events = append(r.events, event)
+			r.eventBytes += event.jsonBytes
 		}
-		r.sequence++
-		event := turnStateRunnerEvent{Sequence: r.sequence, At: finished, Result: result}
-		encoded, _ := json.Marshal(event)
-		event.jsonBytes = len(encoded) + 1 // Include the array separator.
-		r.events = append(r.events, event)
-		r.eventBytes += event.jsonBytes
 		removed := 0
 		for len(r.events)-removed > 1 && (len(r.events)-removed > 100 || r.eventBytes > turnStateRunnerEventBytes) {
 			r.eventBytes -= r.events[removed].jsonBytes
@@ -344,14 +356,45 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 		}
 		out = runnerResponse(http.StatusOK, r.statusLocked())
 	}()
+	slots := 1
 	if probe == nil {
-		probe = func() ManagementResponse { return a.executeTurnStateProbe(ManagementRequest{Body: []byte(`{}`)}) }
+		// Berserk mode runs its parallel probes inside this one tick and returns
+		// after all of them, so the collector process needs no change.
+		slots = a.turnState.ProbeConcurrency()
+		probe = func() ManagementResponse {
+			return a.executeTurnStateProbeLimit(ManagementRequest{Body: []byte(`{}`)}, slots)
+		}
 	}
-	response := probe()
-	if response.StatusCode == http.StatusOK {
-		var observed turnstate.ProbeResult
-		if json.Unmarshal(response.Body, &observed) == nil && observed.Action != "" {
-			result = observed
+	observed := make([]turnstate.ProbeResult, slots)
+	var wg sync.WaitGroup
+	for i := range observed {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() {
+				if recover() != nil {
+					observed[i] = turnstate.ProbeResult{}
+				}
+			}()
+			response := probe()
+			if response.StatusCode == http.StatusOK {
+				_ = json.Unmarshal(response.Body, &observed[i])
+			}
+		}()
+	}
+	wg.Wait()
+	// Slots that found nothing left to probe are not separate log entries.
+	for _, result := range observed {
+		if result.Action != "" && result.Account != "" {
+			results = append(results, result)
+		}
+	}
+	if len(results) == 0 {
+		for _, result := range observed {
+			if result.Action != "" {
+				results = append(results, result)
+				break
+			}
 		}
 	}
 	return ManagementResponse{}

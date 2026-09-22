@@ -29,7 +29,8 @@ func (a *App) enforceSelectedCredential(req RequestInterceptRequest) RequestInte
 	a.routingMu.Lock()
 	credential := a.credentials[ref]
 	a.routingMu.Unlock()
-	if !decision.AllowsCredential(ref, credential.Source, credential.Provider) {
+	if !decision.AllowsCredential(ref, credential.Source, credential.Provider) &&
+		(isTurnStateImageRequest(req.Metadata) || !a.turnState.Active() || !a.turnState.BreakoutReady(id, req.Model)) {
 		return accessDeniedResponse(req.SourceFormat, "The upstream credential selected by CPA is not allowed; access is denied")
 	}
 	return RequestInterceptResponse{}

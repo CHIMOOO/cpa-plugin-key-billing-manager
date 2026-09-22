@@ -153,6 +153,23 @@ func candidateAllowed(candidate SchedulerAuthCandidate, decision billing.Routing
 		routingAllowsCredential(candidate.ID, credentialSourceFromCandidate(candidate), candidate.Provider, decision)
 }
 
+// breakoutCandidates is the opt-in State retry pool. CPA drops accounts a
+// request already tried, so once the key's groups have none left, a selected
+// account holding a valid template for this model may serve the retry.
+func (a *App) breakoutCandidates(req SchedulerPickRequest) []SchedulerAuthCandidate {
+	if isTurnStateImageRequest(req.Options.Metadata) || !a.turnState.Active() {
+		return nil
+	}
+	var ready []SchedulerAuthCandidate
+	for _, candidate := range req.Candidates {
+		if strings.TrimSpace(candidate.ID) != "" && !strings.EqualFold(strings.TrimSpace(candidate.Status), "disabled") &&
+			candidateWeight(candidate) > 0 && a.turnState.BreakoutReady(candidate.ID, req.Model) {
+			ready = append(ready, candidate)
+		}
+	}
+	return ready
+}
+
 func (a *App) pickCredential(raw []byte) ([]byte, error) {
 	var req SchedulerPickRequest
 	if err := json.Unmarshal(raw, &req); err != nil {
@@ -186,6 +203,9 @@ func (a *App) pickCredential(raw []byte) ([]byte, error) {
 		if candidateAllowed(candidate, decision) && (!protectAccounts || !a.turnState.AccountProtected(candidate.ID) || a.hostSchema.Load() >= 6 && a.turnState.BusinessReady(candidate.ID, req.Model)) {
 			allowed = append(allowed, candidate)
 		}
+	}
+	if len(allowed) == 0 {
+		allowed = a.breakoutCandidates(req)
 	}
 	if len(allowed) == 0 {
 		return ErrorEnvelope("no_routed_credential", noRoutedCredentialMessage, http.StatusServiceUnavailable), nil

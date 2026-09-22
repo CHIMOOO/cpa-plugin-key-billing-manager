@@ -1,6 +1,12 @@
 {
   "ui.state_force_astra_title": "强制 Astra",
   "ui.state_force_astra": "将 GPT/Codex 文本请求强制路由到 gpt-6-astra",
+  "ui.state_berserk": "狂暴续采",
+  "ui.state_berserk_minutes": "最后几分钟进入狂暴（分钟）",
+  "ui.state_berserk_help": "默认关闭。所选模板进入最后几分钟仍未续采成功时，服务器采集会同时发起最多 10 个探测，各走不同出口，直到有一个成功。每个探测都计入每小时上限以及出口和账号冷却。",
+  "ui.state_breakout_retry": "突破 API Key 分组池，动态路由重试",
+  "ui.state_breakout_retry_help": "默认关闭。请求在 API Key 所属分组里已没有可用账号时（例如 CPA 对失败请求重试后），可以改用其他持有同模型有效模板的所选账号继续。需要开启 State 注入和 CPA 的请求重试；Key 的模型权限仍然有效。",
+  "ui.state_bucket_idle": "不会注入：不在采集范围内或注入未开启",
   "ui.state_inject_cookies": "注入采集到的 Cookie",
   "ui.state_inject_cookies_help": "采集和从响应学习时，会一并保存上游随模板下发的 Cookie。注入模板时也会把它们写进 Cookie 请求头，同名的客户端 Cookie 会被替换。保存时会给所选账号的认证文件加上 Cookie 转发头，因为 CLIProxyAPI 默认不会把 Cookie 转发给 Codex。",
   "ui.state_bucket_cookies": "{count} 个 Cookie",

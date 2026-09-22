@@ -1,6 +1,12 @@
 {
   "ui.state_force_astra_title": "Force Astra",
   "ui.state_force_astra": "Route GPT/Codex text requests to gpt-6-astra",
+  "ui.state_berserk": "Berserk renewal",
+  "ui.state_berserk_minutes": "Berserk in the last (minutes)",
+  "ui.state_berserk_help": "Off by default. When a selected template enters its last minutes without a renewal, server collection runs up to 10 probes at once, each on its own exit, until one succeeds. Each probe counts toward the hourly limit and the exit and account cooldowns.",
+  "ui.state_breakout_retry": "Retry outside API key groups on State accounts",
+  "ui.state_breakout_retry_help": "Off by default. When a request has no usable account left in its API key's groups (for example after CPA retries a failure), it may continue on another selected account that holds a valid template for the same model. Requires State injection and CPA request retries; the key's model permissions still apply.",
+  "ui.state_bucket_idle": "Not injected: outside the collection scope or injection is off",
   "ui.state_inject_cookies": "Inject collected cookies",
   "ui.state_inject_cookies_help": "Collection and learning also keep the cookies the upstream set with each template. Injecting a template sends them in the Cookie header too, replacing client cookies of the same name. Saving adds a Cookie forwarding header to the selected accounts' auth files, because CLIProxyAPI does not otherwise pass Cookie to Codex.",
   "ui.state_bucket_cookies": "{count} cookies",

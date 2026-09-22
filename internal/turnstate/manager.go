@@ -34,6 +34,9 @@ type Config struct {
 	DryRun                       bool     `json:"dry_run"`
 	LearnResponses               bool     `json:"learn_responses"`
 	InjectCookies                bool     `json:"inject_cookies"`
+	BreakoutRetry                bool     `json:"breakout_retry"`
+	Berserk                      bool     `json:"berserk"`
+	BerserkMinutes               int      `json:"berserk_minutes"`
 	TemplateLength               int      `json:"template_length"`
 	ReplaceLength                int      `json:"replace_length"`
 	TTLSeconds                   int      `json:"ttl_seconds"`
@@ -54,7 +57,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, TemplateLength: 292,
+	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, BerserkMinutes: 1, TemplateLength: 292,
 		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
 		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10,
 		ProbeStaticCooldownMinutes: 55, ProbeRotatingCooldownMinutes: 10,
@@ -160,7 +163,8 @@ type diskState struct {
 // synchronously inside host callbacks. Raw state is never returned by Status.
 type Manager struct {
 	mu                sync.Mutex
-	probeMu           sync.Mutex
+	probeMu           sync.RWMutex // Probes share it; configuration writers take it exclusively.
+	probing           int
 	writerMu          sync.Mutex
 	path              string
 	state             diskState
@@ -328,6 +332,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.RenewBeforeMinutes < 0 || cfg.RenewBeforeMinutes > 59 || cfg.RenewBeforeMinutes*60 >= cfg.TTLSeconds {
 		return messages.Errorf("Renewal lead must be 0 (automatic) or 1–59 minutes and shorter than the template lifetime")
+	}
+	if cfg.BerserkMinutes < 1 || cfg.BerserkMinutes > 59 || cfg.Berserk && cfg.BerserkMinutes*60 >= cfg.TTLSeconds {
+		return messages.Errorf("Berserk mode must start 1–59 minutes before expiry and within the template lifetime")
 	}
 	if cfg.ProbeMinProxies < 1 || cfg.ProbeMinProxies > 2*MaxProxyPoolEntries {
 		return messages.Errorf("The minimum retained proxy count must be between 1 and 40000")
@@ -734,7 +741,7 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 	now := m.now()
 	m.pruneLocked(now)
 	if !remembered || now.Sub(p.At) > 15*time.Minute || p.Epoch < m.allTemplateEpoch || p.Epoch < m.clearedTemplates[key(p.Account, p.Model)] {
-		if headerValue(headers) != "" {
+		if headerValue(headers) != "" && (remembered || account == "" || m.inScopeLocked(account, ModelName(model))) {
 			m.recordLocked("skip", "The Codex request has no verifiable account attribution", account, model, now)
 		}
 		return nil

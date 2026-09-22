@@ -195,7 +195,7 @@ func accountKey(account string) string {
 // there is no detached runner, goroutine or timer after this method returns.
 // fetch must return only the specifically selected OAuth credential.
 func (m *Manager) Probe(account, model string, fetch func(string) (Credential, error)) (ProbeResult, error) {
-	return m.probe(account, model, nil, fetch)
+	return m.probe(account, model, 1, nil, fetch)
 }
 
 // ProbeWithAvailability is Probe with a host-supplied snapshot of accounts
@@ -203,16 +203,32 @@ func (m *Manager) Probe(account, model string, fetch func(string) (Credential, e
 // It prevents deleted or unsupported accounts from consuming a cooldown bucket
 // before fetch is called.
 func (m *Manager) ProbeWithAvailability(account, model string, available func(string) bool, fetch func(string) (Credential, error)) (ProbeResult, error) {
-	return m.probe(account, model, available, fetch)
+	return m.probe(account, model, 1, available, fetch)
 }
 
-func (m *Manager) probe(account, model string, available func(string) bool, fetch func(string) (Credential, error)) (result ProbeResult, err error) {
+// ProbeConcurrently admits one of up to limit probes running at the same time.
+// Selection and reservation stay serialized, so each probe takes its own exit.
+func (m *Manager) ProbeConcurrently(limit int, available func(string) bool, fetch func(string) (Credential, error)) (ProbeResult, error) {
+	return m.probe("", "", limit, available, fetch)
+}
+
+func (m *Manager) probe(account, model string, limit int, available func(string) bool, fetch func(string) (Credential, error)) (result ProbeResult, err error) {
 	model = ModelName(model)
-	if !m.probeMu.TryLock() {
+	m.mu.Lock()
+	if m.probing >= max(1, limit) {
+		m.mu.Unlock()
 		reason := "A probe request is already running"
 		return ProbeResult{Action: "busy", Reason: reason, ReasonMessage: messages.Literal(reason), NextCheckAt: time.Now().Add(3 * time.Second)}, nil
 	}
-	defer m.probeMu.Unlock()
+	m.probing++
+	m.mu.Unlock()
+	defer func() {
+		m.mu.Lock()
+		m.probing--
+		m.mu.Unlock()
+	}()
+	m.probeMu.RLock()
+	defer m.probeMu.RUnlock()
 	// Finalize observations before releasing the configuration/probe gate.
 	// Otherwise a waiting ConfigureWith can switch storage and clear counters,
 	// then have this old request overwrite the new manager's last result.
@@ -302,13 +318,16 @@ func (m *Manager) probe(account, model string, available func(string) bool, fetc
 	}
 	progress := candidate.progress()
 	progress.Action = "probing"
-	m.activeProbe = &progress
+	active := &progress
+	m.activeProbe = active
 	m.probeStats.Attempts++
 	m.mu.Unlock()
 	m.writerMu.Unlock()
 	defer func() {
 		m.mu.Lock()
-		m.activeProbe = nil
+		if m.activeProbe == active {
+			m.activeProbe = nil
+		}
 		m.mu.Unlock()
 	}()
 	credential, err := fetch(candidate.account)
