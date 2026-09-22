@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"cpa-key-billing/internal/messages"
@@ -18,6 +19,14 @@ import (
 )
 
 const turnStateRunnerLease = 90 * time.Second
+
+// Lanes start new probes only this long into a tick. One more probe's 25 s
+// transport limit still ends the tick before the collector's 45 s timeout.
+const turnStateLaneWindow = 12 * time.Second
+
+// An idle lane waits at most this long for a paced or busy bucket, and only
+// while another lane's probe keeps the tick open anyway.
+const turnStateLaneWait = 3 * time.Second
 
 // Complete proxy URLs can expand during JSON encoding. Bound event bytes as
 // well as count so old collectors' 2 MiB response limit remains sufficient.
@@ -82,10 +91,16 @@ type turnStateRunner struct {
 	now          func() time.Time
 	writeControl func(string, any) error
 	probe        func() ManagementResponse // Tests supply a bounded fake upstream.
+	// Tests replace one lane probe and shorten the lane timing.
+	probeLimit func(limit int) ManagementResponse
+	laneWindow time.Duration
+	laneWait   time.Duration
+	sleep      func(time.Duration)
 }
 
 func newTurnStateRunner() *turnStateRunner {
-	return &turnStateRunner{control: turnStateRunnerControl{Version: 1}, epoch: newRunnerEpoch(), now: time.Now}
+	return &turnStateRunner{control: turnStateRunnerControl{Version: 1}, epoch: newRunnerEpoch(), now: time.Now,
+		laneWindow: turnStateLaneWindow, laneWait: turnStateLaneWait, sleep: time.Sleep}
 }
 
 func newRunnerEpoch() string {
@@ -293,83 +308,91 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 	}
 	r.inFlight = true
 	r.manual = false
-	probe := r.probe
+	probe, probeLimit := r.probe, r.probeLimit
+	window, laneWait, sleep := r.laneWindow, r.laneWait, r.sleep
 	startRevision := r.control.Revision
 	startWakeRevision := r.wakeRevision
 	r.mu.Unlock()
+	// Lanes log real probes as they finish. The finalizer logs the rest: the
+	// test hook's result, or one idle result when no lane ran a probe. r.mu
+	// guards everything the lanes share with the finalizer.
+	var results []turnstate.ProbeResult
+	var fallback turnstate.ProbeResult
+	var hint time.Time
+	recorded := 0
 	// Finalize even if a host callback panics; a failed tick must not leave a
 	// permanent active flag and silently disable a durable collection intent.
-	var results []turnstate.ProbeResult
 	defer func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		r.inFlight = false
 		finished := r.now()
-		if len(results) == 0 {
+		if recorded == 0 && fallback.Action != "" {
+			results = append(results, fallback)
+		}
+		if len(results) == 0 && recorded == 0 {
 			results = []turnstate.ProbeResult{{Action: "error", Reason: "Server collection could not complete this probe; it will retry"}}
 		}
 		// The earliest hint among parallel probes decides the next check.
-		var hint time.Time
 		for i := range results {
 			results[i] = sanitizeRunnerResult(results[i])
-			if at := results[i].NextCheckAt; !at.IsZero() && (hint.IsZero() || at.Before(hint)) {
-				hint = at
-			}
+			hint = earlierRunnerHint(hint, results[i].NextCheckAt)
 		}
-		r.nextCheck = finished.Add(30 * time.Second)
-		if !hint.IsZero() {
-			r.nextCheck = hint
-			if r.nextCheck.Before(finished.Add(2 * time.Second)) {
-				r.nextCheck = finished.Add(2 * time.Second)
-			}
-			if r.nextCheck.After(finished.Add(time.Minute)) {
-				r.nextCheck = finished.Add(time.Minute)
-			}
-		}
+		r.nextCheck = runnerCheckAt(finished, hint)
 		if r.control.Revision != startRevision || r.wakeRevision != startWakeRevision {
 			// Stop/Start or cleared cooldowns supersede an in-flight request's
 			// scheduling hint, without admitting a second concurrent request.
 			r.nextCheck = time.Time{}
 		}
-		r.lastError = ""
+		if recorded == 0 {
+			r.lastError = ""
+		}
 		for _, result := range results {
 			// Management logs describe the next scheduler check, rather than the
 			// manager's potentially much later account/exit cooldown deadline.
 			result.NextCheckAt = r.nextCheck
-			if result.Action == "error" {
-				r.lastError = result.Reason
-			}
-			r.sequence++
-			event := turnStateRunnerEvent{Sequence: r.sequence, At: finished, Result: result}
-			encoded, _ := json.Marshal(event)
-			event.jsonBytes = len(encoded) + 1 // Include the array separator.
-			r.events = append(r.events, event)
-			r.eventBytes += event.jsonBytes
-		}
-		removed := 0
-		for len(r.events)-removed > 1 && (len(r.events)-removed > 100 || r.eventBytes > turnStateRunnerEventBytes) {
-			r.eventBytes -= r.events[removed].jsonBytes
-			removed++
-		}
-		if removed > 0 {
-			r.events = append([]turnStateRunnerEvent(nil), r.events[removed:]...)
+			r.appendEventLocked(finished, result)
 		}
 		out = runnerResponse(http.StatusOK, r.statusLocked())
 	}()
-	slots := 1
-	if probe == nil {
-		// Berserk mode runs its parallel probes inside this one tick and returns
-		// after all of them, so the collector process needs no change.
-		slots = a.turnState.ProbeConcurrency()
-		probe = func() ManagementResponse {
-			return a.executeTurnStateProbeLimit(ManagementRequest{Body: []byte(`{}`)}, slots)
+	if probe != nil {
+		// The test hook keeps one call per tick.
+		response := probe()
+		var result turnstate.ProbeResult
+		if response.StatusCode == http.StatusOK && json.Unmarshal(response.Body, &result) == nil && result.Action != "" {
+			results = append(results, result)
+		}
+		return ManagementResponse{}
+	}
+	// Each lane keeps its slot busy: when its probe finishes it logs the
+	// result and asks for the next due bucket without waiting for slower
+	// lanes. The manager runs one probe per account at a time (berserk renewal
+	// excepted), so parallel lanes serve different accounts.
+	slots := a.turnState.ProbeConcurrency()
+	if probeLimit == nil {
+		probeLimit = func(limit int) ManagementResponse {
+			return a.executeTurnStateProbeLimit(ManagementRequest{Body: []byte(`{}`)}, limit)
 		}
 	}
-	observed := make([]turnstate.ProbeResult, slots)
-	var wg sync.WaitGroup
-	var panicMu sync.Mutex
+	// The window is real time, independent of the scheduling clock. running
+	// counts lanes inside a probe call; a call that finds nothing returns at once.
+	started := time.Now()
+	var running atomic.Int32
 	var panicked any
-	for i := range observed {
+	admit := func() bool {
+		r.mu.Lock()
+		open := r.control.Enabled && !r.stopPending && r.control.Revision == startRevision && panicked == nil &&
+			time.Since(started) < window
+		r.mu.Unlock()
+		return open && a.turnState.Active()
+	}
+	call := func() ManagementResponse {
+		running.Add(1)
+		defer running.Add(-1)
+		return probeLimit(slots)
+	}
+	var wg sync.WaitGroup
+	for range slots {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -377,14 +400,48 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 			// the deferred finalizer still see a callback panic.
 			defer func() {
 				if value := recover(); value != nil {
-					panicMu.Lock()
-					panicked = value
-					panicMu.Unlock()
+					r.mu.Lock()
+					if panicked == nil {
+						panicked = value
+					}
+					r.mu.Unlock()
 				}
 			}()
-			response := probe()
-			if response.StatusCode == http.StatusOK {
-				_ = json.Unmarshal(response.Body, &observed[i])
+			for admit() {
+				response := call()
+				var result turnstate.ProbeResult
+				if response.StatusCode != http.StatusOK || json.Unmarshal(response.Body, &result) != nil || result.Action == "" {
+					return
+				}
+				r.mu.Lock()
+				now := r.now()
+				if result.Account != "" {
+					// Log a real probe with its own completion time. Its event shows
+					// the check this result asks for; the tick's is not known yet.
+					if recorded == 0 {
+						r.lastError = ""
+					}
+					recorded++
+					hint = earlierRunnerHint(hint, result.NextCheckAt)
+					result = sanitizeRunnerResult(result)
+					result.NextCheckAt = runnerCheckAt(now, result.NextCheckAt)
+					r.appendEventLocked(now, result)
+					r.mu.Unlock()
+					continue
+				}
+				// Nothing was due for this lane. Lanes that found nothing are not
+				// separate log entries; the first such result is the fallback.
+				if fallback.Action == "" {
+					fallback = result
+					hint = earlierRunnerHint(hint, result.NextCheckAt)
+				}
+				r.mu.Unlock()
+				wait := result.NextCheckAt.Sub(now)
+				if (result.Action != "cooling" && result.Action != "account_wait") || wait <= 0 || wait > laneWait ||
+					running.Load() == 0 || time.Since(started)+wait >= window {
+					return
+				}
+				sleep(wait)
 			}
 		}()
 	}
@@ -392,21 +449,51 @@ func (a *App) tickTurnStateRunner(req ManagementRequest) (out ManagementResponse
 	if panicked != nil {
 		panic(panicked)
 	}
-	// Slots that found nothing left to probe are not separate log entries.
-	for _, result := range observed {
-		if result.Action != "" && result.Account != "" {
-			results = append(results, result)
-		}
-	}
-	if len(results) == 0 {
-		for _, result := range observed {
-			if result.Action != "" {
-				results = append(results, result)
-				break
-			}
-		}
-	}
 	return ManagementResponse{}
+}
+
+// appendEventLocked logs one result and keeps the newest events within both
+// the count and the byte limit.
+func (r *turnStateRunner) appendEventLocked(at time.Time, result turnstate.ProbeResult) {
+	if result.Action == "error" {
+		r.lastError = result.Reason
+	}
+	r.sequence++
+	event := turnStateRunnerEvent{Sequence: r.sequence, At: at, Result: result}
+	encoded, _ := json.Marshal(event)
+	event.jsonBytes = len(encoded) + 1 // Include the array separator.
+	r.events = append(r.events, event)
+	r.eventBytes += event.jsonBytes
+	removed := 0
+	for len(r.events)-removed > 1 && (len(r.events)-removed > 100 || r.eventBytes > turnStateRunnerEventBytes) {
+		r.eventBytes -= r.events[removed].jsonBytes
+		removed++
+	}
+	if removed > 0 {
+		r.events = append([]turnStateRunnerEvent(nil), r.events[removed:]...)
+	}
+}
+
+func earlierRunnerHint(current, at time.Time) time.Time {
+	if !at.IsZero() && (current.IsZero() || at.Before(current)) {
+		return at
+	}
+	return current
+}
+
+// runnerCheckAt bounds a scheduling hint to the heartbeat range: never before
+// the ordinary 2 s request spacing, never after a minute, 30 s without a hint.
+func runnerCheckAt(finished, hint time.Time) time.Time {
+	if hint.IsZero() {
+		return finished.Add(30 * time.Second)
+	}
+	if hint.Before(finished.Add(2 * time.Second)) {
+		return finished.Add(2 * time.Second)
+	}
+	if hint.After(finished.Add(time.Minute)) {
+		return finished.Add(time.Minute)
+	}
+	return hint
 }
 
 func sanitizeRunnerResult(result turnstate.ProbeResult) turnstate.ProbeResult {
