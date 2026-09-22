@@ -928,6 +928,7 @@
   "backend.turn_state_host_inventory_unavailable": "This host cannot read the authentication file list",
   "backend.turn_state_invalid_clear": "Invalid template clearing parameters",
   "backend.turn_state_invalid_probe": "Invalid probe parameters",
+  "backend.turn_state_invalid_journal": "Invalid diagnostic log request",
   "backend.turn_state_inventory_failed": "Failed to read the authentication file list",
   "backend.turn_state_account_missing": "The probe account does not exist or is not a Codex OAuth account",
   "backend.turn_state_save_failed_log": "Failed to save the turn-state template: {v0}",

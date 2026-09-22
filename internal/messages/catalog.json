@@ -916,6 +916,10 @@
     "key": "backend.turn_state_invalid_probe",
     "formats": []
   },
+  "Invalid diagnostic log request": {
+    "key": "backend.turn_state_invalid_journal",
+    "formats": []
+  },
   "Failed to read the authentication file list": {
     "key": "backend.turn_state_inventory_failed",
     "formats": []

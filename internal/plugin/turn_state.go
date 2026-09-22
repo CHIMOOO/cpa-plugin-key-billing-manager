@@ -254,6 +254,7 @@ func (a *App) handleTurnStateResponse(raw []byte, stream bool) ([]byte, error) {
 		Model           string         `json:"Model"`
 		RequestedModel  string         `json:"RequestedModel"`
 		ResponseHeaders http.Header    `json:"ResponseHeaders"`
+		StatusCode      int            `json:"StatusCode"`
 		Metadata        map[string]any `json:"Metadata"`
 		ChunkIndex      int            `json:"ChunkIndex"`
 	}
@@ -274,7 +275,8 @@ func (a *App) handleTurnStateResponse(raw []byte, stream bool) ([]byte, error) {
 		if model == "" {
 			model = req.RequestedModel
 		}
-		if err := a.turnState.Learn(req.RequestID, metadataString(req.Metadata, MetadataSelectedAuth), model, req.ResponseHeaders); err != nil {
+		// Stream chunks carry no status; only non-streaming responses report it.
+		if err := a.turnState.LearnResponse(req.RequestID, metadataString(req.Metadata, MetadataSelectedAuth), model, req.StatusCode, req.ResponseHeaders); err != nil {
 			// Failing to save an optional template must not break a paid response.
 			a.store.AddPluginLog(billing.PluginLogError, "Failed to save the turn-state template: %v", err)
 		}

@@ -44,6 +44,7 @@ const (
 	routeTurnStateProbeProgress = "/turn-state/probe-progress"
 	routeTurnStateCooldowns     = "/turn-state/cooldowns/clear"
 	routeTurnStateSelfTest      = "/turn-state/self-test"
+	routeTurnStateJournal       = "/turn-state/journal"
 	routePersistence            = "/persistence"
 	routeKeysRoutes             = "/keys/routes"
 	routeKeysBind               = "/keys/bind"
@@ -119,6 +120,9 @@ var managementEndpoints = []managementEndpoint{
 	{http.MethodGet, routeTurnStateProbeProgress, "View the active Codex turn-state probe exit", (*App).getTurnStateProbeProgress},
 	{http.MethodPost, routeTurnStateCooldowns, "Clear failed Codex turn-state probe cooldowns", (*App).clearTurnStateCooldowns},
 	{http.MethodPost, routeTurnStateSelfTest, "Test a specific Codex account and model without harvesting", (*App).selfTestTurnState},
+	{http.MethodGet, routeTurnStateJournal, "View the Codex turn-state diagnostic log", (*App).getTurnStateJournal},
+	{http.MethodPut, routeTurnStateJournal, "Start or stop the Codex turn-state diagnostic log", (*App).setTurnStateJournal},
+	{http.MethodDelete, routeTurnStateJournal, "Clear the Codex turn-state diagnostic log", (*App).clearTurnStateJournal},
 	{http.MethodGet, routePersistence, "Inspect plugin storage mounts when detectable", (*App).getPersistence},
 	{http.MethodPost, routeGroups, "Create API key group", (*App).createGroup},
 	{http.MethodPatch, routeGroups, "Update API key group", (*App).updateGroup},

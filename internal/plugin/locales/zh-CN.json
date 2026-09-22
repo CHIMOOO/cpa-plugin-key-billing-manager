@@ -928,6 +928,7 @@
   "backend.turn_state_host_inventory_unavailable": "当前宿主不能读取认证文件列表",
   "backend.turn_state_invalid_clear": "清理模板参数无效",
   "backend.turn_state_invalid_probe": "探测参数无效",
+  "backend.turn_state_invalid_journal": "诊断日志请求无效",
   "backend.turn_state_inventory_failed": "无法读取认证文件列表",
   "backend.turn_state_account_missing": "探测账号不存在或不是 Codex OAuth 账号",
   "backend.turn_state_save_failed_log": "保存 turn-state 模板失败：{v0}",
