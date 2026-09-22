@@ -30,11 +30,27 @@ func verifyProbeCompletion(response *http.Response) string {
 	if encoding != "" && !strings.EqualFold(encoding, "identity") {
 		return probeCompletionEncoding
 	}
-	kind, _, err := mime.ParseMediaType(response.Header.Get("Content-Type"))
+	contentType := response.Header.Get("Content-Type")
+	body := io.Reader(response.Body)
+	if strings.TrimSpace(contentType) == "" {
+		// Some upstream responses omit the media type. Recognize SSE or JSON by
+		// the first bytes instead of discarding a valid state.
+		buffered := bufio.NewReader(response.Body)
+		head, _ := buffered.Peek(16)
+		head = bytes.TrimLeft(head, " \t\r\n")
+		switch {
+		case bytes.HasPrefix(head, []byte("{")):
+			contentType = "application/json"
+		case bytes.HasPrefix(head, []byte("event:")), bytes.HasPrefix(head, []byte("data:")), bytes.HasPrefix(head, []byte("id:")), bytes.HasPrefix(head, []byte(":")):
+			contentType = "text/event-stream"
+		}
+		body = buffered
+	}
+	kind, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return probeCompletionFormat
 	}
-	reader := &io.LimitedReader{R: response.Body, N: probeCompletionLimit + 1}
+	reader := &io.LimitedReader{R: body, N: probeCompletionLimit + 1}
 	switch {
 	case strings.EqualFold(kind, "text/event-stream"):
 		return verifyProbeSSECompletion(reader)

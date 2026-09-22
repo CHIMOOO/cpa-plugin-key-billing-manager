@@ -208,3 +208,73 @@ func TestExitBlockedRecognizesChallengesAndRegions(t *testing.T) {
 		}
 	}
 }
+
+// A selected account's responses refresh its jar whatever the model; only
+// the selected models carry the cookies.
+func TestAnyModelOfASelectedAccountRefreshesTheJar(t *testing.T) {
+	m, _ := newTestManager(t)
+	if err := m.Learn("other", "account-a", "model-other", cookieResponse("", "sid=other")); err != nil {
+		t.Fatal(err)
+	}
+	if headers, _ := m.Before("r1", "account-a", "model-a", nil); headers.Get("Cookie") != "sid=other" {
+		t.Fatalf("an out-of-scope model's response did not refresh the jar: %v", headers)
+	}
+	if headers, _ := m.Before("r2", "account-a", "model-other", nil); headers.Get("Cookie") != "" {
+		t.Fatalf("an out-of-scope model carried cookies: %v", headers)
+	}
+}
+
+// Missing buckets come before cookie refreshes, and a model that is no longer
+// first stops refreshing.
+func TestCookieRefreshesYieldToMissingBucketsAndFollowTheFirstModel(t *testing.T) {
+	m, now := newTestManager(t)
+	if err := m.Update([]byte(`{"cookie_refresh_seconds":30,"models":["model-a","model-b"],"probe_static_cooldown_minutes":0}`)); err != nil {
+		t.Fatal(err)
+	}
+	m.runProbe = func(_ Credential, model, _ string) (ProbeResponse, error) {
+		if model == "model-b" {
+			return ProbeResponse{Status: 200, Value: strings.Repeat("d", 312)}, nil
+		}
+		return ProbeResponse{Status: 200, Value: tokenAt(*now)}, nil
+	}
+	for _, want := range []string{"model-a", "model-b"} {
+		if result, err := m.Probe("", "", dummyCredential); err != nil || result.Model != want {
+			t.Fatalf("initial probe = %+v %v, want %s", result, err, want)
+		}
+		*now = now.Add(3 * time.Second)
+	}
+	*now = now.Add(30 * time.Second)
+	if result, err := m.Probe("", "", dummyCredential); err != nil || result.Model != "model-b" {
+		t.Fatalf("a cookie refresh ran before the missing bucket: %+v %v", result, err)
+	}
+	if err := m.Update([]byte(`{"models":["model-b","model-a"]}`)); err != nil {
+		t.Fatal(err)
+	}
+	*now = now.Add(3 * time.Second)
+	m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
+		return ProbeResponse{Status: 200, Value: strings.Repeat("d", 312)}, nil
+	}
+	if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "fresh" {
+		t.Fatalf("a model that is no longer first kept refreshing: %+v %v", result, err)
+	}
+}
+
+// An unchanged refresh keeps refreshing on the same exit instead of leaving
+// it reserved for the failure cooldown.
+func TestUnchangedRefreshReusesItsExit(t *testing.T) {
+	m, now := newTestManager(t)
+	if err := m.Update([]byte(`{"cookie_refresh_seconds":30}`)); err != nil {
+		t.Fatal(err)
+	}
+	token := tokenAt(*now)
+	m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
+		return ProbeResponse{Status: 200, Value: token}, nil
+	}
+	want := []string{"harvested", "unchanged", "unchanged"}
+	for i, action := range want {
+		if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != action {
+			t.Fatalf("probe %d = %+v %v, want %s", i, result, err, action)
+		}
+		*now = now.Add(31 * time.Second)
+	}
+}

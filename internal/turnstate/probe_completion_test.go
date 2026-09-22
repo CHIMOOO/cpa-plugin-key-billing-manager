@@ -44,7 +44,10 @@ func TestStrictProbeCompletionFormats(t *testing.T) {
 		{"json-truncated", "application/json", `{"status":"completed"`, probeCompletionMalformed},
 		{"json-concatenated", "application/json", `{"status":"completed"}{"status":"failed"}`, probeCompletionMalformed},
 		{"html", "text/html", "<html>OK</html>", probeCompletionFormat},
-		{"missing-content-type", "", completedProbeSSE, probeCompletionFormat},
+		{"missing-content-type-sse", "", completedProbeSSE, ""},
+		{"missing-content-type-json", "", `{"status":"completed"}`, ""},
+		{"missing-content-type-html", "", "<html>OK</html>", probeCompletionFormat},
+		{"missing-content-type-empty", "", "", probeCompletionFormat},
 		{"empty-body", "text/event-stream", "", probeCompletionMissing},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

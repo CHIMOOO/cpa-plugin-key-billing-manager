@@ -91,7 +91,7 @@ func (m *Manager) ProbeProgress() ProbeProgress {
 
 type probeCandidate struct {
 	account, model, proxy, cooldownKey  string
-	rotating                            bool
+	rotating, refresh                   bool // refresh: due only for a cookie refresh
 	index, total, attempt, attemptLimit int
 }
 
@@ -328,7 +328,10 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 		}
 		m.mu.Unlock()
 	}()
-	if t, exists := m.state.Templates[m.lastProbeBucket]; exists && m.usableLocked(t, now) {
+	if candidate.refresh {
+		// A cookie refresh never counts toward the renewal burst.
+		m.lastRenewBucket = m.lastProbeBucket
+	} else if t, exists := m.state.Templates[m.lastProbeBucket]; exists && m.usableLocked(t, now) {
 		m.lastRenewBucket = m.lastProbeBucket
 		m.renewalBurst++
 	} else {
@@ -431,7 +434,7 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 			result.NextCheckAt = at
 		}
 	}
-	var renewing, missing []probeCandidate
+	var renewing, missing, refreshes []probeCandidate
 	fresh, eligible, pending, paused := 0, 0, 0, 0
 	for _, selectedAccount := range accounts {
 		if available != nil && !available(selectedAccount) {
@@ -441,12 +444,19 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 		for _, selectedModel := range models {
 			template, hasTemplate := m.state.Templates[key(selectedAccount, selectedModel)]
 			hasTemplate = hasTemplate && m.usableLocked(template, now)
+			refreshOnly := false
 			if hasTemplate {
-				renewAt := bucketRenewAt(template, cfg)
+				renewAt, refreshAt := templateRenewAt(template, cfg), bucketRefreshAt(template, cfg)
 				if renewAt.After(now) {
-					fresh++
-					earlier(renewAt)
-					continue
+					if refreshAt.IsZero() || refreshAt.After(now) {
+						fresh++
+						earlier(renewAt)
+						if !refreshAt.IsZero() {
+							earlier(refreshAt)
+						}
+						continue
+					}
+					refreshOnly = true
 				}
 			}
 			// Parallel slots spread over buckets; only a bucket in its berserk
@@ -509,7 +519,7 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 				if rotating {
 					attempt = addProbeUsageCount(max(0, budget.Attempts), 1)
 				}
-				candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: rotating, index: index + 1, total: total, attempt: attempt}
+				candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: rotating, index: index + 1, total: total, attempt: attempt, refresh: refreshOnly}
 				if rotating {
 					candidate.attemptLimit = limit
 				}
@@ -517,7 +527,9 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 				break
 			}
 			if found {
-				if hasTemplate {
+				if refreshOnly {
+					refreshes = append(refreshes, candidate)
+				} else if hasTemplate {
 					renewing = append(renewing, candidate)
 				} else {
 					missing = append(missing, candidate)
@@ -534,6 +546,10 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 	candidates, cursor := missing, m.lastMissingBucket
 	if len(renewing) > 0 && (len(missing) == 0 || m.renewalBurst < 3) {
 		candidates, cursor = renewing, m.lastRenewBucket
+	}
+	// Cookie refreshes only use slots nothing else needs.
+	if len(candidates) == 0 {
+		candidates, cursor = refreshes, m.lastRenewBucket
 	}
 	if len(candidates) > 0 {
 		selected := 0
@@ -584,6 +600,7 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	pruneState(&next, now)
 	result := c.progress()
 	result.Status, result.Length, result.NextCheckAt = response.Status, len(response.Value), now.Add(2*time.Second)
+	refreshed := false
 	switch {
 	case failure != "":
 		result.Action, result.Reason = "error", failure
@@ -649,6 +666,7 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 			if refreshesCookies(next.Config, c.model) {
 				previous.RefreshAt = now.Add(time.Duration(next.Config.CookieRefreshSeconds) * time.Second)
 				next.Templates[bucket] = previous
+				refreshed = true
 			}
 			break
 		}
@@ -657,18 +675,19 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	default:
 		result.Action, result.Reason = "error", "The response did not contain a turn-state of the configured template length"
 	}
-	// A failed cookie refresh stops refreshing until the template's own
-	// renewal, instead of retrying a dry window every few seconds.
-	if result.Action != "harvested" && result.Action != "unchanged" {
-		if t, ok := next.Templates[key(c.account, c.model)]; ok && !t.RefreshAt.IsZero() && !t.RefreshAt.After(now) {
-			t.RefreshAt = time.Time{}
-			next.Templates[key(c.account, c.model)] = t
-		}
+	// A refresh still due here was not rescheduled above: a failed refresh
+	// stops until the template's own renewal instead of retrying a dry window,
+	// and a model that is no longer first stops refreshing.
+	if t, ok := next.Templates[key(c.account, c.model)]; ok && !t.RefreshAt.IsZero() && !t.RefreshAt.After(now) {
+		t.RefreshAt = time.Time{}
+		next.Templates[key(c.account, c.model)] = t
 	}
 	// Zero disables the long failure pause, never the ordinary request interval.
 	rest = max(rest, 2*time.Second)
 	next.Cooldowns[accountKey(c.account)] = cooldown{Until: now.Add(rest), PacingUntil: now.Add(2 * time.Second)}
-	if result.Action == "harvested" {
+	if result.Action == "harvested" || refreshed {
+		// The exit that served this state stays reserved only until the bucket
+		// is next due, so the next refresh or renewal can reuse it.
 		bucket := key(c.account, c.model)
 		next.Cooldowns[c.cooldownKey] = cooldown{Until: bucketRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
 		if c.rotating {

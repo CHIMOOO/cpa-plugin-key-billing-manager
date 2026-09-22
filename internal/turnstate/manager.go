@@ -777,16 +777,15 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 	delete(m.pending, requestID)
 	now := m.now()
 	// Every response of a selected account refreshes its cookie jar, whatever
-	// the state length and even while injection is off.
-	jarAccount, jarModel := account, ModelName(model)
-	if remembered {
-		if account == "" || account == p.Account {
-			jarAccount, jarModel = p.Account, p.Model
-		} else {
-			jarAccount = ""
-		}
+	// the model and state length and even while injection is off. Only the
+	// selected models carry the cookies.
+	jarAccount := account
+	if remembered && account != "" && account != p.Account {
+		jarAccount = ""
+	} else if remembered {
+		jarAccount = p.Account
 	}
-	if jarAccount != "" && m.inScopeLocked(jarAccount, jarModel) {
+	if jarAccount != "" && contains(m.state.Config.ProbeAccounts, jarAccount) {
 		m.storeCookiesLocked(jarAccount, headers, now)
 	}
 	if !m.state.Config.Enabled {

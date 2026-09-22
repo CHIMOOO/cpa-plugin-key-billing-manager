@@ -13,9 +13,10 @@ func templateRenewAt(t Template, cfg Config) time.Time {
 	return t.IssuedAt.Add(time.Duration(cfg.TTLSeconds)*time.Second - configRenewalLead(cfg))
 }
 
-// bucketRefreshAt is the pending cookie refresh of a template, or zero.
+// bucketRefreshAt is the pending cookie refresh of a template, or zero. A
+// template whose model is no longer first keeps no refresh.
 func bucketRefreshAt(t Template, cfg Config) time.Time {
-	if cfg.CookieRefreshSeconds <= 0 {
+	if !refreshesCookies(cfg, t.Model) {
 		return time.Time{}
 	}
 	return t.RefreshAt
