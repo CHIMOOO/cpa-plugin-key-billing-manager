@@ -1,6 +1,7 @@
 package turnstate
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -16,10 +17,10 @@ func cookieResponse(state string, cookies ...string) http.Header {
 	return headers
 }
 
-// Any response of a selected account refreshes its jar, even a degraded 312,
-// and every selected request carries the fresh cookies with or without a
-// template until the cookie lifetime passes.
-func TestCookieJarIsRefreshedByEveryResponseAndInjectedWhileFresh(t *testing.T) {
+// The jar is frozen to the cookies that came with a 292: a 312's cookies
+// neither replace nor delete them. Every selected request carries the fresh
+// cookies with or without a template until the cookie lifetime passes.
+func TestCookieJarIsFrozenTo292ResponsesAndInjectedWhileFresh(t *testing.T) {
 	m, now := newTestManager(t)
 	if err := m.Update([]byte(`{"inject_mode":"always"}`)); err != nil {
 		t.Fatal(err)
@@ -27,21 +28,31 @@ func TestCookieJarIsRefreshedByEveryResponseAndInjectedWhileFresh(t *testing.T) 
 	if headers, _ := m.Before("r1", "account-a", "model-a", nil); headers != nil {
 		t.Fatalf("empty jar injected %v", headers)
 	}
-	if err := m.Learn("r1", "account-a", "model-a", cookieResponse(strings.Repeat("d", 312), "__cf_bm=abc; Path=/; HttpOnly", "_cfuvid=xyz; Path=/")); err != nil {
+	if err := m.Learn("r1", "account-a", "model-a", cookieResponse(strings.Repeat("d", 312), "__cf_bm=degraded; Path=/")); err != nil {
 		t.Fatal(err)
 	}
-	headers, clear := m.Before("r2", "account-a", "model-a", http.Header{"Cookie": {"client=1; __cf_bm=old"}})
+	if jars := m.Status().CookieJars; len(jars) != 0 {
+		t.Fatalf("a 312 filled the jar: %+v", jars)
+	}
+	// A 292 counts even when it is not saved (here its timestamp is invalid).
+	m.Before("r2", "account-a", "model-a", nil)
+	if err := m.Learn("r2", "account-a", "model-a", cookieResponse(strings.Repeat("x", 292), "__cf_bm=abc; Path=/; HttpOnly", "_cfuvid=xyz; Path=/")); err != nil {
+		t.Fatal(err)
+	}
+	headers, clear := m.Before("r3", "account-a", "model-a", http.Header{"Cookie": {"client=1; __cf_bm=old"}})
 	if headers.Get("Cookie") != "client=1; __cf_bm=abc; _cfuvid=xyz" || headers.Get(Header) != "" || len(clear) != 1 || clear[0] != "Cookie" {
 		t.Fatalf("fresh cookies without a template = %v %v", headers, clear)
 	}
+	if err := m.Learn("r3", "account-a", "model-a", cookieResponse(strings.Repeat("d", 312), "__cf_bm=later", "_cfuvid=; Max-Age=0")); err != nil {
+		t.Fatal(err)
+	}
 	// A template and the cookies are injected together but independently.
 	learn(t, m, tokenAt(*now))
-	if headers, _ = m.Before("r3", "account-a", "model-a", nil); headers.Get(Header) == "" || headers.Get("Cookie") != "__cf_bm=abc; _cfuvid=xyz" {
-		t.Fatalf("template with cookies = %v", headers)
+	if headers, _ = m.Before("r4", "account-a", "model-a", nil); headers.Get(Header) == "" || headers.Get("Cookie") != "__cf_bm=abc; _cfuvid=xyz" {
+		t.Fatalf("a 312 changed the frozen cookies: %v", headers)
 	}
-	// A deletion removes the name without refreshing the jar's age.
-	m.Before("r4", "account-a", "model-a", nil)
-	if err := m.Learn("r4", "account-a", "model-a", cookieResponse("", "_cfuvid=; Max-Age=0")); err != nil {
+	// A 292's deletion removes the name without refreshing the jar's age.
+	if err := m.Learn("r4", "account-a", "model-a", cookieResponse(tokenAt(*now), "_cfuvid=; Max-Age=0")); err != nil {
 		t.Fatal(err)
 	}
 	*now = now.Add(4 * time.Minute)
@@ -49,7 +60,7 @@ func TestCookieJarIsRefreshedByEveryResponseAndInjectedWhileFresh(t *testing.T) 
 		t.Fatalf("cookies within 240 s = %v", headers)
 	}
 	status := m.Status()
-	if len(status.CookieJars) != 1 || status.CookieJars[0].Count != 1 || !status.CookieJars[0].Fresh || status.Counters.Cookies != 5 {
+	if len(status.CookieJars) != 1 || status.CookieJars[0].Count != 1 || !status.CookieJars[0].Fresh || status.Counters.Cookies != 4 {
 		t.Fatalf("cookie status = %+v %+v", status.CookieJars, status.Counters)
 	}
 	*now = now.Add(time.Second + time.Second)
@@ -61,14 +72,34 @@ func TestCookieJarIsRefreshedByEveryResponseAndInjectedWhileFresh(t *testing.T) 
 	}
 }
 
-func TestCookiesStayWithinTheSelectedScope(t *testing.T) {
+// With cookie_refresh_all on, every response refreshes the jar again.
+func TestCookieRefreshAllLetsEveryResponseRefreshTheJar(t *testing.T) {
 	m, _ := newTestManager(t)
+	if m.Status().Config.CookieRefreshAll {
+		t.Fatal("cookie_refresh_all is on by default")
+	}
+	if err := m.Update([]byte(`{"cookie_refresh_all":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	for i, value := range []string{strings.Repeat("d", 312), ""} {
+		cookie := fmt.Sprintf("sid=%d", i)
+		if err := m.Learn(fmt.Sprint("learn", i), "account-a", "model-a", cookieResponse(value, cookie)); err != nil {
+			t.Fatal(err)
+		}
+		if headers, _ := m.Before(fmt.Sprint("r", i), "account-a", "model-a", nil); headers.Get("Cookie") != cookie {
+			t.Fatalf("a %d-character response did not refresh the jar: %v", len(value), headers)
+		}
+	}
+}
+
+func TestCookiesStayWithinTheSelectedScope(t *testing.T) {
+	m, now := newTestManager(t)
 	m.Before("r1", "account-a", "model-a", nil)
-	if err := m.Learn("r1", "account-a", "model-a", cookieResponse("", "sid=1")); err != nil {
+	if err := m.Learn("r1", "account-a", "model-a", cookieResponse(tokenAt(*now), "sid=1")); err != nil {
 		t.Fatal(err)
 	}
 	// Unselected accounts never fill a jar; unselected models never get one.
-	if err := m.Learn("r2", "account-b", "model-a", cookieResponse("", "sid=2")); err != nil {
+	if err := m.Learn("r2", "account-b", "model-a", cookieResponse(tokenAt(*now), "sid=2")); err != nil {
 		t.Fatal(err)
 	}
 	if headers, _ := m.Before("r3", "account-a", "model-other", nil); headers.Get("Cookie") != "" {
@@ -87,35 +118,37 @@ func TestCookiesStayWithinTheSelectedScope(t *testing.T) {
 	}
 }
 
-// Probe responses fill the jar whatever their status or state length.
-func TestProbeResponsesFillTheCookieJar(t *testing.T) {
+// Only a probe response carrying a 292 fills the jar, saved or not; a 312 or
+// a refusal keeps the cookies that came with the last 292.
+func TestOnlyProbeResponsesWithA292FillTheCookieJar(t *testing.T) {
 	m, now := newTestManager(t)
 	if err := m.Update([]byte(`{"probe_static_cooldown_minutes":0,"probe_account_cooldown_minutes":0}`)); err != nil {
 		t.Fatal(err)
 	}
-	m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
-		return ProbeResponse{Status: 200, Value: strings.Repeat("d", 312), SetCookies: []string{"__cf_bm=probe; Path=/"}}, nil
-	}
-	if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Action != "degraded" {
-		t.Fatalf("degraded probe = %+v %v", result, err)
-	}
-	if headers, _ := m.Before("r1", "account-a", "model-a", nil); headers.Get("Cookie") != "__cf_bm=probe" {
-		t.Fatalf("probe cookies not injected: %v", headers)
-	}
-	*now = now.Add(5 * time.Minute)
-	m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
-		return ProbeResponse{Status: 429, SetCookies: []string{"__cf_bm=limited"}}, nil
-	}
-	if _, err := m.Probe("account-a", "model-a", dummyCredential); err != nil {
-		t.Fatal(err)
-	}
-	if headers, _ := m.Before("r2", "account-a", "model-a", nil); headers.Get("Cookie") != "__cf_bm=limited" {
-		t.Fatalf("a refused probe did not refresh the jar: %v", headers)
+	for i, step := range []struct {
+		response ProbeResponse
+		want     string
+	}{
+		{ProbeResponse{Status: 200, Value: strings.Repeat("d", 312), SetCookies: []string{"__cf_bm=degraded; Path=/"}}, ""},
+		{ProbeResponse{Status: 429, SetCookies: []string{"__cf_bm=limited"}}, ""},
+		{ProbeResponse{Status: 200, Value: strings.Repeat("x", 292), SetCookies: []string{"__cf_bm=probe; Path=/"}}, "__cf_bm=probe"},
+		{ProbeResponse{Status: 200, Value: strings.Repeat("d", 312), SetCookies: []string{"__cf_bm=later"}}, "__cf_bm=probe"},
+		{ProbeResponse{Status: 429, SetCookies: []string{"__cf_bm=limited"}}, "__cf_bm=probe"},
+	} {
+		m.runProbe = func(Credential, string, string) (ProbeResponse, error) { return step.response, nil }
+		if result, err := m.Probe("account-a", "model-a", dummyCredential); err != nil || result.Status != step.response.Status {
+			t.Fatalf("probe %d = %+v %v", i, result, err)
+		}
+		if headers, _ := m.Before(fmt.Sprint("r", i), "account-a", "model-a", nil); headers.Get("Cookie") != step.want {
+			t.Fatalf("probe %d: cookies = %q, want %q", i, headers.Get("Cookie"), step.want)
+		}
+		*now = now.Add(3 * time.Second)
 	}
 }
 
 // After the first selected model harvests a 292, its bucket is probed again
-// after the refresh interval; a failed refresh stops until normal renewal.
+// after the refresh interval; a refresh round without a 292 waits the retry
+// interval before the next one.
 func TestSuccessfulProbeSchedulesACookieRefreshForTheFirstModel(t *testing.T) {
 	m, now := newTestManager(t)
 	if err := m.Update([]byte(`{"cookie_refresh_seconds":30,"models":["model-a","model-b"],"probe_static_cooldown_minutes":0}`)); err != nil {
@@ -143,20 +176,20 @@ func TestSuccessfulProbeSchedulesACookieRefreshForTheFirstModel(t *testing.T) {
 	if len(probes) != 3 || probes[2] != "model-a" {
 		t.Fatalf("probe order = %v", probes)
 	}
-	// A refresh that meets a dry window keeps the template and its cadence,
-	// so the probe responses keep the cookies fresh.
+	// A refresh that meets a dry window keeps the template. With one exit the
+	// round ends at once, and the next round waits the retry interval.
 	*now = now.Add(31 * time.Second)
 	value = func() string { return strings.Repeat("d", 312) }
 	if result, err := m.Probe("", "", dummyCredential); err != nil || result.Action != "degraded" {
 		t.Fatalf("dry refresh = %+v %v", result, err)
 	}
-	*now = now.Add(10 * time.Second)
+	*now = now.Add(299 * time.Second)
 	if result, err := m.Probe("", "", dummyCredential); err != nil || result.Action != "fresh" {
-		t.Fatalf("a failed refresh retried before its interval: %+v %v", result, err)
+		t.Fatalf("a failed refresh round retried before the retry interval: %+v %v", result, err)
 	}
-	*now = now.Add(21 * time.Second)
+	*now = now.Add(time.Second)
 	if result, err := m.Probe("", "", dummyCredential); err != nil || result.Action != "degraded" || result.Model != "model-a" {
-		t.Fatalf("a failed refresh stopped refreshing: %+v %v", result, err)
+		t.Fatalf("a failed refresh round stopped refreshing: %+v %v", result, err)
 	}
 	if views := m.Status().Templates; len(views) != 2 {
 		t.Fatalf("a failed refresh dropped a template: %+v", views)
@@ -235,11 +268,11 @@ func TestExitBlockedRecognizesChallengesAndRegions(t *testing.T) {
 	}
 }
 
-// A selected account's responses refresh its jar whatever the model; only
+// A selected account's 292 responses refresh its jar whatever the model; only
 // the selected models carry the cookies.
 func TestAnyModelOfASelectedAccountRefreshesTheJar(t *testing.T) {
-	m, _ := newTestManager(t)
-	if err := m.Learn("other", "account-a", "model-other", cookieResponse("", "sid=other")); err != nil {
+	m, now := newTestManager(t)
+	if err := m.Learn("other", "account-a", "model-other", cookieResponse(tokenAt(*now), "sid=other")); err != nil {
 		t.Fatal(err)
 	}
 	if headers, _ := m.Before("r1", "account-a", "model-a", nil); headers.Get("Cookie") != "sid=other" {

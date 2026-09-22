@@ -63,8 +63,9 @@ type ProbeResult struct {
 }
 
 type ProbeProgress struct {
-	Active bool        `json:"active"`
-	Result ProbeResult `json:"result"`
+	Active  bool          `json:"active"`
+	Result  ProbeResult   `json:"result"`  // Most recently started probe, for older pages.
+	Results []ProbeResult `json:"results"` // Every probe in flight, oldest first; [] when idle.
 }
 
 // ProbeStats are process-local observations, not a detached runner or a claim
@@ -78,20 +79,28 @@ type ProbeStats struct {
 	Since     time.Time `json:"since"`
 }
 
-// ProbeProgress reports only the selected, reserved in-flight candidate. It
+// ProbeProgress reports only the selected, reserved in-flight candidates. It
 // performs no host access or network I/O and starts no background work.
 func (m *Manager) ProbeProgress() ProbeProgress {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.activeProbe == nil {
-		return ProbeProgress{}
+	return m.probeProgressLocked()
+}
+
+func (m *Manager) probeProgressLocked() ProbeProgress {
+	progress := ProbeProgress{Results: make([]ProbeResult, 0, len(m.activeProbes))}
+	for _, active := range m.activeProbes {
+		progress.Results = append(progress.Results, *active)
 	}
-	return ProbeProgress{Active: true, Result: *m.activeProbe}
+	if count := len(progress.Results); count > 0 {
+		progress.Active, progress.Result = true, progress.Results[count-1]
+	}
+	return progress
 }
 
 type probeCandidate struct {
 	account, model, proxy, cooldownKey  string
-	rotating, refresh                   bool // refresh: due only for a cookie refresh
+	rotating, refresh, renewal          bool // refresh: due only for a cookie refresh; renewal: the bucket had a usable template
 	index, total, attempt, attemptLimit int
 }
 
@@ -214,6 +223,8 @@ func (m *Manager) ProbeWithAvailability(account, model string, available func(st
 
 // ProbeConcurrently admits one of up to limit probes running at the same time.
 // Selection and reservation stay serialized, so each probe takes its own exit.
+// Outside berserk renewal an account runs one probe at a time, so parallel
+// probes serve different accounts.
 func (m *Manager) ProbeConcurrently(limit int, available func(string) bool, fetch func(string) (Credential, error)) (ProbeResult, error) {
 	return m.probe("", "", limit, available, fetch)
 }
@@ -268,7 +279,7 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 	m.pruneLocked(now)
 	next := cloneState(m.state)
 	selector := Manager{state: next, lastMissingBucket: m.lastMissingBucket, lastRenewBucket: m.lastRenewBucket, renewalBurst: m.renewalBurst,
-		probingBuckets: maps.Clone(m.probingBuckets)}
+		probingBuckets: maps.Clone(m.probingBuckets), probingAccounts: maps.Clone(m.probingAccounts)}
 	// A large pool may require scanning many cooling exits. Scan an immutable
 	// snapshot outside the business mutex; probeMu still fixes configuration
 	// and writerMu fixes the persisted cooldown state for this selection.
@@ -303,7 +314,9 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 			next.Cooldowns[rotatingBudgetKey(candidate.account, candidate.model)] = budget
 			next.Cooldowns[candidate.cooldownKey] = cooldown{Until: budget.Until, Attempts: 1}
 		}
-	} else if next.Config.ProbeStaticCooldownMinutes > 0 {
+	} else if next.Config.ProbeStaticCooldownMinutes > 0 && !candidate.refresh {
+		// A cookie refresh does not reserve its static exit: a 312 never pauses
+		// an exit, and finishProbe cools it only if the exit itself failed.
 		next.Cooldowns[candidate.cooldownKey] = cooldown{Until: now.Add(time.Duration(next.Config.ProbeStaticCooldownMinutes) * time.Minute)}
 	}
 	// Persist the next exit with the reservation. Another bucket and a process
@@ -320,11 +333,18 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 	if m.probingBuckets == nil {
 		m.probingBuckets = map[string]int{}
 	}
+	if m.probingAccounts == nil {
+		m.probingAccounts = map[string]int{}
+	}
 	m.probingBuckets[bucket]++
+	m.probingAccounts[candidate.account]++
 	defer func() {
 		m.mu.Lock()
 		if m.probingBuckets[bucket]--; m.probingBuckets[bucket] <= 0 {
 			delete(m.probingBuckets, bucket)
+		}
+		if m.probingAccounts[candidate.account]--; m.probingAccounts[candidate.account] <= 0 {
+			delete(m.probingAccounts, candidate.account)
 		}
 		m.mu.Unlock()
 	}()
@@ -341,15 +361,13 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 	progress := candidate.progress()
 	progress.Action = "probing"
 	active := &progress
-	m.activeProbe = active
+	m.activeProbes = append(m.activeProbes, active)
 	m.probeStats.Attempts++
 	m.mu.Unlock()
 	m.writerMu.Unlock()
 	defer func() {
 		m.mu.Lock()
-		if m.activeProbe == active {
-			m.activeProbe = nil
-		}
+		m.activeProbes = slices.DeleteFunc(m.activeProbes, func(p *ProbeResult) bool { return p == active })
 		m.mu.Unlock()
 	}()
 	credential, err := fetch(candidate.account)
@@ -368,10 +386,14 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 	response, err := m.runProbe(credential, candidate.model, candidate.proxy)
 	if err != nil {
 		// Never return OAuth tokens or proxy credentials in transport errors.
-		return m.finishProbe(candidate, response, "The probe connection failed or exceeded 25 seconds; check the proxy and the network", 2*time.Second)
+		return m.finishProbe(candidate, response, probeConnectionFailure, 2*time.Second)
 	}
 	return m.finishProbe(candidate, response, "", 2*time.Second)
 }
+
+// probeConnectionFailure is the transport failure of the exit itself, unlike
+// a credential failure, which is reported through the same failure argument.
+const probeConnectionFailure = "The probe connection failed or exceeded 25 seconds; check the proxy and the network"
 
 func rotatingBudgetKey(account, model string) string {
 	hash := sha256.Sum256([]byte(key(account, model)))
@@ -407,6 +429,19 @@ func rotatingBudget(state diskState, account, model string, now time.Time) coold
 		}
 	}
 	return budget
+}
+
+// rotatingExhausted reports whether a bucket has spent its rotating budget.
+func rotatingExhausted(cfg Config, budget cooldown, now time.Time) bool {
+	limit := rotatingAttemptLimit(cfg)
+	return limit > 0 && budget.Until.After(now) && budget.Attempts >= limit
+}
+
+// exitCooling reports whether a bucket must skip an exit: a successful exit
+// waits until the bucket is next due, and a static exit waits out its enabled
+// failure cooldown.
+func exitCooling(cfg Config, rest cooldown, rotating bool, now time.Time) bool {
+	return rest.Until.After(now) && (rest.RenewalBucket != "" || !rotating && cfg.ProbeStaticCooldownMinutes > 0)
 }
 
 func (m *Manager) selectProbeLocked(account, model string, now time.Time, available func(string) bool) (probeCandidate, ProbeResult, bool) {
@@ -459,9 +494,12 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 					refreshOnly = true
 				}
 			}
-			// Parallel slots spread over buckets; only a bucket in its berserk
-			// window may run several probes at once.
-			if m.probingBuckets[key(selectedAccount, selectedModel)] > 0 && !(hasTemplate && inBerserkWindow(template, cfg, now)) {
+			// Parallel slots spread over accounts: an account probes one bucket
+			// at a time, so a slow probe never holds another account back. Only
+			// a bucket renewing in its berserk window may run several probes at
+			// once; a cookie refresh round tries its exits one after another.
+			if (m.probingBuckets[key(selectedAccount, selectedModel)] > 0 || m.probingAccounts[selectedAccount] > 0) &&
+				!(hasTemplate && !refreshOnly && inBerserkWindow(template, cfg, now)) {
 				earlier(now.Add(2 * time.Second))
 				continue
 			}
@@ -475,10 +513,14 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 				earlier(rest.Until)
 				continue
 			}
-			var candidate probeCandidate
-			found := false
+			var candidate, retry probeCandidate
+			found, retryFound := false, false
 			var budget cooldown
 			budgetLoaded := false
+			var tried []string
+			if refreshOnly {
+				tried = template.RefreshTried
+			}
 			// A renewal first retries the exit that harvested the current template.
 			sticky := -1
 			if hasTemplate && template.ExitKey != "" {
@@ -505,13 +547,12 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 					budgetLoaded = true
 				}
 				limit := rotatingAttemptLimit(cfg)
-				if rotating && limit > 0 && budget.Until.After(now) && budget.Attempts >= limit {
+				if rotating && rotatingExhausted(cfg, budget, now) {
 					earlier(budget.Until)
 					continue
 				}
 				id := proxyKey(selectedAccount, selectedModel, proxy, rotating)
-				rest := m.state.Cooldowns[id]
-				if rest.Until.After(now) && (rest.RenewalBucket != "" || !rotating && cfg.ProbeStaticCooldownMinutes > 0) {
+				if rest := m.state.Cooldowns[id]; exitCooling(cfg, rest, rotating, now) {
 					earlier(rest.Until)
 					continue
 				}
@@ -519,12 +560,26 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 				if rotating {
 					attempt = addProbeUsageCount(max(0, budget.Attempts), 1)
 				}
-				candidate = probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: rotating, index: index + 1, total: total, attempt: attempt, refresh: refreshOnly}
+				option := probeCandidate{account: selectedAccount, model: selectedModel, proxy: proxy, cooldownKey: id, rotating: rotating, index: index + 1, total: total, attempt: attempt,
+					refresh: refreshOnly, renewal: hasTemplate}
 				if rotating {
-					candidate.attemptLimit = limit
+					option.attemptLimit = limit
 				}
-				found = true
+				// A cookie refresh round tries each exit once. If the exits it has
+				// not tried vanished meanwhile (another bucket's probe removed a
+				// failed proxy, or the pool was edited), the round starts over on
+				// a tried exit rather than stalling until the template's renewal.
+				if slices.Contains(tried, id) {
+					if !retryFound {
+						retry, retryFound = option, true
+					}
+					continue
+				}
+				candidate, found = option, true
 				break
+			}
+			if !found && retryFound {
+				candidate, found = retry, true
 			}
 			if found {
 				if refreshOnly {
@@ -589,16 +644,26 @@ func renewalLead(ttl int) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
-func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure string, rest time.Duration) (ProbeResult, error) {
+func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure string, rest time.Duration) (result ProbeResult, err error) {
 	m.writerMu.Lock()
 	defer m.writerMu.Unlock()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
-	m.storeCookiesLocked(c.account, http.Header{"Set-Cookie": response.SetCookies}, now)
 	next := cloneState(m.state)
 	pruneState(&next, now)
-	result := c.progress()
+	bucket := key(c.account, c.model)
+	attempt := 0
+	if c.refresh {
+		attempt = len(refreshRound(next.Templates[bucket].RefreshTried, c.cooldownKey))
+	}
+	// Whatever the outcome, even a failed commit: journal the probe, then let
+	// its response refresh the account's cookies under the frozen jar rule.
+	defer func() {
+		m.journalProbeLocked(c, response, attempt, result, err, now)
+		m.refreshCookiesLocked(c.account, c.model, "probe", response.Value, http.Header{"Set-Cookie": response.SetCookies}, now)
+	}()
+	result = c.progress()
 	result.Status, result.Length, result.NextCheckAt = response.Status, len(response.Value), now.Add(2*time.Second)
 	refreshed := false
 	switch {
@@ -659,12 +724,13 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 			result.Action, result.Reason = "discarded", "The upstream returned an administrator-discarded template; it was not saved and the next probe follows the exit pool retry rules"
 			break
 		}
-		bucket := key(c.account, c.model)
 		if previous, exists := next.Templates[bucket]; exists && usableWithConfig(previous, next.Config, now) && !issued.After(previous.IssuedAt) {
 			result.Action, result.Reason = "unchanged", "The upstream returned the same or an older template; its original expiry was not extended"
 			// The upstream still serves this state, so cookie refreshes continue.
+			// The 292 ends a refresh round, and the next one starts on this exit.
 			if refreshesCookies(next.Config, c.model) {
 				previous.RefreshAt = now.Add(time.Duration(next.Config.CookieRefreshSeconds) * time.Second)
+				previous.RefreshTried, previous.ExitKey = nil, c.cooldownKey
 				next.Templates[bucket] = previous
 				refreshed = true
 			}
@@ -675,24 +741,12 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	default:
 		result.Action, result.Reason = "error", "The response did not contain a turn-state of the configured template length"
 	}
-	// A refresh still due here was not rescheduled above. A refresh that did
-	// not collect a 292 keeps its cadence on the next exit: its response still
-	// refreshed the account's cookies, and the one-hour template stays in use.
-	// A model that is no longer first stops refreshing.
-	if t, ok := next.Templates[key(c.account, c.model)]; ok && !t.RefreshAt.IsZero() && !t.RefreshAt.After(now) {
-		t.RefreshAt = time.Time{}
-		if c.refresh && refreshesCookies(next.Config, c.model) && usableWithConfig(t, next.Config, now) {
-			t.RefreshAt = now.Add(time.Duration(next.Config.CookieRefreshSeconds) * time.Second)
-		}
-		next.Templates[key(c.account, c.model)] = t
-	}
 	// Zero disables the long failure pause, never the ordinary request interval.
 	rest = max(rest, 2*time.Second)
 	next.Cooldowns[accountKey(c.account)] = cooldown{Until: now.Add(rest), PacingUntil: now.Add(2 * time.Second)}
 	if result.Action == "harvested" || refreshed {
 		// The exit that served this state stays reserved only until the bucket
 		// is next due, so the next refresh or renewal can reuse it.
-		bucket := key(c.account, c.model)
 		next.Cooldowns[c.cooldownKey] = cooldown{Until: bucketRenewAt(next.Templates[bucket], next.Config), RenewalBucket: bucket}
 		if c.rotating {
 			// A successful bucket starts a fresh attempt budget when its new
@@ -702,6 +756,15 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		}
 	}
 	removed := discardProbeProxy(&next, c, response, &result)
+	if c.refresh && result.Action != "harvested" && !refreshed {
+		m.continueRefreshRoundLocked(&next, c, failure == probeConnectionFailure || response.ProxyFailure || response.ExitBlocked, now)
+	} else if t, ok := next.Templates[bucket]; ok && !t.RefreshAt.IsZero() && (!refreshesCookies(next.Config, c.model) || !t.RefreshAt.After(now)) {
+		// A 292 above scheduled the next refresh round. A model that is no
+		// longer first stops refreshing, and a renewal without a 292 drops a
+		// refresh that fell due alongside it.
+		t.RefreshAt, t.RefreshTried = time.Time{}, nil
+		next.Templates[bucket] = t
+	}
 	if err := m.commitStateLocked(next, removed, ""); err != nil {
 		if response.Status == 401 || response.Status == 403 || response.Status == 429 {
 			// Upstream refusals are safety observations, not a tentative admin

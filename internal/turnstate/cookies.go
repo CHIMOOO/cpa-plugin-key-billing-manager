@@ -13,7 +13,10 @@ const (
 )
 
 // accountCookies is one account's upstream cookie jar. It lives in memory
-// only: the cookies expire within minutes and are never written to disk.
+// only: the cookies expire within minutes and are never written to disk. The
+// jar is frozen to the cookies that came with the account's latest 292: a
+// response without one (a 312, an error) leaves it alone, unless
+// CookieRefreshAll is on.
 type accountCookies struct {
 	jar       cookieJar
 	updatedAt time.Time
@@ -29,17 +32,46 @@ type CookieJarView struct {
 	Fresh            bool      `json:"fresh"`
 }
 
-// storeCookiesLocked merges every cookie an upstream response set into the
-// account's jar, whatever the response status or state length. A response
-// that sets no cookie leaves the jar and its age unchanged.
-func (m *Manager) storeCookiesLocked(account string, headers http.Header, now time.Time) {
+// refreshCookiesLocked applies the frozen jar rule to one upstream response
+// of a selected account (reference 0134280): every response mints its own
+// cookie set, and a 312's set must not overwrite the one that came with the
+// 292. So only a response whose turn-state value has the template length
+// refreshes the jar, whatever its model, status or whether the 292 is saved,
+// unless CookieRefreshAll is on. source is "probe" or "response".
+func (m *Manager) refreshCookiesLocked(account, model, source, value string, headers http.Header, now time.Time) {
 	if account == "" {
+		return
+	}
+	cfg := m.state.Config
+	if !cfg.CookieRefreshAll && len(value) != cfg.TemplateLength {
+		if m.journal.recording {
+			if set, deleted := responseCookies(headers); len(set) > 0 || len(deleted) > 0 {
+				m.journalLocked(JournalEntry{At: now, Event: "cookies_ignored", Account: account, Model: model, Source: source,
+					Length: len(value), CookieNames: cookieNames(set), Detail: deletedDetail(deleted)})
+			}
+		}
 		return
 	}
 	set, deleted := responseCookies(headers)
 	if len(set) == 0 && len(deleted) == 0 {
 		return
 	}
+	removed := m.storeCookiesLocked(account, set, deleted, now)
+	if m.journal.recording && (len(set) > 0 || len(removed) > 0) {
+		entry := JournalEntry{At: now, Event: "cookies_updated", Account: account, Model: model, Source: source,
+			Length: len(value), CookieNames: cookieNames(set), Detail: deletedDetail(removed)}
+		if jar := m.cookies[account]; jar != nil {
+			entry.Cookies, entry.CookieCount = cookieFingerprint(jar.jar.String()), len(jar.jar.names)
+		}
+		m.journalLocked(entry)
+	}
+}
+
+// storeCookiesLocked merges the cookies one response set into the account's
+// jar and removes the ones it deleted; refreshCookiesLocked decides whether
+// the response may. Only a set cookie renews the jar's age. It returns the
+// deleted names that were in the jar.
+func (m *Manager) storeCookiesLocked(account string, set []*http.Cookie, deleted []string, now time.Time) []string {
 	if m.cookies == nil {
 		m.cookies = map[string]*accountCookies{}
 	}
@@ -48,7 +80,11 @@ func (m *Manager) storeCookiesLocked(account string, headers http.Header, now ti
 		entry = &accountCookies{}
 		m.cookies[account] = entry
 	}
+	var removed []string
 	for _, name := range deleted {
+		if _, exists := entry.jar.values[name]; exists {
+			removed = append(removed, name)
+		}
 		entry.jar.remove(name)
 	}
 	for _, cookie := range set {
@@ -61,6 +97,7 @@ func (m *Manager) storeCookiesLocked(account string, headers http.Header, now ti
 	if len(entry.jar.names) == 0 {
 		delete(m.cookies, account)
 	}
+	return removed
 }
 
 // freshCookiesLocked returns the account's cookies while they are within the

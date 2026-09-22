@@ -1058,6 +1058,10 @@
     "key": "backend.turn_state_cookie_refresh_invalid",
     "formats": []
   },
+  "Cookie retry interval must be between 30 and 3600 seconds": {
+    "key": "backend.turn_state_cookie_retry_invalid",
+    "formats": []
+  },
   "Concurrent probes must be between 1 and 10": {
     "key": "backend.turn_state_probe_parallel_invalid",
     "formats": []

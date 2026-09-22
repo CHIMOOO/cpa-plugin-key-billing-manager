@@ -10,7 +10,9 @@ const BerserkConcurrency = 10
 
 // ProbeConcurrency is how many probes the collector may run now: the
 // configured ProbeParallel, or BerserkConcurrency while a selected bucket's
-// template is in its last BerserkMinutes and has not been renewed yet.
+// template is in its last BerserkMinutes and has not been renewed yet. Each
+// account probes one bucket at a time, so outside berserk renewal the slots
+// go to different accounts.
 func (m *Manager) ProbeConcurrency() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()

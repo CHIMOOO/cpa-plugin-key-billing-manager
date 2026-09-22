@@ -36,6 +36,8 @@ type Config struct {
 	InjectCookies                bool     `json:"inject_cookies"`
 	CookieTTLSeconds             int      `json:"cookie_ttl_seconds"`
 	CookieRefreshSeconds         int      `json:"cookie_refresh_seconds"`
+	CookieRefreshAll             bool     `json:"cookie_refresh_all"`   // Off: only a 292 response refreshes the jar.
+	CookieRetrySeconds           int      `json:"cookie_retry_seconds"` // Wait after a refresh round without a 292.
 	BreakoutRetry                bool     `json:"breakout_retry"`
 	ProbeParallel                int      `json:"probe_parallel"`
 	Berserk                      bool     `json:"berserk"`
@@ -60,7 +62,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, CookieTTLSeconds: 240, CookieRefreshSeconds: 30, ProbeParallel: 3, BerserkMinutes: 1, TemplateLength: 292,
+	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, CookieTTLSeconds: 240, CookieRefreshSeconds: 30, CookieRetrySeconds: 300, ProbeParallel: 3, BerserkMinutes: 1, TemplateLength: 292,
 		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
 		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10,
 		ProbeStaticCooldownMinutes: 55, ProbeRotatingCooldownMinutes: 10,
@@ -81,6 +83,9 @@ type Template struct {
 	// RefreshAt schedules the next probe of the first model's bucket shortly
 	// after a successful one, which keeps the account's cookies fresh.
 	RefreshAt time.Time `json:"refresh_at,omitzero"`
+	// RefreshTried lists the exits (keys, never proxy URLs) the current cookie
+	// refresh round already tried without a 292; a round tries each exit once.
+	RefreshTried []string `json:"refresh_tried,omitempty"`
 	// ExitKey identifies the exit that harvested this template, so renewal
 	// tries the same exit first. It is a hash and never holds the proxy URL.
 	ExitKey string `json:"exit_key,omitempty"`
@@ -98,6 +103,7 @@ type TemplateView struct {
 	Exit             string    `json:"exit,omitempty"`
 	HarvestedAt      time.Time `json:"harvested_at,omitzero"`
 	RefreshAt        time.Time `json:"refresh_at,omitzero"`
+	RefreshAttempts  int       `json:"refresh_attempts,omitempty"`
 }
 
 type Decision struct {
@@ -147,6 +153,7 @@ type pending struct {
 	At      time.Time
 	Epoch   uint64
 	Wrote   bool
+	Journal *requestFacts // Set only while the diagnostic journal records.
 }
 
 type cooldown struct {
@@ -177,6 +184,7 @@ type Manager struct {
 	probeMu           sync.RWMutex // Probes share it; configuration writers take it exclusively.
 	probing           int
 	probingBuckets    map[string]int // Buckets with a probe in flight.
+	probingAccounts   map[string]int // Accounts with a probe in flight.
 	cookies           map[string]*accountCookies
 	writerMu          sync.Mutex
 	path              string
@@ -190,7 +198,7 @@ type Manager struct {
 	revisionTokenAt   uint64
 	now               func() time.Time
 	runProbe          func(Credential, string, string) (ProbeResponse, error)
-	activeProbe       *ProbeResult
+	activeProbes      []*ProbeResult // In-flight probes, oldest first.
 	probeStats        ProbeStats
 	lastProbe         ProbeResult
 	basePath          string
@@ -208,6 +216,7 @@ type Manager struct {
 	persistenceError  string
 	runtimeDirty      bool
 	observations      observationState
+	journal           journalState
 	suspended         atomic.Bool // Mirrors state.Config.Suspended for lock-free hot paths.
 }
 
@@ -334,6 +343,7 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 	m.configRevision++
 	m.pending = map[string]pending{}
 	m.observations = observationState{Since: m.now().UTC()}
+	m.journal = journalState{}
 	m.counters, m.last = Counters{Since: m.now().UTC()}, Decision{}
 	m.probeStats, m.lastProbe = ProbeStats{Since: m.now().UTC()}, ProbeResult{}
 	m.pruneLocked(m.now())
@@ -358,6 +368,9 @@ func validateConfig(cfg *Config) error {
 	}
 	if cfg.CookieRefreshSeconds < 0 || cfg.CookieRefreshSeconds > 3600 {
 		return messages.Errorf("Cookie refresh interval must be 0 (off) or between 1 and 3600 seconds")
+	}
+	if cfg.CookieRetrySeconds < 30 || cfg.CookieRetrySeconds > 3600 {
+		return messages.Errorf("Cookie retry interval must be between 30 and 3600 seconds")
 	}
 	if cfg.ProbeParallel < 1 || cfg.ProbeParallel > BerserkConcurrency {
 		return messages.Errorf("Concurrent probes must be between 1 and 10")
@@ -577,20 +590,20 @@ func (m *Manager) Status() Status {
 			continue
 		}
 		expiresAt := t.IssuedAt.Add(time.Duration(cfg.TTLSeconds) * time.Second)
-		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt, Fingerprint: templateFingerprint(t.Value),
+		row := TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt, Fingerprint: templateFingerprint(t.Value),
 			ExpiresAt: expiresAt, Length: len(t.Value), RemainingSeconds: int64(expiresAt.Sub(now) / time.Second),
-			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt, RefreshAt: bucketRefreshAt(t, cfg)})
+			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt, RefreshAt: bucketRefreshAt(t, cfg)}
+		if refreshesCookies(cfg, t.Model) {
+			row.RefreshAttempts = len(t.RefreshTried)
+		}
+		rows = append(rows, row)
 	}
 	sort.Slice(rows, func(i, j int) bool { return key(rows[i].Account, rows[i].Model) < key(rows[j].Account, rows[j].Model) })
-	progress := ProbeProgress{}
-	if m.activeProbe != nil {
-		progress = ProbeProgress{Active: true, Result: *m.activeProbe}
-	}
 	return Status{Config: cfg, Templates: rows, Counters: m.counters, LastDecision: m.last, ProxyCounts: counts,
 		PendingLearnedCount: len(m.dirtyTemplates), PersistenceError: m.persistenceError,
 		ProxyConfigRevision: m.configRevisionTokenLocked(),
 		ServerTime:          now, RenewalLeadSeconds: int(configRenewalLead(cfg) / time.Second),
-		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: progress,
+		ProbeStats: m.probeStats, LastProbe: m.lastProbe, ProbeProgress: m.probeProgressLocked(),
 		ProbeBudget: probeBudget(m.state, now), Observations: m.observationStatusLocked(now), CookieJars: m.cookieJarsLocked(now)}
 }
 
@@ -723,9 +736,10 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 	if requestID != "" && len(m.pending) < 4096 {
 		m.pending[requestID] = pending{Account: account, Model: model, At: now, Epoch: m.templateEpoch}
 	}
-	updated, clear := m.templateHeadersLocked(requestID, account, model, headers, now)
+	updated, clear, action := m.templateHeadersLocked(requestID, account, model, headers, now)
 	// Fresh cookies ride on every selected request, with or without a template.
-	if cookies := m.injectCookiesLocked(account, model, headers, now); cookies != "" {
+	cookies := m.injectCookiesLocked(account, model, headers, now)
+	if cookies != "" {
 		if updated == nil {
 			updated = http.Header{}
 		}
@@ -733,27 +747,32 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 		clear = append(clear, "Cookie")
 		m.counters.Cookies++
 	}
+	if m.journal.recording {
+		m.captureRequestLocked(requestID, account, model, action, cookies != "", len(headerValue(headers)), now)
+	}
 	return updated, clear
 }
 
-func (m *Manager) templateHeadersLocked(requestID, account, model string, headers http.Header, now time.Time) (http.Header, []string) {
+// templateHeadersLocked also names what it did for the diagnostic journal:
+// injected, dry_run, present, passed or no_template.
+func (m *Manager) templateHeadersLocked(requestID, account, model string, headers http.Header, now time.Time) (http.Header, []string, string) {
 	value := headerValue(headers)
 	t, ok := m.state.Templates[key(account, model)]
 	if !ok || !m.usableLocked(t, now) {
 		m.recordLocked("pass", "There is no valid template for this account and model", account, model, now)
-		return nil, nil
+		return nil, nil, "no_template"
 	}
 	if value == t.Value {
 		m.recordLocked("pass", "The request already carries the current template", account, model, now)
-		return nil, nil
+		return nil, nil, "present"
 	}
 	if m.state.Config.InjectMode == "replace-only" && len(value) != m.state.Config.ReplaceLength {
 		m.recordLocked("pass", "replace-only replaces only request headers of the configured length", account, model, now)
-		return nil, nil
+		return nil, nil, "passed"
 	}
 	if m.state.Config.DryRun {
 		m.recordLocked("dry_run", "A template is available; observe mode left the request unchanged", account, model, now)
-		return nil, nil
+		return nil, nil, "dry_run"
 	}
 	m.recordLocked("inject", "A valid template for the same account and model was injected", account, model, now)
 	if value == "" {
@@ -765,28 +784,39 @@ func (m *Manager) templateHeadersLocked(requestID, account, model string, header
 		p.Wrote = true
 		m.pending[requestID] = p
 	}
-	return http.Header{Header: []string{t.Value}}, []string{Header}
+	return http.Header{Header: []string{t.Value}}, []string{Header}, "injected"
 }
 
 // Learn receives raw response headers, not response bodies or usage. A request
 // ID transfers the exact selected account AND model across host hook boundaries.
+// Only a response carrying a 292 refreshes the account's cookie jar, unless
+// CookieRefreshAll is on; a 312 keeps the cookies that came with the last 292.
 func (m *Manager) Learn(requestID, account, model string, headers http.Header) error {
+	return m.LearnResponse(requestID, account, model, 0, headers)
+}
+
+// LearnResponse is Learn with the upstream HTTP status, 0 when unknown. The
+// status is used only by the diagnostic journal.
+func (m *Manager) LearnResponse(requestID, account, model string, status int, headers http.Header) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	p, remembered := m.pending[requestID]
 	delete(m.pending, requestID)
 	now := m.now()
-	// Every response of a selected account refreshes its cookie jar, whatever
-	// the model and state length and even while injection is off. Only the
-	// selected models carry the cookies.
-	jarAccount := account
+	if remembered && p.Journal != nil && (account == "" || account == p.Account) {
+		m.journalRequestLocked(p, status, len(headerValue(headers)), now)
+	}
+	// A response of a selected account refreshes its cookie jar only when it
+	// carries a 292 (or CookieRefreshAll is on), whatever the model and even
+	// while injection is off. Only the selected models carry the cookies.
+	jarAccount, jarModel := account, ModelName(model)
 	if remembered && account != "" && account != p.Account {
 		jarAccount = ""
 	} else if remembered {
-		jarAccount = p.Account
+		jarAccount, jarModel = p.Account, p.Model
 	}
 	if jarAccount != "" && contains(m.state.Config.ProbeAccounts, jarAccount) {
-		m.storeCookiesLocked(jarAccount, headers, now)
+		m.refreshCookiesLocked(jarAccount, jarModel, "response", headerValue(headers), headers, now)
 	}
 	if !m.state.Config.Enabled {
 		return nil
@@ -837,9 +867,13 @@ func (m *Manager) learnFromLocked(account, model, value string, now time.Time, s
 	}
 	// A learned template keeps a pending cookie refresh of the one it replaces.
 	m.state.Templates[k] = Template{Account: account, Model: model, Value: value, IssuedAt: timestamp,
-		Source: source, Exit: exit, HarvestedAt: now, RefreshAt: old.RefreshAt}
+		Source: source, Exit: exit, HarvestedAt: now, RefreshAt: old.RefreshAt, RefreshTried: old.RefreshTried}
 	m.dirtyTemplates[k] = m.state.Templates[k]
 	m.recordLocked("harvest", "A valid response template was cached; management synchronization will persist it", account, model, now)
+	if m.journal.recording {
+		m.journalLocked(JournalEntry{At: now, Event: "template_learned", Account: account, Model: model, Source: source,
+			Template: templateFingerprint(value), IssuedAt: timestamp})
+	}
 	return nil
 }
 
@@ -862,13 +896,28 @@ func (m *Manager) Clear(account, model string) error {
 	}
 	next := cloneState(m.state)
 	scope := "*"
+	var cleared Template
 	if account == "" {
 		next.Templates = map[string]Template{}
 	} else {
 		scope = key(account, model)
+		cleared = next.Templates[scope]
 		delete(next.Templates, scope)
 	}
-	return m.commitStateLocked(next, false, scope)
+	if err := m.commitStateLocked(next, false, scope); err != nil {
+		return err
+	}
+	if m.journal.recording {
+		entry := JournalEntry{At: m.now(), Event: "template_cleared", Account: account, Model: model, Detail: "all"}
+		if account != "" {
+			entry.Detail = ""
+			if cleared.Value != "" {
+				entry.Template = templateFingerprint(cleared.Value)
+			}
+		}
+		m.journalLocked(entry)
+	}
+	return nil
 }
 
 func (m *Manager) recordLocked(action, reason, account, model string, now time.Time) {

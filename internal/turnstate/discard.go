@@ -149,5 +149,8 @@ func (m *Manager) Discard(account, model, fingerprint string) error {
 	}
 	m.templateEpoch++
 	m.clearedTemplates[bucket] = m.templateEpoch
+	if m.journal.recording {
+		m.journalLocked(JournalEntry{At: now, Event: "template_discarded", Account: account, Model: model, Template: fingerprint, IssuedAt: template.IssuedAt})
+	}
 	return nil
 }
