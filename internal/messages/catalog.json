@@ -1370,6 +1370,14 @@
     "key": "backend.turn_state_exit_blocked",
     "formats": []
   },
+  "Strict probe verification failed: expected an SSE or JSON response but got Content-Type %s; no template was saved": {
+    "key": "backend.turn_state_probe_format_detail",
+    "formats": ["%s"]
+  },
+  "The upstream returned a degraded-length state (%d characters) and it was not saved; the next probe follows the exit pool retry rules": {
+    "key": "backend.turn_state_degraded_detail",
+    "formats": ["%d"]
+  },
   "The upstream rate-limited this account; probes are paused for %d minutes": {
     "key": "backend.turn_state_rate_limited_configured",
     "formats": ["%d"]

@@ -169,6 +169,7 @@ type Manager struct {
 	mu                sync.Mutex
 	probeMu           sync.RWMutex // Probes share it; configuration writers take it exclusively.
 	probing           int
+	probingBuckets    map[string]int // Buckets with a probe in flight.
 	writerMu          sync.Mutex
 	path              string
 	state             diskState

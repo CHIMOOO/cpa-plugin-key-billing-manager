@@ -17,16 +17,19 @@ func (m *Manager) ProbeConcurrency() int {
 		return parallel
 	}
 	now := m.now()
-	window := time.Duration(cfg.BerserkMinutes) * time.Minute
 	for _, t := range m.state.Templates {
 		if !m.inScopeLocked(t.Account, t.Model) || !m.usableLocked(t, now) {
 			continue
 		}
-		if t.IssuedAt.Add(time.Duration(cfg.TTLSeconds)*time.Second).Sub(now) <= window {
+		if inBerserkWindow(t, cfg, now) {
 			return BerserkConcurrency
 		}
 	}
 	return parallel
+}
+
+func inBerserkWindow(t Template, cfg Config, now time.Time) bool {
+	return cfg.Berserk && t.IssuedAt.Add(time.Duration(cfg.TTLSeconds)*time.Second).Sub(now) <= time.Duration(cfg.BerserkMinutes)*time.Minute
 }
 
 // InScope reports whether State handles this account and upstream model at

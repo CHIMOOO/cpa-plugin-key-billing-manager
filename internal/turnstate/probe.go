@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -34,6 +35,8 @@ type ProbeResponse struct {
 	// ExitBlocked marks a 403 the upstream gave this exit (a challenge page or
 	// an unsupported region), not a refusal of the account's credential.
 	ExitBlocked bool
+	// ContentType is the upstream response media type, for diagnostics only.
+	ContentType string
 }
 
 type ProbeResult struct {
@@ -261,7 +264,8 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 	now := m.now()
 	m.pruneLocked(now)
 	next := cloneState(m.state)
-	selector := Manager{state: next, lastMissingBucket: m.lastMissingBucket, lastRenewBucket: m.lastRenewBucket, renewalBurst: m.renewalBurst}
+	selector := Manager{state: next, lastMissingBucket: m.lastMissingBucket, lastRenewBucket: m.lastRenewBucket, renewalBurst: m.renewalBurst,
+		probingBuckets: maps.Clone(m.probingBuckets)}
 	// A large pool may require scanning many cooling exits. Scan an immutable
 	// snapshot outside the business mutex; probeMu still fixes configuration
 	// and writerMu fixes the persisted cooldown state for this selection.
@@ -309,6 +313,18 @@ func (m *Manager) probe(account, model string, limit int, available func(string)
 		return ProbeResult{}, err
 	}
 	m.lastProbeBucket = key(candidate.account, candidate.model)
+	bucket := m.lastProbeBucket
+	if m.probingBuckets == nil {
+		m.probingBuckets = map[string]int{}
+	}
+	m.probingBuckets[bucket]++
+	defer func() {
+		m.mu.Lock()
+		if m.probingBuckets[bucket]--; m.probingBuckets[bucket] <= 0 {
+			delete(m.probingBuckets, bucket)
+		}
+		m.mu.Unlock()
+	}()
 	if t, exists := m.state.Templates[m.lastProbeBucket]; exists && m.usableLocked(t, now) {
 		m.lastRenewBucket = m.lastProbeBucket
 		m.renewalBurst++
@@ -429,6 +445,12 @@ func (m *Manager) selectProbeLocked(account, model string, now time.Time, availa
 					earlier(renewAt)
 					continue
 				}
+			}
+			// Parallel slots spread over buckets; only a bucket in its berserk
+			// window may run several probes at once.
+			if m.probingBuckets[key(selectedAccount, selectedModel)] > 0 && !(hasTemplate && inBerserkWindow(template, cfg, now)) {
+				earlier(now.Add(2 * time.Second))
+				continue
 			}
 			pending++
 			rest := m.state.Cooldowns[accountKey(selectedAccount)]
@@ -583,8 +605,25 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 	case response.Status != 200:
 		result.ReasonMessage = messages.New("The upstream returned HTTP %d; no template was harvested", response.Status)
 		result.Action, result.Reason = "error", result.ReasonMessage.Text
+	case response.CompletionFailure != "" && len(response.Value) == next.Config.ReplaceLength:
+		// Name the degraded state as the cause, but keep a strict failure's
+		// protection: this does not count as a degraded-proxy removal.
+		result.ReasonMessage = messages.New("The upstream returned a degraded-length state (%d characters) and it was not saved; the next probe follows the exit pool retry rules", len(response.Value))
+		result.Action, result.Reason = "error", result.ReasonMessage.Text
+	case response.CompletionFailure == probeCompletionFormat:
+		kind := strings.TrimSpace(response.ContentType)
+		if kind == "" {
+			kind = "(none)"
+		} else if len(kind) > 80 {
+			kind = kind[:80]
+		}
+		result.ReasonMessage = messages.New("Strict probe verification failed: expected an SSE or JSON response but got Content-Type %s; no template was saved", kind)
+		result.Action, result.Reason = "error", result.ReasonMessage.Text
 	case response.CompletionFailure != "":
 		result.Action, result.Reason = "error", response.CompletionFailure
+	case len(response.Value) == next.Config.ReplaceLength:
+		result.ReasonMessage = messages.New("The upstream returned a degraded-length state (%d characters) and it was not saved; the next probe follows the exit pool retry rules", len(response.Value))
+		result.Action, result.Reason = "degraded", result.ReasonMessage.Text
 	case len(response.Value) == next.Config.TemplateLength:
 		issued, parsed := issuedAt(response.Value)
 		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now, Cookies: response.Cookies, ExitKey: c.cooldownKey}
@@ -603,8 +642,6 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		}
 		next.Templates[bucket] = incoming
 		result.Action, result.Reason = "harvested", "A valid template was harvested and saved for this account and model"
-	case len(response.Value) == next.Config.ReplaceLength:
-		result.Action, result.Reason = "degraded", "A degraded-length state was received and not saved; the next probe follows the exit pool retry rules"
 	default:
 		result.Action, result.Reason = "error", "The response did not contain a turn-state of the configured template length"
 	}

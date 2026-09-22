@@ -44,7 +44,8 @@ func TestBerserkRaisesConcurrencyOnlyInTheLastMinutes(t *testing.T) {
 
 func TestConcurrentProbesUseSeparateExits(t *testing.T) {
 	m, _ := newTestManager(t)
-	if err := m.Update([]byte(`{"probe_proxies":["http://first.invalid:8080","http://second.invalid:8080","http://third.invalid:8080"]}`)); err != nil {
+	// Three buckets: without berserk, parallel slots never share a bucket.
+	if err := m.Update([]byte(`{"probe_accounts":["account-a","account-b","account-c"],"probe_proxies":["http://first.invalid:8080","http://second.invalid:8080","http://third.invalid:8080"]}`)); err != nil {
 		t.Fatal(err)
 	}
 	release := make(chan struct{})
@@ -139,5 +140,56 @@ func TestStaleBucketOnlySteersWhileInjecting(t *testing.T) {
 	*now = now.Add(2 * time.Hour)
 	if m.StaleBucket("account-a", "model-a") {
 		t.Fatal("observe mode steered traffic")
+	}
+}
+
+func TestParallelSlotsProbeOneBucketOnceUnlessBerserk(t *testing.T) {
+	for _, berserk := range []bool{false, true} {
+		m, now := newTestManager(t)
+		if err := m.Update([]byte(`{"probe_proxies":["http://first.invalid:8080","http://second.invalid:8080"]}`)); err != nil {
+			t.Fatal(err)
+		}
+		learn(t, m, tokenAt(*now))
+		if berserk {
+			if err := m.Update([]byte(`{"berserk":true,"berserk_minutes":1}`)); err != nil {
+				t.Fatal(err)
+			}
+			*now = now.Add(59*time.Minute + 30*time.Second)
+		} else {
+			*now = now.Add(59 * time.Minute)
+		}
+		started := make(chan struct{}, 2)
+		release := make(chan struct{})
+		m.runProbe = func(Credential, string, string) (ProbeResponse, error) {
+			started <- struct{}{}
+			<-release
+			return ProbeResponse{Status: 502}, nil
+		}
+		done := make(chan ProbeResult, 1)
+		go func() {
+			result, _ := m.ProbeConcurrently(3, nil, dummyCredential)
+			done <- result
+		}()
+		<-started
+		secondDone := make(chan ProbeResult, 1)
+		go func() {
+			result, _ := m.ProbeConcurrently(3, nil, dummyCredential)
+			secondDone <- result
+		}()
+		if berserk {
+			<-started
+		}
+		var second ProbeResult
+		if !berserk {
+			second = <-secondDone
+		}
+		close(release)
+		<-done
+		if berserk {
+			second = <-secondDone
+		}
+		if probing := second.Account != ""; probing != berserk {
+			t.Fatalf("berserk=%v: second slot probing=%v (%+v)", berserk, probing, second)
+		}
 	}
 }

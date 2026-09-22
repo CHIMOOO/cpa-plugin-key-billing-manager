@@ -219,7 +219,7 @@ func TestStrictProbeFailurePreservesTemplateAndDoesNotDiscardProxy(t *testing.T)
 				return doHTTPProbe(probeTestClient(t, ""), server.URL, credential, model)
 			}
 			result, err := m.Probe("", "", dummyCredential)
-			if err != nil || result.Action != "error" || result.Reason != probeCompletionFailed || result.ProxyDisposition != "" {
+			if err != nil || result.Action != "error" || (result.Reason != probeCompletionFailed) != degraded || result.ProxyDisposition != "" {
 				t.Fatalf("strict renewal = %+v, %v", result, err)
 			}
 			if m.Status().ProxyCounts["static"] != 2 {

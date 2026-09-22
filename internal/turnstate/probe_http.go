@@ -145,7 +145,8 @@ func doHTTPProbe(client *http.Client, endpoint string, credential Credential, mo
 	// Legacy mode closes immediately. Strict mode reads only this synthetic
 	// probe's bounded response until its completion event, under the same total
 	// Client.Timeout. Business responses are never buffered or inspected here.
-	result := ProbeResponse{Status: response.StatusCode, Value: strings.TrimSpace(response.Header.Get(Header)), Cookies: responseCookies(response.Header)}
+	result := ProbeResponse{Status: response.StatusCode, Value: strings.TrimSpace(response.Header.Get(Header)), Cookies: responseCookies(response.Header),
+		ContentType: response.Header.Get("Content-Type")}
 	if credential.ProbeVerifyCompletion && response.StatusCode == http.StatusOK {
 		result.CompletionFailure = verifyProbeCompletion(response)
 	}
