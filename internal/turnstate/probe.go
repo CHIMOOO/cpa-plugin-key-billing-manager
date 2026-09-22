@@ -22,8 +22,9 @@ type Credential struct {
 }
 
 type ProbeResponse struct {
-	Status int
-	Value  string
+	Status  int
+	Value   string
+	Cookies string
 	// ProxyFailure is set only by the transport after a connection or proxy
 	// authentication failure, never by upstream account or quota responses.
 	ProxyFailure bool
@@ -542,7 +543,7 @@ func (m *Manager) finishProbe(c probeCandidate, response ProbeResponse, failure 
 		result.Action, result.Reason = "error", response.CompletionFailure
 	case len(response.Value) == next.Config.TemplateLength:
 		issued, parsed := issuedAt(response.Value)
-		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now}
+		incoming := Template{Account: c.account, Model: c.model, Value: response.Value, IssuedAt: issued, Source: "probe", Exit: maskProxy(c.proxy), HarvestedAt: now, Cookies: response.Cookies}
 		if !parsed || !usableWithConfig(incoming, next.Config, now) {
 			result.Action, result.Reason = "error", "The response length matches, but its Fernet timestamp is invalid, in the future, or expired"
 			break

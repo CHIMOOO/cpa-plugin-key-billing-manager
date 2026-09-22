@@ -1,6 +1,9 @@
 {
   "ui.state_force_astra_title": "Force Astra",
   "ui.state_force_astra": "Route GPT/Codex text requests to gpt-6-astra",
+  "ui.state_inject_cookies": "Inject collected cookies",
+  "ui.state_inject_cookies_help": "Collection and learning also keep the cookies the upstream set with each template. Injecting a template sends them in the Cookie header too, replacing client cookies of the same name. Saving adds a Cookie forwarding header to the selected accounts' auth files, because CLIProxyAPI does not otherwise pass Cookie to Codex.",
+  "ui.state_bucket_cookies": "{count} cookies",
   "ui.state_force_astra_help": "Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.",
   "backend.model_test_unknown_preset": "Unknown model test preset",
   "backend.model_test_invalid_prompt": "The model test prompt must contain 1–8192 UTF-8 bytes",

@@ -33,6 +33,7 @@ type Config struct {
 	InjectMode                   string   `json:"inject_mode"`
 	DryRun                       bool     `json:"dry_run"`
 	LearnResponses               bool     `json:"learn_responses"`
+	InjectCookies                bool     `json:"inject_cookies"`
 	TemplateLength               int      `json:"template_length"`
 	ReplaceLength                int      `json:"replace_length"`
 	TTLSeconds                   int      `json:"ttl_seconds"`
@@ -53,7 +54,7 @@ type Config struct {
 }
 
 func DefaultConfig() Config {
-	return Config{InjectMode: "replace-only", LearnResponses: true, TemplateLength: 292,
+	return Config{InjectMode: "replace-only", LearnResponses: true, InjectCookies: true, TemplateLength: 292,
 		ReplaceLength: 312, TTLSeconds: 3600, Models: []string{"gpt-6-astra", "gpt-5.6-sol"}, ProbeAccounts: []string{},
 		ProbeProxies: []string{}, ProbeProxiesRotating: []string{}, ProbeMinProxies: 10,
 		ProbeStaticCooldownMinutes: 55, ProbeRotatingCooldownMinutes: 10,
@@ -68,6 +69,9 @@ type Template struct {
 	Source      string    `json:"source,omitempty"`
 	Exit        string    `json:"exit,omitempty"`
 	HarvestedAt time.Time `json:"harvested_at,omitzero"`
+	// Cookies holds the name=value pairs the harvesting response set. They are
+	// sent with the template so later turns look like the same upstream session.
+	Cookies string `json:"cookies,omitempty"`
 }
 
 type TemplateView struct {
@@ -81,6 +85,7 @@ type TemplateView struct {
 	Source           string    `json:"source,omitempty"`
 	Exit             string    `json:"exit,omitempty"`
 	HarvestedAt      time.Time `json:"harvested_at,omitzero"`
+	Cookies          int       `json:"cookies,omitempty"`
 }
 
 type Decision struct {
@@ -141,6 +146,7 @@ type cooldown struct {
 
 type diskState struct {
 	Version      int                          `json:"version"`
+	Defaults     int                          `json:"defaults,omitempty"`
 	CheckpointID string                       `json:"checkpoint_id,omitempty"`
 	Config       Config                       `json:"config"`
 	Templates    map[string]Template          `json:"templates"`
@@ -189,7 +195,7 @@ type Manager struct {
 }
 
 func New() *Manager {
-	return &Manager{state: diskState{Version: 1, Config: DefaultConfig(), Templates: map[string]Template{}, Cooldowns: map[string]cooldown{}},
+	return &Manager{state: diskState{Version: 1, Defaults: defaultsRevision, Config: DefaultConfig(), Templates: map[string]Template{}, Cooldowns: map[string]cooldown{}},
 		pending: map[string]pending{}, dirtyTemplates: map[string]Template{}, clearedTemplates: map[string]uint64{}, now: time.Now, runProbe: runHTTPProbe}
 }
 
@@ -222,8 +228,10 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 	// Loading/validating a different sidecar and the companion configuration
 	// must not hold the mutex used by active business requests.
 	m.mu.Unlock()
-	state := diskState{Version: 1, Config: DefaultConfig(), Templates: map[string]Template{}, Cooldowns: map[string]cooldown{}}
-	base := ""
+	// Files written before inject_cookies or the short lifetime existed are
+	// decoded over the settings they were saved with, not the current defaults.
+	state := diskState{Version: 1, Config: legacyConfig(), Templates: map[string]Template{}, Cooldowns: map[string]cooldown{}}
+	base, migrated := "", false
 	load := func() error {
 		raw, err := os.ReadFile(path)
 		if err == nil {
@@ -239,6 +247,7 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 			if len(state.Config.Models) == 2 && state.Config.Models[0] == "gpt6" && state.Config.Models[1] == "gpt-5.6-sol" {
 				state.Config.Models = DefaultConfig().Models
 			}
+			migrated = migrateDefaults(&state)
 			if err := validateConfig(&state.Config); err != nil {
 				return messages.Errorf("Invalid turn-state state configuration: %w", err)
 			}
@@ -251,6 +260,8 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 			// Restoring an overlay without its base must fail explicitly instead
 			// of silently treating durable templates as an empty new setup.
 			return messages.Errorf("Invalid turn-state state file")
+		} else {
+			state.Config, state.Defaults = shippedConfig(), defaultsRevision
 		}
 		if state.Templates == nil {
 			state.Templates = map[string]Template{}
@@ -265,6 +276,9 @@ func (m *Manager) ConfigureWith(billingPath string, apply func() error) error {
 			if err := loadRuntime(path, base, &state, m.now()); err != nil {
 				return err
 			}
+		}
+		if migrated {
+			rescheduleRenewals(&state)
 		}
 		if err := validateProbeUsage(state.ProbeUsage); err != nil {
 			return err
@@ -529,7 +543,7 @@ func (m *Manager) Status() Status {
 		expiresAt := t.IssuedAt.Add(time.Duration(cfg.TTLSeconds) * time.Second)
 		rows = append(rows, TemplateView{Account: t.Account, Model: t.Model, IssuedAt: t.IssuedAt, Fingerprint: templateFingerprint(t.Value),
 			ExpiresAt: expiresAt, Length: len(t.Value), RemainingSeconds: int64(expiresAt.Sub(now) / time.Second),
-			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt})
+			Source: t.Source, Exit: maskSavedExit(t.Exit), HarvestedAt: t.HarvestedAt, Cookies: cookieCount(t.Cookies)})
 	}
 	sort.Slice(rows, func(i, j int) bool { return key(rows[i].Account, rows[i].Model) < key(rows[j].Account, rows[j].Model) })
 	progress := ProbeProgress{}
@@ -701,6 +715,9 @@ func (m *Manager) beforeAtLocked(requestID, account, model string, headers http.
 		p.Wrote = true
 		m.pending[requestID] = p
 	}
+	if cookies := injectedCookies(headers, t, m.state.Config); cookies != "" {
+		return http.Header{Header: []string{t.Value}, "Cookie": []string{cookies}}, []string{Header, "Cookie"}
+	}
 	return http.Header{Header: []string{t.Value}}, []string{Header}
 }
 
@@ -733,14 +750,10 @@ func (m *Manager) Learn(requestID, account, model string, headers http.Header) e
 	if value == "" || !m.state.Config.LearnResponses {
 		return nil
 	}
-	return m.learnLocked(account, model, value, now)
+	return m.learnFromLocked(account, model, value, responseCookies(headers), now, "response", "")
 }
 
-func (m *Manager) learnLocked(account, model, value string, now time.Time) error {
-	return m.learnFromLocked(account, model, value, now, "response", "")
-}
-
-func (m *Manager) learnFromLocked(account, model, value string, now time.Time, source, exit string) error {
+func (m *Manager) learnFromLocked(account, model, value, cookies string, now time.Time, source, exit string) error {
 	if !validBucket(account, model) {
 		m.recordLocked("skip", "Cannot verify the response account and upstream model", account, model, now)
 		return nil
@@ -764,7 +777,7 @@ func (m *Manager) learnFromLocked(account, model, value string, now time.Time, s
 		return nil
 	}
 	m.state.Templates[k] = Template{Account: account, Model: model, Value: value, IssuedAt: timestamp,
-		Source: source, Exit: exit, HarvestedAt: now}
+		Source: source, Exit: exit, HarvestedAt: now, Cookies: cookies}
 	m.dirtyTemplates[k] = m.state.Templates[k]
 	m.recordLocked("harvest", "A valid response template was cached; management synchronization will persist it", account, model, now)
 	return nil

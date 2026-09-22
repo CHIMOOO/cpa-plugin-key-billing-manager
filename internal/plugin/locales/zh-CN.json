@@ -1,6 +1,9 @@
 {
   "ui.state_force_astra_title": "强制 Astra",
   "ui.state_force_astra": "将 GPT/Codex 文本请求强制路由到 gpt-6-astra",
+  "ui.state_inject_cookies": "注入采集到的 Cookie",
+  "ui.state_inject_cookies_help": "采集和从响应学习时，会一并保存上游随模板下发的 Cookie。注入模板时也会把它们写进 Cookie 请求头，同名的客户端 Cookie 会被替换。保存时会给所选账号的认证文件加上 Cookie 转发头，因为 CLIProxyAPI 默认不会把 Cookie 转发给 Codex。",
+  "ui.state_bucket_cookies": "{count} 个 Cookie",
   "ui.state_force_astra_help": "保存后生效。将显式 GPT/Codex 文本模型名通过 Codex 账号路由到 gpt-6-astra，保留推理强度。自定义别名、其他提供商、图片/音频请求及采集和质量测试保持原路由。独立于 State 注入和观察模式；需要注入 State 时，请先为所选账号采集 Astra 模板。宿主须支持 CLIProxyAPI v7.3.4 的提供商模型路由能力。计费以宿主实际用量记录为准，不保证上游模型身份或回答质量。",
   "backend.model_test_unknown_preset": "未知的模型测试预设",
   "backend.model_test_invalid_prompt": "模型测试提示词必须为有效 UTF-8 文本，长度为 1 至 8192 字节",

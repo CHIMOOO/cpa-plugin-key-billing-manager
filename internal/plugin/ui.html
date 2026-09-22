@@ -3031,12 +3031,14 @@
               <div class="turn-state-fields"><label class="field"><span data-i18n="ui.fork_injection_mode">Injection mode</span><span class="native-select"><select id="turn-state-inject-mode" disabled><option value="replace-only" data-i18n="ui.fork_replace_only_replace_states_of_the_specified_length">replace-only: replace states of the specified length</option><option value="always" data-i18n="ui.fork_always_inject_whenever_a_valid_template_exists">always: inject whenever a valid template exists</option></select></span></label></div>
               <div class="state-toggle-list">
                 <label class="toggle-filter"><input id="turn-state-learn-responses" type="checkbox" role="switch" disabled /><span data-i18n="ui.fork_learn_from_upstream_responses">Learn from upstream responses</span></label>
+                <label class="toggle-filter"><input id="turn-state-inject-cookies" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_inject_cookies">Inject collected cookies</span></label>
                 <label class="toggle-filter"><input id="turn-state-force-astra" type="checkbox" role="switch" disabled /><span data-i18n="ui.state_force_astra">Route GPT/Codex text requests to gpt-6-astra</span></label>
                 <div class="state-gate"><label class="toggle-filter"><input id="team-require-state" type="checkbox" role="switch" disabled /><span data-i18n="ui.team_require_state">Require valid Turn State for selected accounts</span></label><span class="tag plain" data-i18n="ui.state_applies_now">Applies immediately</span></div>
                 <div id="team-require-state-status" class="small muted" role="status"></div>
               </div>
             <details class="state-help"><summary data-i18n="ui.state_help">How it works</summary>
               <p data-i18n="ui.fork_replace_only_replaces_headers_with_the_specified_length_always_also_inject">replace-only replaces headers with the specified length. always also injects missing headers or those of other lengths. Both modes require an unexpired template for the same account and model; neither guarantees answer quality. Saved settings take effect immediately.</p>
+              <p data-i18n="ui.state_inject_cookies_help">Collection and learning also keep the cookies the upstream set with each template. Injecting a template sends them in the Cookie header too, replacing client cookies of the same name. Saving adds a Cookie forwarding header to the selected accounts' auth files, because CLIProxyAPI does not otherwise pass Cookie to Codex.</p>
               <p data-i18n="ui.state_force_astra_help">Save to apply. Routes explicit GPT/Codex text model names through Codex accounts to gpt-6-astra, preserving reasoning effort. Custom aliases, other providers, image/audio requests and collection or quality probes keep their original routes. Independent of State injection and observation mode; to inject State, collect an Astra template for the selected account. Requires a CLIProxyAPI v7.3.4-compatible provider model router. Actual upstream usage determines billing; this does not guarantee model identity or answer quality.</p>
               <p data-i18n="ui.team_require_state_help">When enabled, every business attempt on a selected collection account needs a usable template for its requested model. Disabled injection, observation mode or a replace-only skip blocks that attempt. This switch is saved immediately.</p>
               <p data-i18n="ui.state_image_isolation_help">CPA image generation and edit endpoints do not require or learn conversational State. Group permissions, quotas and concurrency still apply. Image model support, uploads and timeouts are provided by CPA and the upstream.</p>
@@ -11168,6 +11170,7 @@
         "enabled",
         "dry-run",
         "learn-responses",
+        "inject-cookies",
         "inject-mode",
         "ttl",
         "renew-before",
@@ -11418,7 +11421,7 @@
         return new Intl.NumberFormat(locale(), { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Math.max(0, value));
       }
       function renderTurnStateRenewHelp() {
-        const ttl = Number($("turn-state-ttl").value) || 3600;
+        const ttl = Number($("turn-state-ttl").value) || 240;
         const lead = Number($("turn-state-renew-before").value) || 0;
         setText(
           $("turn-state-renew-help"),
@@ -11587,6 +11590,9 @@
                         })
                       : null,
                   el("div", { class: "small muted", text: m("ui.turn_state_template_detail", { length: template.length, source }) }),
+                  template.cookies
+                    ? el("div", { class: "small muted", text: m("ui.state_bucket_cookies", { count: template.cookies }) })
+                    : null,
                   template.exit
                     ? el("div", {
                         class: "state-bucket-exit small",
@@ -12159,6 +12165,7 @@
             ["enabled", config.enabled],
             ["dry-run", config.dry_run],
             ["learn-responses", config.learn_responses],
+            ["inject-cookies", config.inject_cookies],
             ["verify-completion", config.probe_verify_completion],
             ["drop-failed", config.probe_drop_failed_proxies],
             ["drop-degraded", config.probe_drop_degraded_proxies]
@@ -12256,7 +12263,7 @@
 
       function refreshTurnState() { return queueAdminData("configuration", (current) => readTurnStateNow(current)); }
 
-      async function ensureTurnStateHTTP(accounts, current) {
+      async function ensureTurnStateHTTP(accounts, current, cookies = false) {
         if (!accounts?.length) return;
         const status = $("turn-state-transport-status");
         setText(status, m("ui.state_transport_checking"));
@@ -12268,11 +12275,16 @@
             current?.();
             const row = state.probe_accounts.find((item) => item.account === account);
             if (!row) throw new UIError(m("ui.state_transport_account_missing", { account }));
-            if (row.upstream_transport_known && row.upstream_websockets === false) continue;
-            const patch = row.disable_websockets_patch;
-            if (patch?.name !== account || patch.websockets !== false)
-              throw new UIError(m("ui.state_transport_account_missing", { account }));
-            await api("PATCH", "/v0/management/auth-files/fields", { name: account, websockets: false }, { command: true });
+            const patch = row.disable_websockets_patch, fields = { name: account };
+            if (!row.upstream_transport_known || row.upstream_websockets !== false) {
+              if (patch?.name !== account || patch.websockets !== false)
+                throw new UIError(m("ui.state_transport_account_missing", { account }));
+              fields.websockets = false;
+            }
+            // CLIProxyAPI forwards only allow-listed client headers to Codex; this
+            // auth-file header passes the injected Cookie on. The patch merges.
+            if (cookies && patch?.name === account) fields.headers = { Cookie: "$Cookie" };
+            if (Object.keys(fields).length > 1) await api("PATCH", "/v0/management/auth-files/fields", fields, { command: true });
           }
           const verified = validateTurnState(await plugin("GET", "/turn-state"));
           current?.();
@@ -12323,7 +12335,8 @@
 
       function writeTurnState(method, path, payload, message, resetDraft = false) {
         return queueAdminData("configuration", async (current) => {
-          if (method === "PUT" && path === "/turn-state") await ensureTurnStateHTTP(payload.probe_accounts, current);
+          if (method === "PUT" && path === "/turn-state")
+            await ensureTurnStateHTTP(payload.probe_accounts, current, payload.inject_cookies);
           const result =
             method === "PUT" && path === "/turn-state"
               ? await uploadTurnState(payload, current)
@@ -12368,6 +12381,7 @@
           enabled: $("turn-state-enabled").checked,
           dry_run: $("turn-state-dry-run").checked,
           learn_responses: $("turn-state-learn-responses").checked,
+          inject_cookies: $("turn-state-inject-cookies").checked,
           probe_verify_completion: $("turn-state-verify-completion").checked,
           probe_drop_failed_proxies: $("turn-state-drop-failed").checked,
           probe_drop_degraded_proxies: $("turn-state-drop-degraded").checked,
@@ -12603,7 +12617,7 @@
               if (owner !== adminUIState || (enabled && commandGeneration !== turnStateRunner.generation)) throw new StaleRequestError();
             };
             current();
-            if (enabled) await ensureTurnStateHTTP(config.probe_accounts, current);
+            if (enabled) await ensureTurnStateHTTP(config.probe_accounts, current, config.inject_cookies);
             current();
             const result = await plugin("PUT", "/turn-state/runner", { enabled }, { command: true, timeoutMS: 15000 });
             current();
